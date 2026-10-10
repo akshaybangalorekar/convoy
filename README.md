@@ -128,8 +128,8 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 
 **Group voice calls**
 - Tap **Talk** and every phone in the room rings. Whoever answers joins the call.
-- Default is **push to talk**: hold the Talk button to speak. The call-bar button switches
-  to **open mic** so everyone can talk at once.
+- Default is **push to talk only**: the microphone is live exactly while you hold the Talk
+  button, so nobody hears you — or the road noise around you — between presses.
 - The audio is peer to peer and encrypted (DTLS-SRTP). Ringing and call setup ride on the
   room's existing relay, so there is no extra server to run.
 
@@ -406,11 +406,11 @@ maxPeers: 8,           // refuse new connections past this
 ## Testing
 
 Four headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and
-speech) cover the real `app.js`, `route.js` and `voice.js` — 254 checks in total:
+speech) cover the real `app.js`, `route.js` and `voice.js` — 259 checks in total:
 
 - `tests/rooms-voice-test.js` — saving and forgetting rooms, remembering who was in them,
   rejoining from the list, ringing the room, accepting and declining a call, the offer /
-  answer handshake, push-to-talk versus open mic, hanging up, and a blocked microphone.
+  answer handshake, push-to-talk gating, hanging up, and a blocked microphone.
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,

@@ -186,15 +186,29 @@ async function testOutgoingCall() {
   check('the call bar counts them', /2/.test(d.getElementById('callStatus').textContent),
         d.getElementById('callStatus').textContent);
 
-  d.getElementById('callMute').click();
+  // Push to talk: the microphone is live only while the button is held.
+  const talk = d.getElementById('btnTalk');
+  check('there is no open-mic control', !d.getElementById('callMute'));
+  const usePointer = window.PointerEvent !== undefined;
+  const fire = (type) => talk.dispatchEvent(usePointer
+    ? new window.PointerEvent(type, { bubbles: true })
+    : new window.MouseEvent(type, { bubbles: true }));
+
+  fire('pointerdown'); fire('mousedown');
   await sleep(10);
-  check('open mic unmutes', stubs.streams[0]._track.enabled === true);
-  check('the button relabels to Open mic',
-        d.getElementById('callMute').textContent === 'Open mic', d.getElementById('callMute').textContent);
-  d.getElementById('callMute').click();
+  check('holding Talk opens the microphone', stubs.streams[0]._track.enabled === true,
+        String(stubs.streams[0]._track.enabled));
+  check('the bar shows you are speaking', /Speaking/.test(d.getElementById('callStatus').textContent),
+        d.getElementById('callStatus').textContent);
+  check('the bar lights up while speaking', d.getElementById('callBar').classList.contains('live'));
+
+  fire('pointerup'); fire('mouseup');
   await sleep(10);
-  check('back to push to talk', d.getElementById('callMute').textContent === 'Push to talk');
-  check('and muted again', stubs.streams[0]._track.enabled === false);
+  check('releasing mutes again', stubs.streams[0]._track.enabled === false);
+  check('the bar stops showing Speaking', !/Speaking/.test(d.getElementById('callStatus').textContent),
+        d.getElementById('callStatus').textContent);
+  check('the bar drops the live mark', !d.getElementById('callBar').classList.contains('live'));
+  check('the bar says to hold to talk', /hold to talk/i.test(d.getElementById('callStatus').textContent));
 
   d.getElementById('callLeave').click();
   await sleep(20);

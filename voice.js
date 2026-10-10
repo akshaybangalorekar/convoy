@@ -38,7 +38,6 @@
     initiator: false,
     incoming: null,      // { callId, from, by, timer }
     peers: {},           // id -> { pc, el, pending: [] }
-    open: false,         // open mic, rather than push-to-talk
     holding: false,      // true while the Talk button is held down
     local: null,
   };
@@ -113,12 +112,20 @@
   }
 
   function applyMicState() {
-    if (!V.local) return;
-    // Push-to-talk: the track stays disabled unless we are open-mic or holding.
-    const on = !!(V.open || V.holding);
-    V.local.getAudioTracks().forEach((t) => { t.enabled = on; });
-    const btn = $('callMute');
-    if (btn) btn.textContent = V.open ? 'Open mic' : 'Push to talk';
+    // Push to talk only: the microphone is live exactly while the button is held.
+    if (V.local) V.local.getAudioTracks().forEach((t) => { t.enabled = !!V.holding; });
+    updateStatus();
+  }
+
+  function updateStatus() {
+    const el = $('callStatus');
+    if (!el || !V.active) return;
+    const n = peerCount();
+    el.textContent = V.holding
+      ? 'Speaking…'
+      : 'In a call · ' + (n + 1) + (n === 0 ? ' · waiting' : ' · hold to talk');
+    const bar = $('callBar');
+    if (bar) bar.classList.toggle('live', !!V.holding);
   }
 
   function stopMic() {
@@ -195,7 +202,6 @@
     V.callId = 'v-' + Math.random().toString(36).slice(2, 10);
     V.active = true;
     V.initiator = true;
-    V.open = false;
     send({ t: 'voice-invite', callId: V.callId });
     API.toast('Calling the room…');
     renderBar();
@@ -227,7 +233,6 @@
     V.callId = inc.callId;
     V.active = true;
     V.initiator = false;
-    V.open = false;
     send({ t: 'voice-accept', callId: V.callId, to: inc.from });
     renderBar();
     API.toast('Joined the call — hold Talk to speak');
@@ -293,7 +298,6 @@
     V.initiator = false;
     V.callId = null;
     V.holding = false;
-    V.open = false;
     renderBar();
   }
 
@@ -315,26 +319,17 @@
     const bar = $('callBar');
     if (!bar) return;
     if (!V.active) {
-      bar.classList.remove('show');
+      bar.classList.remove('show', 'live');
       $('btnTalk').textContent = 'Talk';
       $('btnTalk').classList.remove('on');
       document.body.classList.remove('in-call');
       return;
     }
-    const n = peerCount();
-    $('callStatus').textContent = 'In a call · ' + (n + 1) + (n === 0 ? ' · waiting' : '');
     bar.classList.add('show');
-    $('btnTalk').textContent = V.open ? 'Talk' : 'Hold to talk';
+    $('btnTalk').textContent = 'Hold to talk';
     $('btnTalk').classList.add('on');
     document.body.classList.add('in-call');
     applyMicState();
-  }
-
-  function toggleOpenMic() {
-    V.open = !V.open;
-    applyMicState();
-    renderBar();
-    API.toast(V.open ? 'Open mic — everyone can talk' : 'Push to talk — hold the button');
   }
 
   /* ---------------------------------------------------------------- *
@@ -362,10 +357,8 @@
     };
 
     talk.addEventListener('click', () => {
-      if (!V.active) { startCall(); return; }
-      if (V.open) return;                    // open mic needs no holding
-      // A tap (rather than a hold) toggles open mic, so it is discoverable.
-      toggleOpenMic();
+      // While in a call the button is a push-to-talk key — press and hold only.
+      if (!V.active) startCall();
     });
     if (isTouch) {
       talk.addEventListener('pointerdown', down);
@@ -379,7 +372,6 @@
 
     $('callAccept').addEventListener('click', acceptCall);
     $('callDecline').addEventListener('click', () => decline(false));
-    $('callMute').addEventListener('click', toggleOpenMic);
     $('callLeave').addEventListener('click', () => leaveCall(true));
 
     // Leaving the room ends any call.
@@ -403,6 +395,6 @@
   window.ConvoyVoice = {
     init,
     _internals: { CFG, V, startCall, acceptCall, decline, leaveCall, onMessage,
-                  renderBar, toggleOpenMic, peerCount },
+                  renderBar, updateStatus, peerCount },
   };
 })();

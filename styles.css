@@ -656,3 +656,7 @@ body.in-call #btnTalk:active { filter: brightness(1.25); }
 @media (min-width: 720px) {
   .call-incoming, .call-bar { left: var(--rail-off); right: auto; width: 360px; }
 }
+
+/* push to talk: the bar lights up only while the button is held */
+.call-bar.live { border-color: var(--warn); }
+.call-bar.live .call-dot { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
