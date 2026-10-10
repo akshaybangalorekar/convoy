@@ -39,6 +39,7 @@
     <div class="panel-actions">
       <button id="btnFollow" class="btn-sm toggle on" title="Keep the map centred on you">Follow me</button>
       <button id="btnFit" class="btn-sm" title="Zoom to fit everyone">Fit all</button>
+      <button id="btnNames" class="btn-sm toggle" title="Show names on the map">Names</button>
     </div>
   </div>
   <ul id="people"></ul>
@@ -61,6 +62,15 @@
 <div id="navstatus" class="navstatus">
   <span id="navRemain">—</span>
   <button id="navRecalc" class="mini">Recalculate</button>
+</div>
+
+<!-- Re-route consent prompt: never switch a route without asking -->
+<div id="reroute" class="reroute">
+  <div class="reroute-txt" id="rerouteTxt">—</div>
+  <div class="reroute-btns">
+    <button id="rerouteUse" class="mini on">Use it</button>
+    <button id="rerouteKeep" class="mini">Keep current</button>
+  </div>
 </div>
 
 <!-- Route planning sheet -->

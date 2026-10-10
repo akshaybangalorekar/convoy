@@ -39,9 +39,15 @@ Route planning needs a network connection (and, for the live map, HTTPS — see
 ## Features
 
 **Live map**
-- Everyone in the room on one map, each with their own colour and breadcrumb trail.
-- Distance and bearing from you, speed, and how long since each person was last seen.
-- Tap a pin or a list row to jump to that person. Follow-me and fit-all buttons.
+- Everyone in the room on one map, each as a small **vehicle icon** in their own colour,
+  rotated to the direction they're actually heading. The icon follows the travel mode —
+  cars for a driving trip, bikes for a cycle, walkers on foot.
+- **Names are off by default**, so the map isn't plastered with labels while you're
+  driving. Tap a vehicle to find out who it is and how far away they are; turn on the
+  **Names** toggle when you want them all shown.
+- Breadcrumb trails, distance and bearing from you, speed, and how long since each
+  person was last seen.
+- Tap a vehicle or a list row to jump to that person. Follow-me and fit-all buttons.
 
 **Routing & navigation**
 - Type a **start** and **destination** address, with type-ahead suggestions. Tap
@@ -54,15 +60,49 @@ Route planning needs a network connection (and, for the live map, HTTPS — see
   take the 2nd exit onto…").
 - **Live navigation**: a banner showing the next manoeuvre and the distance to it,
   with **spoken prompts** as you approach (at ~500 m, ~200 m and ~60 m for driving;
-  tighter for cycling and walking). Mute any time.
+  tighter for cycling and walking). Mute any time. While navigating, the rest of the
+  chrome gets out of the way so the screen stays readable at a glance.
+- **Three candidate routes** are compared and the best one picked — quickest, with a
+  preference for shorter, straighter, fewer-turn roads. The summary tells you why.
 - Off-route detection, remaining distance / time / progress, and a one-tap
-  **Recalculate**.
+  **Recalculate** that always asks before changing anything.
 
 **Shared with the room**
 - A route belongs to the room: whoever sets it, everyone sees the same start,
   destination, route line and step list. The setter's name is shown, and the shared
   line is drawn dashed in a different colour so it's clear it isn't yours.
 - Clearing the route clears it for everyone.
+
+---
+
+## How a route is chosen
+
+For each travel mode Convoy asks OSRM for three candidate routes, then scores them and
+picks one, so you don't have to:
+
+1. **Duration is the primary term** — the genuinely quickest road normally wins.
+2. **Distance, turn count and straightness are secondary penalties**, in seconds:
+   `+0.02 s` per metre, `+12 s` per turn, `+60 s` per unit of winding ("sinuosity" —
+   route length divided by straight-line distance).
+
+So a route that is a little slower but noticeably shorter, straighter and with far
+fewer turns will be chosen — usually the easier, more economical drive. A route that is
+*much* quicker still wins, because duration dominates. The summary tells you what was
+picked and why ("3 turns · chose fewest turns of 3 options"), and every weight is
+tunable in `CFG.weights`.
+
+**Convoy never changes your route behind your back.** Recalculate works out a new
+route, and if it's worth having — or you've drifted off the current one — you get a
+prompt: *"A faster route is available — saves 4 min. Switch to it?"* with **Use it**
+and **Keep current**. Nothing is swapped until you say so.
+
+> **About traffic.** There is no live traffic feed here. The public routing servers use
+> static OpenStreetMap data — road classes, speed limits, turn restrictions — not
+> real-time congestion, so Convoy cannot "see" a snarl-up. The prompt is triggered by
+> comparing the new route against the one you're on, not by traffic detection. Genuine
+> traffic-aware routing needs a provider with a traffic feed (Google, TomTom, HERE, or
+> an OSRM built on a traffic-enriched graph) and an API key; the hook is `CFG.routers`
+> in `route.js`.
 
 ---
 
@@ -149,6 +189,11 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
 - **Routes are a suggestion, not a guarantee.** OSM data and routing profiles can be
   wrong or out of date, especially for footpaths, cycleways and private roads. Follow
   local signs and your own judgement — don't treat spoken prompts as authoritative.
+- **No live traffic data.** See the note above: the "faster route" prompt compares
+  routes, it does not detect congestion. A jam on your current road won't be seen.
+- **The "fuel-efficient" preference is a heuristic.** Fewer turns and less distance do
+  generally mean less fuel, but Convoy has no fuel model — it's a weighted score, not a
+  consumption estimate.
 - **Location accuracy depends on the phone.** GPS in a car is good; indoors it can be
   off by tens of metres, which also makes the "next turn" banner jittery.
 - **Background tracking is limited.** Phones throttle location updates when the screen
@@ -216,11 +261,12 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Two headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js`:
+`app.js` and `route.js` — 97 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
-- `tests/route-test.js` — geocoding, routing, step text, shared routes, live
-  navigation, mute, off-route detection and failure handling.
+- `tests/route-test.js` — vehicle markers and the names toggle, geocoding, routing,
+  choosing between alternatives, the re-route consent prompt, step wording, shared
+  routes, live navigation, mute, off-route detection and failure handling.
 
 ```bash
 npm install

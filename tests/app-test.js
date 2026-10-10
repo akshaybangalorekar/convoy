@@ -16,7 +16,10 @@ function makeStubs(window) {
     ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds',
      'removeLayer', 'on', 'off', 'getZoom'].forEach((m) => { o[m] = () => o; });
     o.getZoom = () => 13;
-    o.getElement = () => ({ classList: { toggle() {}, add() {}, remove() {} } });
+    o.getElement = () => ({
+      classList: { toggle() {}, add() {}, remove() {} },
+      querySelector: () => null,
+    });
     return o;
   };
   window.L = {

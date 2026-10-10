@@ -27,6 +27,46 @@ const CFG = {
 const PALETTE = ['#ff6b6b', '#4dabf7', '#51cf66', '#ffd43b', '#cc5de8',
                  '#ff922b', '#20c997', '#f783ac', '#5c7cfa', '#94d82d'];
 
+/* Top-down vehicle glyphs. They draw with currentColor, so each one
+ * inherits its owner's colour, and rotate to match their heading. */
+const GLYPHS = {
+  car:
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M8 2.6c-1.9 0-3.4 1.5-3.4 3.4v12c0 1.9 1.5 3.4 3.4 3.4h8c1.9 0 3.4-1.5 3.4-3.4V6c0-1.9-1.5-3.4-3.4-3.4z" ' +
+        'fill="currentColor" stroke="#0b1220" stroke-width="1.3"/>' +
+      '<rect x="8.3" y="4.7" width="7.4" height="2.5" rx="1.1" fill="#dbe7ff" opacity=".9"/>' +
+      '<path d="M6.7 8.7h10.6M6.7 15.3h10.6" stroke="#0b1220" stroke-width="1.1" opacity=".45"/>' +
+    '</svg>',
+  bike:
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<circle cx="12" cy="5.9" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+      '<circle cx="12" cy="18.1" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+      '<path d="M12 8.6v6.8M8.9 11.7h6.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>' +
+      '<circle cx="12" cy="12" r="1.5" fill="currentColor"/>' +
+    '</svg>',
+  foot:
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<circle cx="12" cy="7.5" r="3.2" fill="currentColor" stroke="#0b1220" stroke-width="1.2"/>' +
+      '<path d="M12 11.4c-2.7 0-4.6 1.9-4.6 4.7V20h9.2v-3.9c0-2.8-1.9-4.7-4.6-4.7z" ' +
+        'fill="currentColor" stroke="#0b1220" stroke-width="1.2"/>' +
+    '</svg>',
+};
+
+let vehicleGlyph = 'car';   // follows the room's route mode
+
+function glyphMarkup() {
+  return '<div class="veh" data-g="' + vehicleGlyph + '"><div class="veh-rot">' +
+    '<span class="g g-car">' + GLYPHS.car + '</span>' +
+    '<span class="g g-bike">' + GLYPHS.bike + '</span>' +
+    '<span class="g g-foot">' + GLYPHS.foot + '</span>' +
+  '</div></div>';
+}
+
+function setVehicle(mode) {
+  vehicleGlyph = (mode === 'bike') ? 'bike' : (mode === 'foot') ? 'foot' : 'car';
+  document.querySelectorAll('.mk .veh').forEach((v) => { v.dataset.g = vehicleGlyph; });
+}
+
 /* ------------------------------------------------------------------ *
  * Small helpers
  * ------------------------------------------------------------------ */
@@ -133,23 +173,41 @@ function initMap() {
 function ensureMarker(p) {
   if (p._marker) return p._marker;
   const html =
-    `<div class="mk${p.isMe ? ' me' : ''}">` +
-      `<div class="dot" style="background:${p.color}"></div>` +
+    `<div class="mk${p.isMe ? ' me' : ''}" style="color:${p.color}">` +
+      glyphMarkup() +
       `<div class="lbl">${esc(p.name)}${p.isMe ? ' (you)' : ''}</div>` +
     `</div>`;
   const icon = L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
   p._marker = L.marker([p.lat, p.lng], {
     icon, interactive: true, keyboard: false, zIndexOffset: p.isMe ? 1000 : 0,
   }).addTo(map);
-  p._marker.on('click', () => focusPeer(p.id));
+  p._marker.on('click', () => identify(p));
   return p._marker;
+}
+
+// Tap a vehicle to find out who it is, without permanently labelling the map.
+function identify(p) {
+  focusPeer(p.id);
+  if (p.isMe) { toast('That is you'); return; }
+  const me = state.me;
+  const parts = [p.name];
+  if (me && me.lat != null) parts.push(fmtDist(haversine(me, p)) + ' away');
+  const sp = fmtSpeed(p.spd);
+  if (sp) parts.push(sp);
+  toast(parts.join(' · '));
 }
 
 function updateMarker(p) {
   const m = ensureMarker(p);
   m.setLatLng([p.lat, p.lng]);
   const el = m.getElement();
-  if (el) el.classList.toggle('stale', !p.isMe && isStale(p));
+  if (el) {
+    el.classList.toggle('stale', !p.isMe && isStale(p));
+    const rot = el.querySelector('.veh-rot');
+    if (rot && p.hdg != null && !isNaN(p.hdg)) {
+      rot.style.transform = 'rotate(' + Math.round(p.hdg) + 'deg)';
+    }
+  }
 
   const pts = p.trail.map((t) => [t.lat, t.lng]);
   if (pts.length >= 2) {
@@ -653,6 +711,12 @@ function wire() {
     if (state.follow && state.me && state.me.lat != null) map.panTo([state.me.lat, state.me.lng]);
   });
 
+  // Names are off by default so the map stays readable while driving.
+  $('btnNames').addEventListener('click', () => {
+    const on = document.body.classList.toggle('names');
+    $('btnNames').classList.toggle('on', on);
+  });
+
   // Enter key joins
   ['inName', 'inRoom'].forEach((id) => {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
@@ -677,7 +741,7 @@ function clearSharedRoute() {
 
 window.Convoy = {
   CFG, $, esc, haversine, bearing, compass, fmtDist, fmtSpeed, fmtAgo, colorFor,
-  toast, setStatus, state, send, fitAll, focusPeer,
+  toast, setStatus, state, send, fitAll, focusPeer, setVehicle,
   map: () => map,
   publishRoute, clearSharedRoute, hooks,
 };

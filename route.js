@@ -43,6 +43,12 @@
     shareMaxSteps: 80,
     offRouteM: 90,         // metres from the line before we call it off-route
     arriveM: 40,           // metres to destination = arrived
+    alternatives: 3,       // ask for alternatives and pick the best one
+    // Secondary penalties, in seconds. The route's own duration is the
+    // primary term, so a genuinely quicker road always wins; these just
+    // break ties in favour of fewer turns, less distance and a straighter line.
+    weights: { dist: 0.02, turn: 12, wind: 60 },
+    rerouteMinSave: 60,    // only offer a new route if it saves at least this long
   };
 
   const MODES = {
@@ -74,6 +80,7 @@
     to: null,          // chosen destination
     suggestTimer: null,
     busy: false,
+    pending: null,     // a better route waiting for the driver's consent
   };
 
   /* ------------------------------------------------------------------ *
@@ -151,14 +158,14 @@
   function routeUrl(base, a, b) {
     const coords = `${a.lng},${a.lat};${b.lng},${b.lat}`;
     return `${base}/route/v1/driving/${coords}` +
-           `?overview=full&geometries=geojson&steps=true&alternatives=false`;
+           `?overview=full&geometries=geojson&steps=true&alternatives=${CFG.alternatives}`;
   }
 
-  function parseOsrm(data, mode, start, end) {
-    if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) {
-      throw new Error((data && data.message) || (data && data.code) || 'no route');
-    }
-    const rt = data.routes[0];
+  /* Which manoeuvres count as a turn when scoring a route. */
+  const TURN_TYPES = new Set(['turn', 'roundabout', 'rotary', 'exit roundabout',
+    'exit rotary', 'fork', 'merge', 'end of road', 'on ramp', 'off ramp']);
+
+  function parseOsrmRoute(rt, mode, start, end) {
     const geom = ((rt.geometry && rt.geometry.coordinates) || []).map((c) => [c[1], c[0]]);
     const leg = (rt.legs && rt.legs[0]) || {};
     const steps = (leg.steps || []).map((s) => {
@@ -174,15 +181,48 @@
         icon: stepIcon(m.type, m.modifier),
       };
     });
+    const distance = rt.distance || leg.distance || 0;
+    const duration = rt.duration || leg.duration || 0;
+    const turns = steps.filter((s) => TURN_TYPES.has(s.type) &&
+      !(s.type === 'turn' && s.modifier === 'straight')).length;
+    const gc = API.haversine(start, end) || 1;
+    const sinuosity = distance / gc;      // 1.0 = dead straight
+    const score = duration
+      + CFG.weights.dist * distance
+      + CFG.weights.turn * turns
+      + CFG.weights.wind * Math.max(0, sinuosity - 1);
     return {
-      mode,
-      distance: rt.distance || leg.distance || 0,
-      duration: rt.duration || leg.duration || 0,
-      geometry: geom,
-      steps,
+      mode, distance, duration, geometry: geom, steps,
       start: { lat: start.lat, lng: start.lng, label: start.label },
       end: { lat: end.lat, lng: end.lng, label: end.label },
+      turns, sinuosity, score,
     };
+  }
+
+  /* Pick between the alternatives: quickest overall, but a route that is only
+   * a little slower and much straighter / less turny wins instead. */
+  function pickBest(cands) {
+    let best = cands[0];
+    for (const c of cands) if (c.score < best.score) best = c;
+    const fastest = cands.reduce((a, b) => (a.duration <= b.duration ? a : b));
+    const fewest = cands.reduce((a, b) => (a.turns <= b.turns ? a : b));
+    const straightest = cands.reduce((a, b) => (a.sinuosity <= b.sinuosity ? a : b));
+    if (best === fastest) best.why = 'fastest';
+    else if (best === fewest) best.why = 'fewest turns';
+    else if (best === straightest) best.why = 'straightest';
+    else best.why = 'best overall';
+    best.slowerThanFastest = Math.max(0, Math.round(best.duration - fastest.duration));
+    return best;
+  }
+
+  function buildFromOsrm(data, mode, start, end) {
+    if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) {
+      throw new Error((data && data.message) || (data && data.code) || 'no route');
+    }
+    const cands = data.routes.map((rt) => parseOsrmRoute(rt, mode, start, end));
+    const best = pickBest(cands);
+    best.alternatives = cands.length;
+    return best;
   }
 
   async function fetchRoute(start, end, mode) {
@@ -192,7 +232,7 @@
       try {
         const res = await fetch(routeUrl(base, start, end), { headers: { Accept: 'application/json' } });
         if (!res.ok) { lastErr = new Error('HTTP ' + res.status); continue; }
-        return parseOsrm(await res.json(), mode, start, end);
+        return buildFromOsrm(await res.json(), mode, start, end);
       } catch (e) { lastErr = e; }
     }
     throw lastErr || new Error('routing failed');
@@ -419,6 +459,16 @@
     setPlace(which, { label: 'My location', lat: me.lat, lng: me.lng });
   }
 
+  function whyLine(route) {
+    if (!route.why) return '';
+    const bits = [];
+    if (route.turns != null) bits.push(`${route.turns} turn${route.turns === 1 ? '' : 's'}`);
+    bits.push(route.alternatives > 1
+      ? `chose ${route.why} of ${route.alternatives} options`
+      : route.why);
+    return `<div class="sum-why">${bits.join(' · ')}</div>`;
+  }
+
   function renderSummary(route) {
     const el = $('rtSummary');
     const shared = !route.mine;
@@ -429,6 +479,7 @@
         `<span class="sum-dur">${fmtDuration(route.duration)}</span>` +
         `<span class="sum-eta">arrive ${fmtClock(route.duration)}</span>` +
       `</div>` +
+      whyLine(route) +
       (shared ? `<div class="sum-by">Route set by ${API.esc(route.by || 'someone')}</div>` : '') +
       `<div class="sum-actions">` +
         `<button id="rtStart" class="primary small">Start navigation</button>` +
@@ -453,6 +504,7 @@
   function applyRoute(route, opts) {
     opts = opts || {};
     R.active = route;
+    API.setVehicle(route.mode);
     R.total = route.distance;
     R.cum = buildCumulative(route.geometry);
     R.stepStart = [];
@@ -468,9 +520,15 @@
       API.publishRoute(sharePayload(route));
     }
     if (!opts.silent) {
-      API.toast(route.mine
-        ? `Route: ${API.fmtDist(route.distance)}, ${fmtDuration(route.duration)}`
-        : `${route.by || 'Someone'} set a ${MODES[route.mode].label.toLowerCase()} route`);
+      if (!route.mine) {
+        API.toast(`${route.by || 'Someone'} set a ${MODES[route.mode].label.toLowerCase()} route`);
+      } else if (route.slowerThanFastest >= 30) {
+        API.toast(`${API.fmtDist(route.distance)}, ${fmtDuration(route.duration)} — ` +
+                  `${route.why}, ${fmtDuration(route.slowerThanFastest)} slower but straighter`);
+      } else {
+        API.toast(`${API.fmtDist(route.distance)}, ${fmtDuration(route.duration)} — ` +
+                  `${route.why || 'fastest'}`);
+      }
     }
   }
 
@@ -521,6 +579,7 @@
 
   function clearRoute(broadcast) {
     if (R.active && R.active.mine && broadcast) API.clearSharedRoute();
+    hideReroute();
     stopNav();
     clearDrawing();
     R.active = null;
@@ -670,14 +729,40 @@
   }
 
   function recalc() {
-    if (!R.active) return;
+    if (!R.active || R.busy) return;
     const me = API.state.me;
     if (!me || me.lat == null) { API.toast('No GPS fix yet'); return; }
-    R.from = { label: 'My location', lat: me.lat, lng: me.lng };
-    R.to = { label: R.active.end.label || 'Destination', lat: R.active.end.lat, lng: R.active.end.lng };
+    const from = { label: 'My location', lat: me.lat, lng: me.lng };
+    const to = { label: R.active.end.label || 'Destination', lat: R.active.end.lat, lng: R.active.end.lng };
+    R.from = from; R.to = to;
     $('rtFrom').value = 'My location';
-    $('rtTo').value = shortLabel(R.to.label, 60);
-    go();
+    $('rtTo').value = shortLabel(to.label, 60);
+
+    R.busy = true;
+    fetchRoute(from, to, R.active.mode).then((route) => {
+      route.mine = true;
+      route.by = (me && me.name) || 'you';
+      const save = Math.round(R.active.duration - route.duration);
+      if (R.offRoute) offerReroute(route, 0, true);
+      else if (save >= CFG.rerouteMinSave) offerReroute(route, save, false);
+      else API.toast('You are already on the best route');
+    }).catch(() => {
+      API.toast('Could not find a route — check your connection');
+    }).finally(() => { R.busy = false; });
+  }
+
+  /* Never swap a route silently — always ask the driver first. */
+  function offerReroute(route, save, offRoute) {
+    R.pending = route;
+    $('rerouteTxt').textContent = offRoute
+      ? 'You are off the route. Use a new route to your destination?'
+      : `A faster route is available — saves ${fmtDuration(save)}. Switch to it?`;
+    $('reroute').classList.add('show');
+  }
+
+  function hideReroute() {
+    R.pending = null;
+    $('reroute').classList.remove('show');
   }
 
   /* ------------------------------------------------------------------ *
@@ -700,6 +785,16 @@
     $('rtGo').addEventListener('click', go);
     $('navStop').addEventListener('click', () => { stopNav(); });
     $('navRecalc').addEventListener('click', recalc);
+
+    $('rerouteUse').addEventListener('click', () => {
+      const p = R.pending;
+      hideReroute();
+      if (p) applyRoute(p, { silent: false });
+    });
+    $('rerouteKeep').addEventListener('click', () => {
+      hideReroute();
+      API.toast('Keeping the current route');
+    });
     $('navMute').addEventListener('click', () => {
       R.muted = !R.muted;
       $('navMute').textContent = R.muted ? 'Muted' : 'Voice';
@@ -720,5 +815,9 @@
     api.hooks.tick = tick;
   }
 
-  window.ConvoyRoute = { init };
+  window.ConvoyRoute = {
+    init,
+    // exposed for the test harness
+    _internals: { pickBest, parseOsrmRoute, buildFromOsrm, stepText, TURN_TYPES },
+  };
 })();

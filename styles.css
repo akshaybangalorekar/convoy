@@ -242,35 +242,34 @@ html, body {
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* ---------- Map markers ---------- */
-.mk { position: relative; cursor: pointer; }
-.mk .dot {
-  position: absolute;
-  left: 50%; top: 50%;
-  width: 18px; height: 18px;
-  margin: -9px 0 0 -9px;
-  border-radius: 50%;
-  border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,.55);
+/* ---------- Map markers: small vehicles ---------- */
+.mk { position: relative; cursor: pointer; --sz: 26px; }
+.mk.me { --sz: 32px; }
+.mk .veh {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--sz); height: var(--sz);
+  margin: calc(var(--sz) / -2) 0 0 calc(var(--sz) / -2);
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.55));
 }
-.mk.me .dot { width: 22px; height: 22px; margin: -11px 0 0 -11px; }
-.mk.stale .dot { border-color: rgba(255,255,255,.5); opacity: .6; }
+.mk .veh-rot { display: block; width: 100%; height: 100%; transition: transform .4s linear; }
+.mk .g { display: none; }
+.mk .g svg { display: block; width: var(--sz); height: var(--sz); }
+.mk .veh[data-g="car"] .g-car { display: block; }
+.mk .veh[data-g="bike"] .g-bike { display: block; }
+.mk .veh[data-g="foot"] .g-foot { display: block; }
+.mk.stale .veh { opacity: .4; }
+.mk.me .veh { filter: drop-shadow(0 0 7px rgba(77,171,247,.95)) drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+
+/* Names are hidden by default — the map stays clear while driving. */
 .mk .lbl {
-  position: absolute;
-  left: 50%;
-  top: 12px;
+  display: none;
+  position: absolute; left: 50%; top: calc(var(--sz) / 2 + 3px);
   transform: translateX(-50%);
-  background: rgba(11,18,32,.9);
-  border: 1px solid var(--line);
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 999px;
-  white-space: nowrap;
-  pointer-events: none;
+  background: rgba(11,18,32,.92); border: 1px solid var(--line); color: var(--text);
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  white-space: nowrap; pointer-events: none;
 }
-.mk.me .lbl { top: 14px; border-color: var(--accent); }
+body.names .mk .lbl { display: block; }
 
 @media (min-width: 720px) {
   #panel { left: auto; right: 12px; top: calc(64px + var(--safe-top)); bottom: auto; width: 320px; max-height: 70vh; }
@@ -413,4 +412,39 @@ body.routing #panel { display: none; }
   }
   .navbanner { left: auto; right: 12px; width: 360px; }
   .navstatus { left: auto; right: 12px; width: 360px; }
+}
+
+/* ---------- Driving mode: declutter while navigating ---------- */
+body.navigating #topbar { display: none; }
+body.navigating .navbanner {
+  top: calc(10px + var(--safe-top));
+  padding: 14px 15px;
+  border-color: rgba(77,171,247,.5);
+}
+body.navigating .nav-ico { font-size: 32px; }
+body.navigating .nav-main { font-size: 17px; }
+body.navigating .nav-sub { font-size: 13px; }
+body.navigating .navstatus { font-size: 14px; padding: 12px 14px; }
+
+.sum-why { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* ---------- Re-route consent prompt ---------- */
+.reroute {
+  position: fixed; z-index: 45; left: 10px; right: 10px;
+  top: calc(58px + var(--safe-top));
+  display: none; flex-direction: column; gap: 10px;
+  background: rgba(27,39,64,.98); border: 1px solid var(--warn);
+  border-radius: 14px; padding: 13px 14px; backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
+}
+.reroute.show { display: flex; }
+.reroute-txt { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.reroute-btns { display: flex; gap: 8px; }
+.reroute-btns .mini { flex: 1; padding: 10px; font-size: 13px; }
+
+body.navigating .reroute { top: calc(104px + var(--safe-top)); }
+
+@media (min-width: 720px) {
+  .reroute { left: auto; right: 12px; width: 360px; }
+  body.navigating .reroute { top: calc(104px + var(--safe-top)); }
 }
