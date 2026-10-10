@@ -598,3 +598,17 @@ body.navigating .offline-bar { top: calc(104px + var(--safe-top)); }
 body.nav-hidden .rail,
 body.nav-hidden .nav-btns,
 body.nav-hidden .navstatus { display: none; }
+
+/* ---------- Controls: bottom-left column, for one-handed use ---------- */
+.rail {
+  top: auto;
+  bottom: calc(10px + var(--safe-bottom));
+}
+
+/* anything else anchored at the bottom starts to the right of the rail */
+#panel, .navstatus, .a2hs { left: var(--rail-off); }
+
+@media (min-width: 720px) {
+  /* on wide screens the people panel sits top-left, clear of the rail */
+  .rail { bottom: calc(12px + var(--safe-bottom)); }
+}

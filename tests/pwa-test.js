@@ -32,10 +32,18 @@ function testStaticFiles() {
   check('has apple-mobile-web-app-title', /apple-mobile-web-app-title/.test(html));
   check('declares a dark color-scheme', /name="color-scheme"[^>]*dark/.test(html));
   check('has the install bar markup', /id="a2hs"/.test(html) && /id="a2hsGo"/.test(html));
-  check('controls live in the left-hand rail',
-        /class="rail"[\s\S]*?id="btnRoute"[\s\S]*?id="btnShare"[\s\S]*?id="btnLeave"/.test(html));
+  check('controls live in the left-hand rail, Route nearest the thumb',
+        /class="rail"[\s\S]*?id="btnLeave"[\s\S]*?id="btnShare"[\s\S]*?id="btnRoute"/.test(html));
   check('the rail is outside the top bar',
         html.indexOf('class="rail"') > html.indexOf('</header>'));
+
+  const css = read('styles.css');
+  const railRules = css.match(/\.rail \{[\s\S]*?\}/g) || [];
+  const railAll = railRules.join('\n');
+  check('the rail is anchored to the bottom', /bottom:\s*calc\(/.test(railAll), railAll.slice(0, 140));
+  check('the rail no longer sits at the top', /top:\s*auto/.test(railAll), railAll.slice(0, 140));
+  check('the bottom panels start clear of the rail',
+        /#panel, \.navstatus, \.a2hs \{ left: var\(--rail-off\)/.test(css));
 
   // --- manifest
   let mf = null;

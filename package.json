@@ -1,6 +1,6 @@
 {
   "name": "convoy",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "private": true,
   "description": "Live group map with routing — see everyone in your group on one map, navigate there together, and keep navigating with no signal. Full-screen driving mode, heading-up rotation, day/night map, no backend.",
   "scripts": {

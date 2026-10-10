@@ -76,7 +76,10 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 - Breadcrumb trails, distance and bearing from you, speed, and how long since each
   person was last seen.
 - Tap a vehicle or a list row to jump to that person. Follow-me and fit-all buttons.
-- **Controls sit on the left edge**, within reach in a right-hand-drive car.
+- **Controls sit in a column at the bottom-left**, within reach of one thumb. Route is
+  the lowest button (nearest the thumb) and Leave is furthest away, so it is the hardest
+  to hit by accident. The bottom sheets start to the right of the rail, so nothing
+  overlaps.
 - **Tap gestures**: one tap on the map zooms out, a double tap zooms in. While the
   driving controls are hidden, the first tap just brings them back.
 - **The map stays aligned with the direction of travel** — heading-up, like a satnav —
@@ -372,7 +375,7 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 209 checks in total:
+`app.js` and `route.js` — 212 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,
