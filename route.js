@@ -29,16 +29,22 @@
     geocoders: [
       {
         name: 'photon',
-        url: (q) => 'https://photon.komoot.io/api/?limit=6&lang=en&q=' + encodeURIComponent(q),
+        // Photon has no country filter, so we bias toward where you are and
+        // filter its results by countrycode ourselves.
+        url: (q, ctx) => 'https://photon.komoot.io/api/?limit=8&lang=en&q=' + encodeURIComponent(q) +
+          (ctx && ctx.lat != null ? `&lat=${ctx.lat}&lon=${ctx.lng}&location_bias_scale=0.2` : ''),
         parse: photonParse,
       },
       {
         name: 'nominatim',
-        url: (q) => 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=' + encodeURIComponent(q),
+        // Nominatim does support a hard country filter.
+        url: (q, ctx) => 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&addressdetails=1&q=' +
+          encodeURIComponent(q) + (ctx && ctx.cc ? `&countrycodes=${ctx.cc}` : ''),
         parse: nominatimParse,
       },
     ],
     suggestDelay: 500,     // ms debounce before hitting the geocoder
+    countryScope: true,    // limit address search to the country you're in
     shareMaxPoints: 400,   // downsample shared geometry
     shareMaxSteps: 80,
     offRouteM: 90,         // metres from the line before we call it off-route
@@ -78,6 +84,8 @@
     lastAnnounce: 0,
     from: null,        // chosen start {label, lat, lng}
     to: null,          // chosen destination
+    country: null,     // ISO code of the country the phone is in
+    countryName: null,
     suggestTimer: null,
     busy: false,
     pending: null,     // a better route waiting for the driver's consent
@@ -126,7 +134,8 @@
       const c = (f.geometry && f.geometry.coordinates) || [];
       const bits = [p.name, p.street, p.district, p.city, p.state, p.country]
         .filter((x, i, a) => x && a.indexOf(x) === i);
-      return { label: bits.join(', '), lat: c[1], lng: c[0] };
+      return { label: bits.join(', '), lat: c[1], lng: c[0],
+               cc: String(p.countrycode || '').toLowerCase(), country: p.country || '' };
     }).filter((r) => r.lat != null);
   }
   function nominatimParse(data) {
@@ -135,21 +144,76 @@
       label: r.display_name || r.name || '',
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
+      cc: String((r.address && r.address.country_code) || '').toLowerCase(),
+      country: (r.address && r.address.country) || '',
     })).filter((r) => !isNaN(r.lat));
   }
 
-  async function geocode(query) {
+  async function geocode(query, opts) {
+    opts = opts || {};
     const q = String(query || '').trim();
     if (q.length < 3) return [];
+    const me = API.state.me || {};
+    const scoped = !!(CFG.countryScope && R.country && !opts.ignoreScope);
+    const ctx = {
+      cc: scoped ? R.country : '',
+      lat: me.lat != null ? me.lat : null,
+      lng: me.lng != null ? me.lng : null,
+    };
+
     for (const g of CFG.geocoders) {
       try {
-        const res = await fetch(g.url(q), { headers: { Accept: 'application/json' } });
+        const res = await fetch(g.url(q, ctx), { headers: { Accept: 'application/json' } });
         if (!res.ok) continue;
-        const out = g.parse(await res.json());
+        let out = g.parse(await res.json());
+        // Drop anything we can positively place outside the chosen country.
+        if (scoped) out = out.filter((r) => !r.cc || r.cc === R.country);
         if (out.length) return out;
       } catch (e) { /* try the next provider */ }
     }
     return [];
+  }
+
+  /* Work out which country the phone is in, so address search can be scoped to it. */
+  async function detectCountry(lat, lng) {
+    try {
+      const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2' +
+        `&zoom=3&addressdetails=1&lat=${lat}&lon=${lng}`, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const d = await res.json();
+      const a = (d && d.address) || {};
+      const cc = String(a.country_code || '').toLowerCase();
+      if (!cc) return;
+      R.country = cc;
+      R.countryName = a.country || cc.toUpperCase();
+      updateScopeUI();
+    } catch (e) { /* try again on a later fix */ }
+  }
+
+  let countryTries = 0;
+  function onFix() {
+    if (R.country || countryTries >= 3) return;
+    const me = API.state.me;
+    if (!me || me.lat == null) return;
+    countryTries++;
+    detectCountry(me.lat, me.lng);
+  }
+
+  function updateScopeUI() {
+    const row = $('scopeRow');
+    if (!row) return;
+    $('scopeLabel').textContent = R.countryName
+      ? 'Only search ' + R.countryName
+      : 'Only search my country';
+    $('scopeToggle').checked = !!CFG.countryScope;
+    row.classList.toggle('off', !CFG.countryScope);
+    row.classList.toggle('unknown', !R.countryName);
+  }
+
+  function setScope(on) {
+    CFG.countryScope = !!on;
+    try { localStorage.setItem('convoy.scope', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    updateScopeUI();
   }
 
   /* ------------------------------------------------------------------ *
@@ -412,9 +476,21 @@
     if (R.active && R.active.mine) { /* user must re-fetch */ }
   }
 
-  function renderSuggestions(which, list) {
+  function renderSuggestions(which, list, opts) {
+    opts = opts || {};
     const box = $(which === 'from' ? 'rtFromSugg' : 'rtToSugg');
-    if (!list.length) { box.innerHTML = ''; box.classList.remove('show'); return; }
+    if (!list.length) {
+      if (opts.queried && CFG.countryScope && R.country) {
+        box.innerHTML = '<div class="sugg-empty">No matches in ' +
+          API.esc(R.countryName || 'your country') +
+          '. Turn the country filter off to search worldwide.</div>';
+        box.classList.add('show');
+      } else {
+        box.innerHTML = '';
+        box.classList.remove('show');
+      }
+      return;
+    }
     box.innerHTML = list.map((r, i) =>
       `<div class="sugg-item" data-i="${i}">${API.esc(shortLabel(r.label, 60))}</div>`).join('');
     box.classList.add('show');
@@ -442,7 +518,7 @@
       R.suggestTimer = setTimeout(async () => {
         if (q.trim().length < 3) { renderSuggestions(which, []); return; }
         const list = await geocode(q);
-        renderSuggestions(which, list);
+        renderSuggestions(which, list, { queried: true });
       }, CFG.suggestDelay);
     });
     input.addEventListener('blur', () => {
@@ -805,6 +881,14 @@
     wireSuggest('from');
     wireSuggest('to');
 
+    // Country scoping: remember the choice, default to on.
+    try {
+      const saved = localStorage.getItem('convoy.scope');
+      if (saved != null) CFG.countryScope = saved === '1';
+    } catch (e) { /* ignore */ }
+    $('scopeToggle').addEventListener('change', () => setScope($('scopeToggle').checked));
+    updateScopeUI();
+
     // If a destination address is pasted in and Enter pressed, go.
     ['rtFrom', 'rtTo'].forEach((id) => {
       $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
@@ -813,6 +897,7 @@
     api.hooks.onRoute = onRemoteRoute;
     api.hooks.onRouteClear = onRemoteClear;
     api.hooks.tick = tick;
+    api.hooks.onFix = onFix;
   }
 
   window.ConvoyRoute = {

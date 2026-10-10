@@ -146,7 +146,7 @@ let renderTimer = null;
 let demoTimer = null;
 
 // Hooks that route.js plugs into (see the bridge at the bottom of this file).
-const hooks = { onRoute: null, onRouteClear: null, tick: null };
+const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null };
 
 const LS = {
   name: 'convoy.name',
@@ -462,6 +462,7 @@ function onFix(pos) {
   renderPeople();
   publishNow(false);
   if (hooks.tick) hooks.tick();
+  if (hooks.onFix) hooks.onFix(me);
 
   if (state.follow) map.panTo([me.lat, me.lng], { animate: true, duration: 0.4 });
   if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }

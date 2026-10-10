@@ -80,6 +80,10 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 **Routing & navigation**
 - Type a **start** and **destination** address, with type-ahead suggestions. Tap
   **Here** to use your current location as either end.
+- Address search is **scoped to the country you're in**. The phone reverse-geocodes your
+  position once, then suggestions are limited to that country — so a "Springfield"
+  search from India returns Indian places, not Illinois. A toggle in the route sheet
+  widens it to the whole world when you're planning a trip abroad.
 - Three travel modes: **Car**, **Cycle**, **Walk** — each with its own routing profile,
   so a cycle route genuinely differs from a driving one.
 - The route is drawn on the map with A/B pins, plus total distance, travel time and
@@ -223,6 +227,12 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
 - **The "fuel-efficient" preference is a heuristic.** Fewer turns and less distance do
   generally mean less fuel, but Convoy has no fuel model — it's a weighted score, not a
   consumption estimate.
+- **Address coverage is uneven, and thinnest in India.** The geocoders are
+  OpenStreetMap based, so rural Indian addresses, house numbers and newer layouts are
+  patchy. Google Maps and MapmyIndia/Mappls have noticeably deeper Indian address data —
+  but both need an API key and billing, and a key embedded in a static page is public, so
+  either would also need a small proxy to keep it server-side. To swap providers, change
+  `CFG.geocoders` in `route.js`.
 - **Offline is partial.** The app shell and the tiles you've already viewed are cached;
   new map areas, address search and routing all need a connection. The tile cache is
   deliberately small to stay within OpenStreetMap's tile usage policy — a production app
@@ -268,6 +278,7 @@ brokers: [ ... ],  // add your own broker
 ```js
 routers: { car: [...], bike: [...], foot: [...] },  // add your own routing server
 geocoders: [ ... ],        // add your own geocoder
+countryScope: true,        // restrict address search to the detected country
 offRouteM: 90,             // metres from the line before "off route"
 arriveM: 40,               // metres to the destination = arrived
 MODES.car.speak: [500, 200, 60],   // announcement thresholds, in metres
@@ -294,12 +305,13 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 140 checks in total:
+`app.js` and `route.js` — 152 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
-- `tests/route-test.js` — vehicle markers and the names toggle, geocoding, routing,
-  choosing between alternatives, the re-route consent prompt, step wording, shared
-  routes, live navigation, mute, off-route detection and failure handling.
+- `tests/route-test.js` — vehicle markers and the names toggle, geocoding,
+  country-scoped address search, routing, choosing between alternatives, the re-route
+  consent prompt, step wording, shared routes, live navigation, mute, off-route
+  detection and failure handling.
 - `tests/pwa-test.js` — manifest and icon consistency (every declared icon is a real PNG
   of the size it claims), that every file the service worker precaches actually exists,
   and the iOS and Android install flows.

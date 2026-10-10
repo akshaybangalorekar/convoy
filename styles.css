@@ -522,3 +522,20 @@ body.a2hs-on #panel { bottom: calc(76px + var(--safe-bottom)); }
   .a2hs { left: auto; right: 12px; width: 360px; }
   body.a2hs-on #panel { bottom: auto; }
 }
+
+/* ---------- Country scoping ---------- */
+.scope {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 10px 11px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+}
+.scope input {
+  width: 18px; height: 18px; margin: 0; flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+.scope.off, .scope.unknown { opacity: .6; }
+.scope.unknown { cursor: default; }
+
+.sugg-empty { padding: 10px 12px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }

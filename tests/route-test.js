@@ -95,11 +95,29 @@ const OSRM_ALTS = {
 };
 
 const PHOTON = {
-  features: [{
-    properties: { name: 'Gateway of India', city: 'Mumbai', country: 'India' },
-    geometry: { coordinates: [C.lng, C.lat] },
-  }],
+  features: [
+    { properties: { name: 'Gateway of India', city: 'Mumbai', country: 'India', countrycode: 'in' },
+      geometry: { coordinates: [C.lng, C.lat] } },
+    { properties: { name: 'Springfield', state: 'Illinois', country: 'United States', countrycode: 'us' },
+      geometry: { coordinates: [-89.65, 39.78] } },
+  ],
 };
+
+// A geocoder that only knows about foreign places, to force the fallback.
+const PHOTON_US_ONLY = {
+  features: [
+    { properties: { name: 'Springfield', state: 'Illinois', country: 'United States', countrycode: 'us' },
+      geometry: { coordinates: [-89.65, 39.78] } },
+  ],
+};
+
+const REVERSE_IN = { address: { country: 'India', country_code: 'in' } };
+
+const NOMINATIM_IN = [{
+  display_name: 'MG Road, Bengaluru, Karnataka, India',
+  lat: '12.9756', lon: '77.6068',
+  address: { country_code: 'in', country: 'India' },
+}];
 
 /* ---------- Stubs ---------- */
 function makeStubs(window, opts = {}) {
@@ -154,8 +172,14 @@ function makeStubs(window, opts = {}) {
   const fakeFetch = async (url) => {
     const u = String(url);
     calls.push(u);
-    if (u.includes('photon') || u.includes('nominatim')) {
-      return { ok: true, status: 200, json: async () => PHOTON };
+    if (u.includes('/reverse')) {
+      return { ok: true, status: 200, json: async () => REVERSE_IN };
+    }
+    if (u.includes('photon')) {
+      return { ok: true, status: 200, json: async () => (opts.photonUSOnly ? PHOTON_US_ONLY : PHOTON) };
+    }
+    if (u.includes('nominatim')) {
+      return { ok: true, status: 200, json: async () => (opts.noMatches ? [] : NOMINATIM_IN) };
     }
     if (u.includes('/route/v1/')) {
       routeCalls++;
@@ -447,6 +471,82 @@ async function testFailureHandling() {
         d.getElementById('rtGo').textContent);
 }
 
+/* ---------- Test 7: country-scoped address search ---------- */
+async function testCountryScope() {
+  const { window, stubs } = boot();
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+
+  check('country looked up from the first GPS fix',
+        stubs.calls.some((u) => u.includes('/reverse')), stubs.calls.join(' | ').slice(0, 140));
+
+  d.getElementById('btnRoute').click();
+  check('scope row names the detected country',
+        /Only search India/.test(d.getElementById('scopeLabel').textContent),
+        d.getElementById('scopeLabel').textContent);
+  check('scope is on by default', d.getElementById('scopeToggle').checked === true);
+
+  d.getElementById('rtTo').value = 'Springfield';
+  d.getElementById('rtTo').dispatchEvent(new window.Event('input'));
+  await sleep(700);
+  let sugg = d.getElementById('rtToSugg').textContent;
+  check('kept the match inside the country', /Gateway of India/.test(sugg), sugg);
+  check('dropped the foreign match', !/Springfield/.test(sugg), sugg);
+
+  // turning the filter off restores worldwide results
+  d.getElementById('scopeToggle').checked = false;
+  d.getElementById('scopeToggle').dispatchEvent(new window.Event('change'));
+  check('toggle marks the row as off', d.getElementById('scopeRow').classList.contains('off'));
+  check('choice is remembered', window.localStorage.getItem('convoy.scope') === '0',
+        window.localStorage.getItem('convoy.scope'));
+
+  d.getElementById('rtTo').value = 'Springfield ';
+  d.getElementById('rtTo').dispatchEvent(new window.Event('input'));
+  await sleep(700);
+  sugg = d.getElementById('rtToSugg').textContent;
+  check('worldwide search returns the foreign match', /Springfield/.test(sugg), sugg);
+}
+
+/* ---------- Test 8: falling back to the in-country provider ---------- */
+async function testCountryFallback() {
+  const { window, stubs } = boot({ photonUSOnly: true });
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+
+  d.getElementById('rtTo').value = 'Springfield';
+  d.getElementById('rtTo').dispatchEvent(new window.Event('input'));
+  await sleep(700);
+
+  const nomUrl = stubs.calls.find((u) => u.includes('nominatim') && u.includes('/search')) || '';
+  check('nominatim was asked with the country filter', /countrycodes=in/.test(nomUrl),
+        nomUrl.slice(0, 150));
+  const sugg = d.getElementById('rtToSugg').textContent;
+  check('fell back to the in-country provider', /MG Road/.test(sugg), sugg);
+}
+
+/* ---------- Test 9: nothing matches in the country ---------- */
+async function testCountryNoMatches() {
+  const { window, stubs } = boot({ photonUSOnly: true, noMatches: true });
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+
+  d.getElementById('rtTo').value = 'Springfield';
+  d.getElementById('rtTo').dispatchEvent(new window.Event('input'));
+  await sleep(700);
+
+  const sugg = d.getElementById('rtToSugg').textContent;
+  check('explains when nothing matches in the country', /No matches in India/.test(sugg), sugg);
+  check('suggests turning the filter off', /Turn the country filter off/.test(sugg), sugg);
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -455,6 +555,9 @@ async function testFailureHandling() {
     await testRerouteConsent();
     await testSharedRouteInbound();
     await testFailureHandling();
+    await testCountryScope();
+    await testCountryFallback();
+    await testCountryNoMatches();
   } catch (e) {
     results.push({ name: 'suite crashed: ' + e.message, ok: false,
                    extra: e.stack ? String(e.stack).split('\n')[1] : '' });
