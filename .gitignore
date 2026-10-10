@@ -1,0 +1,9 @@
+# Dependencies (only needed to run the test harness)
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
