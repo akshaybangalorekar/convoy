@@ -277,3 +277,140 @@ html, body {
   .chip { max-width: none; }
   .status { max-width: none; }
 }
+
+/* ---------- Route & navigation ---------- */
+.mini {
+  appearance: none; border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--text); border-radius: 9px; padding: 6px 10px; font-size: 12px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.mini:hover { filter: brightness(1.12); }
+.mini.on { background: var(--accent); border-color: var(--accent); color: #06121f; }
+.mini.danger { color: var(--danger); }
+.mini:disabled { opacity: .55; cursor: default; }
+
+.sheet {
+  position: fixed; z-index: 30; left: 0; right: 0; bottom: 0;
+  max-height: 88vh; display: none; flex-direction: column;
+  background: rgba(19,28,46,.98); border-top: 1px solid var(--line);
+  border-radius: 18px 18px 0 0; backdrop-filter: blur(12px);
+  box-shadow: 0 -14px 40px rgba(0,0,0,.5);
+  padding-bottom: var(--safe-bottom);
+}
+.sheet.show { display: flex; }
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--line);
+  font-weight: 700; font-size: 14px;
+}
+.sheet-body { padding: 12px 14px 18px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+.modes { display: flex; gap: 6px; margin-bottom: 12px; }
+.modes .mode {
+  flex: 1; appearance: none; cursor: pointer; padding: 9px 0; font-size: 13px;
+  font-weight: 700; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--muted);
+}
+.modes .mode.on { background: var(--accent); border-color: var(--accent); color: #06121f; }
+
+.fld { display: block; margin-bottom: 12px; position: relative; }
+.fld > span {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.fld-row { display: flex; gap: 8px; }
+.fld-row input {
+  flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 10px; color: var(--text); padding: 11px 12px; font-size: 16px; outline: none;
+}
+.fld-row input:focus { border-color: var(--accent); }
+
+.sugg {
+  display: none; margin-top: 6px; border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden; background: var(--bg);
+}
+.sugg.show { display: block; }
+.sugg-item { padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.sugg-item:last-child { border-bottom: none; }
+.sugg-item:hover { background: var(--surface-2); }
+
+.sheet-body > .primary {
+  width: 100%; margin-top: 4px; border: 1px solid transparent; border-radius: 11px;
+  padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer;
+  background: var(--accent); color: #06121f;
+}
+.sheet-body > .primary:disabled { opacity: .6; }
+
+.summary { margin-top: 14px; }
+.sum-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sum-mode {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--accent);
+}
+.sum-big { font-size: 20px; font-weight: 800; }
+.sum-dur { font-size: 15px; font-weight: 600; color: var(--muted); }
+.sum-eta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.sum-by { font-size: 12px; color: var(--warn); margin-top: 4px; }
+.sum-actions { display: flex; gap: 8px; margin-top: 10px; }
+.primary.small, .ghost.small {
+  flex: 1; border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 700;
+  cursor: pointer; border: 1px solid transparent;
+}
+.primary.small { background: var(--accent); color: #06121f; }
+.ghost.small { background: transparent; border-color: var(--line); color: var(--text); }
+
+.steps { list-style: none; margin: 14px 0 0; padding: 0; }
+.steps li { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+.steps li:last-child { border-bottom: none; }
+.st-ico { flex: 0 0 26px; text-align: center; font-size: 17px; color: var(--accent); }
+.st-txt { flex: 1; font-size: 13.5px; }
+.st-dist { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.navbanner {
+  position: fixed; z-index: 35; left: 10px; right: 10px;
+  top: calc(58px + var(--safe-top));
+  display: none; align-items: center; gap: 12px;
+  background: rgba(19,28,46,.97); border: 1px solid var(--line);
+  border-radius: 14px; padding: 11px 13px; backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+}
+body.navigating .navbanner { display: flex; }
+.nav-ico { font-size: 26px; line-height: 1; color: var(--accent); flex: 0 0 auto; }
+.nav-txt { flex: 1; min-width: 0; }
+.nav-main { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.navstatus {
+  position: fixed; z-index: 35; left: 10px; right: 10px;
+  bottom: calc(10px + var(--safe-bottom));
+  display: none; align-items: center; justify-content: space-between; gap: 10px;
+  background: rgba(19,28,46,.97); border: 1px solid var(--line); border-radius: 14px;
+  padding: 10px 13px; backdrop-filter: blur(12px); font-size: 13px; font-weight: 600;
+}
+body.navigating .navstatus { display: flex; }
+body.navigating #panel { display: none; }
+body.routing #panel { display: none; }
+
+.rp { position: relative; }
+.rp .rp-dot {
+  position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 50%; border: 3px solid #fff; color: #06121f; font-size: 13px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 10px rgba(0,0,0,.55);
+}
+.rp .rp-lbl {
+  position: absolute; left: 50%; top: 16px; transform: translateX(-50%);
+  background: rgba(11,18,32,.9); border: 1px solid var(--line); color: var(--text);
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  white-space: nowrap; pointer-events: none; max-width: 40vw;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+@media (min-width: 720px) {
+  .sheet {
+    left: auto; right: 12px; top: calc(64px + var(--safe-top)); bottom: 12px;
+    width: 360px; max-height: none; border-radius: 16px; border: 1px solid var(--line);
+  }
+  .navbanner { left: auto; right: 12px; width: 360px; }
+  .navstatus { left: auto; right: 12px; width: 360px; }
+}

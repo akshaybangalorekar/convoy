@@ -26,6 +26,7 @@
     <span id="status" class="status"><i class="dot"></i><span id="statusText">idle</span></span>
   </div>
   <div class="tb-right">
+    <button id="btnRoute" class="btn-sm" title="Plan a route">Route</button>
     <button id="btnShare" class="btn-sm" title="Copy invite link">Share</button>
     <button id="btnLeave" class="btn-sm danger" title="Leave room">Leave</button>
   </div>
@@ -41,6 +42,62 @@
     </div>
   </div>
   <ul id="people"></ul>
+</section>
+
+<!-- Navigation banner (visible only while navigating) -->
+<div id="navbanner" class="navbanner">
+  <div class="nav-ico" id="navIco">↑</div>
+  <div class="nav-txt">
+    <div class="nav-main" id="navMain">—</div>
+    <div class="nav-sub" id="navSub"></div>
+  </div>
+  <div class="nav-btns">
+    <button id="navMute" class="mini on" title="Toggle voice">Voice</button>
+    <button id="navStop" class="mini danger" title="Stop navigating">Stop</button>
+  </div>
+</div>
+
+<!-- Bottom navigation status -->
+<div id="navstatus" class="navstatus">
+  <span id="navRemain">—</span>
+  <button id="navRecalc" class="mini">Recalculate</button>
+</div>
+
+<!-- Route planning sheet -->
+<section id="routepanel" class="sheet">
+  <div class="sheet-head">
+    <span>Plan a route</span>
+    <button id="btnRouteClose" class="btn-sm">Close</button>
+  </div>
+  <div class="sheet-body">
+    <div class="modes" id="routeModes">
+      <button class="mode on" data-mode="car">Car</button>
+      <button class="mode" data-mode="bike">Cycle</button>
+      <button class="mode" data-mode="foot">Walk</button>
+    </div>
+
+    <label class="fld" for="rtFrom">
+      <span>From</span>
+      <div class="fld-row">
+        <input id="rtFrom" placeholder="Start address" autocomplete="off" autocapitalize="none" spellcheck="false" />
+        <button id="rtFromHere" class="mini" title="Use my location">Here</button>
+      </div>
+      <div class="sugg" id="rtFromSugg"></div>
+    </label>
+
+    <label class="fld" for="rtTo">
+      <span>To</span>
+      <div class="fld-row">
+        <input id="rtTo" placeholder="Destination address" autocomplete="off" autocapitalize="none" spellcheck="false" />
+        <button id="rtToHere" class="mini" title="Use my location">Here</button>
+      </div>
+      <div class="sugg" id="rtToSugg"></div>
+    </label>
+
+    <button id="rtGo" class="primary">Get route</button>
+    <div id="rtSummary" class="summary"></div>
+    <ol id="rtSteps" class="steps"></ol>
+  </div>
 </section>
 
 <!-- Join overlay -->
@@ -71,6 +128,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="route.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

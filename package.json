@@ -1,10 +1,10 @@
 {
   "name": "convoy",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Live group map — see everyone in your group on one map. No backend, no accounts.",
+  "description": "Live group map with routing — see everyone in your group on one map and navigate there together. No backend, no accounts.",
   "scripts": {
-    "test": "node tests/app-test.js",
+    "test": "node --no-experimental-fetch tests/route-test.js && node tests/app-test.js",
     "serve": "python3 -m http.server 8080"
   },
   "devDependencies": {

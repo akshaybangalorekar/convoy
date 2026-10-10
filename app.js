@@ -105,6 +105,9 @@ let publishTimer = null;
 let renderTimer = null;
 let demoTimer = null;
 
+// Hooks that route.js plugs into (see the bridge at the bottom of this file).
+const hooks = { onRoute: null, onRouteClear: null, tick: null };
+
 const LS = {
   name: 'convoy.name',
   room: 'convoy.room',
@@ -321,6 +324,8 @@ function onMessage(topic, payload) {
   if (!msg || !msg.id || msg.id === state.me.id) return;
 
   if (msg.t === 'bye') { removePeer(msg.id); renderPeople(); return; }
+  if (msg.t === 'route') { if (hooks.onRoute) hooks.onRoute(msg); return; }
+  if (msg.t === 'route-clear') { if (hooks.onRouteClear) hooks.onRouteClear(msg); return; }
   if (msg.t !== 'pos' || typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
 
   let p = state.peers.get(msg.id);
@@ -398,6 +403,7 @@ function onFix(pos) {
   updateMarker(me);
   renderPeople();
   publishNow(false);
+  if (hooks.tick) hooks.tick();
 
   if (state.follow) map.panTo([me.lat, me.lng], { animate: true, duration: 0.4 });
   if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
@@ -658,6 +664,25 @@ function wire() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Bridge for route.js
+ * ------------------------------------------------------------------ */
+function publishRoute(payload) {
+  if (!state.me) return;
+  send(Object.assign({ t: 'route', id: state.me.id, by: state.me.name, ts: Date.now() }, payload));
+}
+function clearSharedRoute() {
+  if (!state.me) return;
+  send({ t: 'route-clear', id: state.me.id, ts: Date.now() });
+}
+
+window.Convoy = {
+  CFG, $, esc, haversine, bearing, compass, fmtDist, fmtSpeed, fmtAgo, colorFor,
+  toast, setStatus, state, send, fitAll, focusPeer,
+  map: () => map,
+  publishRoute, clearSharedRoute, hooks,
+};
+
+/* ------------------------------------------------------------------ *
  * Boot
  * ------------------------------------------------------------------ */
 function boot() {
@@ -669,6 +694,7 @@ function boot() {
   }
   initMap();
   wire();
+  if (window.ConvoyRoute) window.ConvoyRoute.init(window.Convoy);
 
   // Prefill from URL / storage
   const hashRoom = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
