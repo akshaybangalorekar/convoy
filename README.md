@@ -11,14 +11,17 @@ geocoding and routing services.
 ```
 convoy/
 ├── index.html            # the whole UI
-├── app.js                # map, live sync, geolocation, demo mode
+├── app.js                # map, live sync, geolocation, demo mode, install flow
 ├── route.js              # address search, routing, turn-by-turn, voice
 ├── styles.css            # dark, mobile-first styling
-├── manifest.webmanifest  # "Add to Home Screen"
-├── icon.svg              # app icon
+├── sw.js                 # service worker: offline app shell + tile cache
+├── manifest.webmanifest  # installable web app
+├── icon.svg              # vector app icon
+├── icons/                # PNG icons (192, 512, maskable, iOS 180, favicon 32)
 ├── tests/
 │   ├── app-test.js       # live-map tests
-│   └── route-test.js     # routing + navigation tests
+│   ├── route-test.js     # routing + navigation tests
+│   └── pwa-test.js       # manifest, service worker + install flow
 ├── LICENSE
 └── README.md
 ```
@@ -33,6 +36,31 @@ server or phone.
 
 Route planning needs a network connection (and, for the live map, HTTPS — see
 *Hosting*).
+
+---
+
+## Put it on your phone
+
+Open the site on your phone and add it to your home screen. It then runs full-screen
+with no browser chrome, and keeps working when the signal drops.
+
+- **iPhone / iPad** — open it in Safari, tap the **Share** button, then **Add to Home
+  Screen**. Safari has no automatic install prompt, so the app shows a one-time hint
+  explaining where the button is.
+- **Android** — open it in Chrome and tap the app's **Install** button, or use Chrome's
+  own *Add to Home screen*.
+
+Once installed it caches the app itself, so it opens instantly and still loads with no
+connection at all. It also caches the map tiles you've already looked at (capped at
+around 400 — roughly an afternoon of driving) so a dead spot doesn't blank the map.
+New tiles, address search and routing still need a connection.
+
+Location access requires a **secure origin** — HTTPS (which GitHub Pages gives you) or
+`localhost`. On plain `http://` the browser will refuse to share your position.
+
+The layout is built for one hand: 44px touch targets, no accidental double-tap zoom,
+dynamic viewport units so mobile browser bars don't crop the panels, safe-area insets
+for notched phones, and a compact layout for landscape when the phone is in a mount.
 
 ---
 
@@ -117,6 +145,7 @@ and **Keep current**. Nothing is swapped until you say so.
 | **Photon / Nominatim** | Address search. Photon (komoot) first for type-ahead, Nominatim (OpenStreetMap) as fallback. Both free, no key. |
 | **FOSSGIS OSRM** | Routing via `routed-car`, `routed-bike` and `routed-foot` — three separate servers, one per travel mode. Free, no key. |
 | **SpeechSynthesis API** | Spoken turn prompts. Built into the browser. |
+| **Service worker** | Makes the app installable and serves it offline — it caches the app shell, the CDN libraries and the tiles you've already viewed. |
 
 Messages are small JSON blobs published to one topic per room:
 
@@ -194,6 +223,10 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
 - **The "fuel-efficient" preference is a heuristic.** Fewer turns and less distance do
   generally mean less fuel, but Convoy has no fuel model — it's a weighted score, not a
   consumption estimate.
+- **Offline is partial.** The app shell and the tiles you've already viewed are cached;
+  new map areas, address search and routing all need a connection. The tile cache is
+  deliberately small to stay within OpenStreetMap's tile usage policy — a production app
+  should use its own tile provider.
 - **Location accuracy depends on the phone.** GPS in a car is good; indoors it can be
   off by tens of metres, which also makes the "next turn" banner jittery.
 - **Background tracking is limited.** Phones throttle location updates when the screen
@@ -260,13 +293,16 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 
 ## Testing
 
-Two headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 97 checks in total:
+Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
+`app.js` and `route.js` — 140 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding, routing,
   choosing between alternatives, the re-route consent prompt, step wording, shared
   routes, live navigation, mute, off-route detection and failure handling.
+- `tests/pwa-test.js` — manifest and icon consistency (every declared icon is a real PNG
+  of the size it claims), that every file the service worker precaches actually exists,
+  and the iOS and Android install flows.
 
 ```bash
 npm install

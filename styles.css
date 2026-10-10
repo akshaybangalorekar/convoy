@@ -448,3 +448,77 @@ body.navigating .reroute { top: calc(104px + var(--safe-top)); }
   .reroute { left: auto; right: 12px; width: 360px; }
   body.navigating .reroute { top: calc(104px + var(--safe-top)); }
 }
+
+/* ---------- Phone polish ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* Kill the 300ms tap delay and accidental double-tap zoom on controls */
+button, input, .mode, .sugg-item, .leaflet-control-zoom a { touch-action: manipulation; }
+
+/* Comfortable thumb targets (44px is the usual minimum) */
+.btn-sm { min-height: 40px; padding: 9px 13px; }
+.mini { min-height: 38px; padding: 8px 12px; }
+.modes .mode { min-height: 46px; }
+#people li { min-height: 48px; }
+.fld-row input { min-height: 46px; }
+#join .card button { min-height: 48px; }
+
+/* Don't let the chrome be selected or dragged about */
+#topbar, #panel, .sheet, .navbanner, .navstatus, .reroute, .a2hs, .toast {
+  -webkit-user-select: none; user-select: none;
+}
+
+/* Panels scroll inside themselves rather than bouncing the whole page */
+#people, .sheet-body, #join { overscroll-behavior: contain; }
+
+/* Dynamic viewport units so mobile browser bars don't crop the sheets */
+.sheet { max-height: 88vh; max-height: 88dvh; }
+#panel { max-height: 46vh; max-height: 46dvh; }
+
+/* Bigger, easier map zoom buttons on touch screens */
+@media (pointer: coarse) {
+  .leaflet-control-zoom a {
+    width: 44px !important; height: 44px !important;
+    line-height: 44px !important; font-size: 22px !important;
+  }
+}
+
+/* Landscape phone (often a car mount): keep everything compact */
+@media (max-height: 520px) and (orientation: landscape) {
+  .sheet { max-height: 94dvh; }
+  .sheet-head { padding: 8px 12px; }
+  .sheet-body { padding: 8px 12px 12px; }
+  .modes .mode { min-height: 40px; }
+  #panel { max-height: 60dvh; }
+  body.navigating .navbanner { padding: 10px 12px; }
+  body.navigating .nav-ico { font-size: 26px; }
+  body.navigating .nav-main { font-size: 15px; }
+  #join { align-items: flex-start; padding: 10px; }
+  .card { padding: 16px; }
+  .card h1 { font-size: 19px; }
+  .card .sub { margin-bottom: 12px; }
+}
+
+/* ---------- Add-to-home-screen bar ---------- */
+.a2hs {
+  position: fixed; z-index: 50; left: 10px; right: 10px;
+  bottom: calc(10px + var(--safe-bottom));
+  display: none; align-items: center; gap: 10px;
+  background: rgba(27,39,64,.98); border: 1px solid var(--line);
+  border-radius: 14px; padding: 11px 13px; backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
+}
+.a2hs.show { display: flex; }
+.a2hs-txt { flex: 1; font-size: 13px; line-height: 1.4; }
+.a2hs-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Never fight with the route sheet or the driving banner */
+body.navigating .a2hs, body.routing .a2hs { display: none; }
+
+/* Lift the people panel above the install bar when it's showing */
+body.a2hs-on #panel { bottom: calc(76px + var(--safe-bottom)); }
+
+@media (min-width: 720px) {
+  .a2hs { left: auto; right: 12px; width: 360px; }
+  body.a2hs-on #panel { bottom: auto; }
+}

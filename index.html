@@ -6,11 +6,16 @@
 <title>Convoy — live map for your group</title>
 <meta name="description" content="A tiny web app that shows everyone in your group on one live map. No sign-up, no backend." />
 <meta name="theme-color" content="#0b1220" />
+<meta name="color-scheme" content="dark" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Convoy" />
+<meta name="format-detection" content="telephone=no" />
 <link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <link rel="stylesheet" href="styles.css" />
@@ -130,6 +135,15 @@
       Everyone with the room code can see this map, and the connection uses a public relay.
       Use a hard-to-guess code (like <code>goa-7f3k9</code>) and don't share it publicly.
     </p>
+  </div>
+</div>
+
+<!-- One-time "add to home screen" hint (iOS shows no install prompt of its own) -->
+<div id="a2hs" class="a2hs">
+  <span class="a2hs-txt" id="a2hsTxt">Install Convoy for full-screen, offline use.</span>
+  <div class="a2hs-btns">
+    <button id="a2hsGo" class="mini on">Install</button>
+    <button id="a2hsClose" class="mini">Not now</button>
   </div>
 </div>
 

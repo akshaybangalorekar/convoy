@@ -611,6 +611,7 @@ function join(name, room) {
   startTimers();
   renderPeople();
   requestWakeLock();
+  maybeShowInstallHint();
 
   try { history.replaceState(null, '', location.pathname + '#r=' + encodeURIComponent(room)); } catch (e) {}
 }
@@ -700,6 +701,7 @@ function wire() {
     startTimers();
     startDemo();
     renderPeople();
+    maybeShowInstallHint();
   });
 
   $('btnShare').addEventListener('click', share);
@@ -725,6 +727,83 @@ function wire() {
   window.addEventListener('beforeunload', () => {
     if (state.joined && !state.demo) send({ t: 'bye', id: state.me.id, ts: Date.now() });
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * Install to the home screen
+ * ------------------------------------------------------------------ */
+const LS_INSTALL = 'convoy.a2hs';
+let deferredInstall = null;
+
+function isStandalone() {
+  return (window.navigator.standalone === true) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+}
+
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
+let installReady = false;
+
+// Only offered once the user is in the app, so it never covers the join screen.
+function maybeShowInstallHint() {
+  if (!installReady || isStandalone()) return;
+  if (!state.joined) return;
+  if (localStorage.getItem(LS_INSTALL) === 'done') return;
+  $('a2hs').classList.add('show');
+  document.body.classList.add('a2hs-on');
+}
+
+function dismissInstall() {
+  $('a2hs').classList.remove('show');
+  document.body.classList.remove('a2hs-on');
+  localStorage.setItem(LS_INSTALL, 'done');
+}
+
+function initInstall() {
+  if (isStandalone()) return;
+
+  // Android / Chrome expose a real install flow.
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    $('a2hsTxt').textContent = 'Install Convoy for full-screen, offline use.';
+    $('a2hsGo').textContent = 'Install';
+    installReady = true;
+    maybeShowInstallHint();
+  });
+
+  // iOS Safari has no install prompt, so explain where the button lives.
+  if (isIOS()) {
+    $('a2hsTxt').textContent = 'Add Convoy to your home screen: tap Share, then "Add to Home Screen".';
+    $('a2hsGo').textContent = 'Got it';
+    installReady = true;
+  }
+
+  $('a2hsGo').addEventListener('click', async () => {
+    if (deferredInstall) {
+      deferredInstall.prompt();
+      try { await deferredInstall.userChoice; } catch (e) { /* ignore */ }
+      deferredInstall = null;
+    }
+    dismissInstall();
+  });
+  $('a2hsClose').addEventListener('click', dismissInstall);
+
+  window.addEventListener('appinstalled', () => {
+    localStorage.setItem(LS_INSTALL, 'done');
+    $('a2hs').classList.remove('show');
+  });
+}
+
+// Offline support + installability. Requires a secure origin (https or localhost).
+function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  const secure = location.protocol === 'https:' ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if (!secure) return;
+  navigator.serviceWorker.register('sw.js').catch(() => { /* not fatal */ });
 }
 
 /* ------------------------------------------------------------------ *
@@ -758,6 +837,8 @@ function boot() {
   }
   initMap();
   wire();
+  initInstall();
+  initServiceWorker();
   if (window.ConvoyRoute) window.ConvoyRoute.init(window.Convoy);
 
   // Prefill from URL / storage
