@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Convoy — live map for your group</title>
+<meta name="description" content="A tiny web app that shows everyone in your group on one live map. No sign-up, no backend." />
+<meta name="theme-color" content="#0b1220" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="map" aria-label="Map"></div>
+
+<!-- Top bar -->
+<header id="topbar">
+  <div class="tb-left">
+    <span id="roomLabel" class="chip">not in a room</span>
+    <span id="status" class="status"><i class="dot"></i><span id="statusText">idle</span></span>
+  </div>
+  <div class="tb-right">
+    <button id="btnShare" class="btn-sm" title="Copy invite link">Share</button>
+    <button id="btnLeave" class="btn-sm danger" title="Leave room">Leave</button>
+  </div>
+</header>
+
+<!-- People panel -->
+<section id="panel">
+  <div class="panel-head">
+    <span id="peopleCount">0 people</span>
+    <div class="panel-actions">
+      <button id="btnFollow" class="btn-sm toggle on" title="Keep the map centred on you">Follow me</button>
+      <button id="btnFit" class="btn-sm" title="Zoom to fit everyone">Fit all</button>
+    </div>
+  </div>
+  <ul id="people"></ul>
+</section>
+
+<!-- Join overlay -->
+<div id="join" class="overlay">
+  <div class="card">
+    <div class="brand"><span class="brand-dot"></span> Convoy</div>
+    <h1>Everyone on one map</h1>
+    <p class="sub">Pick a room code, share the link with your group, and every phone that opens it shows up live on this map. Built for road trips, rides, hikes and meet-ups.</p>
+
+    <label for="inName">Your name</label>
+    <input id="inName" maxlength="24" placeholder="e.g. Akshay" autocomplete="name" />
+
+    <label for="inRoom">Room code</label>
+    <input id="inRoom" maxlength="32" placeholder="e.g. goa-trip" autocapitalize="none" autocorrect="off" spellcheck="false" />
+
+    <button id="btnJoin" class="primary">Join room</button>
+    <button id="btnDemo" class="ghost">Preview with 4 demo cars</button>
+
+    <p class="fine">
+      Everyone with the room code can see this map, and the connection uses a public relay.
+      Use a hard-to-guess code (like <code>goa-7f3k9</code>) and don't share it publicly.
+    </p>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
