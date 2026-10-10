@@ -153,10 +153,17 @@ function makeStubs(window, opts = {}) {
   window.L = {
     map() {
       const o = layer();
-      o._h = {}; o._pane = { style: {} };
+      o._h = {}; o._pane = { style: {} }; o._events = {};
+      o._zooms = { in: 0, out: 0 }; o._bearings = [];
       o.on = (ev, fn) => { (o._h[ev] = o._h[ev] || []).push(fn); return o; };
       o._emit = (ev) => (o._h[ev] || []).forEach((f) => f());
       o.getPane = () => o._pane;
+      o.getContainer = () => ({
+        addEventListener: (t, fn) => { (o._events[t] = o._events[t] || []).push(fn); },
+      });
+      o.zoomIn = () => { o._zooms.in++; return o; };
+      o.zoomOut = () => { o._zooms.out++; return o; };
+      o.setBearing = (b) => { o._bearings.push(b); return o; };
       maps.push(o);
       return o;
     },
@@ -254,6 +261,17 @@ function makeStubs(window, opts = {}) {
   };
 
   return { clients, calls, spoken, maps, routeCalls: () => routeCalls };
+}
+
+// Simulate a tap on the map, whichever gesture path the code took.
+function tapMap(map, dx = 0, dy = 0, target) {
+  const ev = { clientX: 100 + dx, clientY: 100 + dy, target: target || { closest: () => null } };
+  if (map._events.pointerdown) {
+    map._events.pointerdown.forEach((f) => f(ev));
+    (map._events.pointerup || []).forEach((f) => f(ev));
+  } else {
+    (map._events.click || []).forEach((f) => f(ev));
+  }
 }
 
 function boot(opts = {}) {
@@ -745,17 +763,22 @@ async function testImmersiveAndTheme() {
   check('navigation mode is on', d.body.classList.contains('navigating'));
 
   const map = stubs.maps[0];
-  check('a map click handler is registered', !!map && typeof map._emit === 'function');
-  map._emit('click');
-  check('tapping the map brings the controls back', !d.body.classList.contains('nav-hidden'));
+  check('the map has tap listeners', Object.keys(map._events).length > 0,
+        Object.keys(map._events).join(','));
 
   // shorten the auto-hide so the test does not wait six seconds
   window.ConvoyRoute._internals.CFG.navAutoHideMs = 40;
-  map._emit('click');            // hide
-  check('tapping again hides them', d.body.classList.contains('nav-hidden'));
-  map._emit('click');            // reveal, with the short timer
+
+  tapMap(map);
+  check('tapping the map brings the controls back', !d.body.classList.contains('nav-hidden'));
+  check('that tap did not zoom', map._zooms.out === 0, String(map._zooms.out));
+
   await sleep(90);
   check('controls auto-hide again shortly after', d.body.classList.contains('nav-hidden'));
+
+  tapMap(map);
+  check('a later tap brings them back again', !d.body.classList.contains('nav-hidden'));
+  check('still no zoom while the controls were hidden', map._zooms.out === 0, String(map._zooms.out));
 
   d.getElementById('navStop').click();
   check('stopping navigation restores the controls', !d.body.classList.contains('nav-hidden'));
@@ -783,6 +806,66 @@ async function testImmersiveAndTheme() {
         (stubs.maps[0]._pane.style.filter || '') === '', stubs.maps[0]._pane.style.filter);
 }
 
+/* ---------- Test 15: tap gestures and the heading-up bearing ---------- */
+async function testTapGesturesAndBearing() {
+  const { window, stubs } = boot();
+  const map = stubs.maps[0];
+
+  check('map container received tap listeners', Object.keys(map._events).length > 0,
+        Object.keys(map._events).join(','));
+
+  tapMap(map);
+  await sleep(330);                      // past the double-tap window
+  check('a single tap zooms out', map._zooms.out === 1, String(map._zooms.out));
+  check('a single tap does not zoom in', map._zooms.in === 0, String(map._zooms.in));
+
+  tapMap(map); tapMap(map);              // a double tap
+  await sleep(330);
+  check('a double tap zooms in', map._zooms.in === 1, String(map._zooms.in));
+  check('a double tap does not zoom out', map._zooms.out === 1, String(map._zooms.out));
+
+  // a drag must not count as a tap
+  let before = map._zooms.out;
+  tapMap(map, 0, 0); tapMap(map, 120, 160);   // down here, up far away
+  if (map._events.pointerdown) {
+    // emulate a real drag: one down, one up far away
+    const down = { clientX: 100, clientY: 100, target: { closest: () => null } };
+    const up = { clientX: 240, clientY: 260, target: { closest: () => null } };
+    map._events.pointerdown.forEach((f) => f(down));
+    (map._events.pointerup || []).forEach((f) => f(up));
+    await sleep(330);
+    check('a drag is not treated as a tap', map._zooms.out === before, String(map._zooms.out));
+  } else {
+    check('a drag is not treated as a tap (click fallback)', true);
+  }
+
+  // taps on a Leaflet control are ignored
+  if (map._events.pointerdown) {
+    before = map._zooms.out;
+    tapMap(map, 0, 0, { closest: () => ({}) });
+    await sleep(330);
+    check('taps on a map control are ignored', map._zooms.out === before, String(map._zooms.out));
+  }
+
+  // --- heading-up bearing
+  const T = window.Convoy._internals;
+  check('bearing starts at north', T.getBearing() === 0, String(T.getBearing()));
+  T.updateBearing({ hdg: 90, spd: 20 });
+  const first = T.getBearing();
+  check('bearing turns toward the direction of travel', first > 0 && first < 90, String(first));
+  for (let i = 0; i < 40; i++) T.updateBearing({ hdg: 90, spd: 20 });
+  check('bearing converges on the heading', Math.abs(T.getBearing() - 90) < 1, String(T.getBearing()));
+  check('the map was told to rotate',
+        map._bearings.length > 0 && map._bearings[map._bearings.length - 1] > 0,
+        String(map._bearings.length));
+
+  const held = T.getBearing();
+  T.updateBearing({ hdg: 270, spd: 0 });
+  check('bearing holds while stopped', T.getBearing() === held, String(T.getBearing()));
+  T.updateBearing({ hdg: null, spd: 20 });
+  check('bearing ignores a missing heading', T.getBearing() === held, String(T.getBearing()));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -799,6 +882,7 @@ async function testImmersiveAndTheme() {
     await testCoverageGate();
     await testCoverageGaps();
     await testImmersiveAndTheme();
+    await testTapGesturesAndBearing();
   } catch (e) {
     results.push({ name: 'suite crashed: ' + e.message, ok: false,
                    extra: e.stack ? String(e.stack).split('\n')[1] : '' });

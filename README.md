@@ -77,6 +77,11 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
   person was last seen.
 - Tap a vehicle or a list row to jump to that person. Follow-me and fit-all buttons.
 - **Controls sit on the left edge**, within reach in a right-hand-drive car.
+- **Tap gestures**: one tap on the map zooms out, a double tap zooms in. While the
+  driving controls are hidden, the first tap just brings them back.
+- **The map stays aligned with the direction of travel** — heading-up, like a satnav —
+  and it holds the last bearing when you stop rather than snapping back to north at
+  every red light.
 - The basemap **turns dark after sunset and light again after sunrise**, using real sun
   times computed for your position — so it's right whether you're in Sydney in October
   or Melbourne in June. There's a `?theme=dark` / `?theme=light` override for testing.
@@ -256,6 +261,10 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
   navigating without signal. If you want offline map imagery, point the tile layer at a
   source that permits it: your own tile server, a provider plan that allows offline use
   (MapTiler, Stadia, Thunderforest), or Protomaps PMTiles vector tiles.
+- **Map rotation needs a third-party plugin.** Leaflet cannot rotate a map on its own,
+  so heading-up mode uses `leaflet-rotate`, which patches parts of Leaflet's internals.
+  If it fails to load the app carries on unchanged with a north-up map; set
+  `CFG.bearing.enabled = false` to turn it off deliberately.
 - **The night map is a darkened version of the same tiles, not a purpose-built dark
   basemap.** OSM's standard tiles are the only keyless raster source, so the dark theme
   applies a CSS filter to them — easier on the eyes at night, but not as clean as a real
@@ -317,6 +326,8 @@ theme: {
   checkMs: 300000, // how often to re-evaluate
   dark: { url: '<tile url>', filter: 'invert(1) hue-rotate(180deg) ...' },
 },
+tapZoom: { enabled: true, delayMs: 260 },        // single tap out, double tap in
+bearing: { enabled: true, minSpeedMps: 0.8, lerp: 0.25 },  // heading-up rotation
 ```
 
 `route.js` — routing and navigation:
@@ -361,14 +372,15 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 194 checks in total:
+`app.js` and `route.js` — 209 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,
   country-scoped address search, routing, choosing between alternatives, the re-route
   consent prompt, step wording, shared routes, live navigation, mute, off-route
   detection, saving/restoring the route for offline use, the signal-drop prompt, the
-  coverage warning and its country gating, immersive navigation, and the day/night map.
+  coverage warning and its country gating, immersive navigation, the day/night map, the
+  tap zoom gestures and the heading-up bearing.
 - `tests/pwa-test.js` — manifest and icon consistency (every declared icon is a real PNG
   of the size it claims), that every file the service worker precaches actually exists,
   and the iOS and Android install flows.

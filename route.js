@@ -1234,8 +1234,7 @@
     refreshOfflineStatus();
 
     // Tap the map while navigating to bring the controls back.
-    const m = API.map();
-    if (m && m.on) m.on('click', () => { if (R.nav) toggleChrome(); });
+    api.hooks.tap = () => { if (R.nav) toggleChrome(); };
 
     // If a destination address is pasted in and Enter pressed, go.
     ['rtFrom', 'rtTo'].forEach((id) => {

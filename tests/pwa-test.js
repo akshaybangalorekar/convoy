@@ -119,6 +119,7 @@ function makeStubs(window) {
       .forEach((m) => { o[m] = () => o; });
     o.getZoom = () => 13;
     o.getPane = () => ({ style: {} });
+    o.getContainer = () => ({ addEventListener: () => {} });
     o.getElement = () => ({ classList: { toggle() {}, add() {}, remove() {} }, querySelector: () => null });
     return o;
   };

@@ -17,6 +17,7 @@ function makeStubs(window) {
      'removeLayer', 'on', 'off', 'getZoom', 'setZIndex'].forEach((m) => { o[m] = () => o; });
     o.getZoom = () => 13;
     o.getPane = () => ({ style: {} });
+    o.getContainer = () => ({ addEventListener: () => {} });
     o.getElement = () => ({
       classList: { toggle() {}, add() {}, remove() {} },
       querySelector: () => null,

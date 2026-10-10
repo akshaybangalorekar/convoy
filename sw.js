@@ -35,6 +35,7 @@ const SHELL = [
 const CDN = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
   'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js',
 ];
 

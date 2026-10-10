@@ -42,6 +42,11 @@ const CFG = {
       filter: 'invert(1) hue-rotate(180deg) brightness(.92) contrast(.92) saturate(.6)',
     },
   },
+
+  /* Tap gestures on the map: one tap zooms out, a double tap zooms in. */
+  tapZoom: { enabled: true, delayMs: 260, moveTolerancePx: 12 },
+  /* Keep the map aligned with the direction of travel (heading-up). */
+  bearing: { enabled: true, minSpeedMps: 0.8, lerp: 0.25 },
 };
 
 const PALETTE = ['#ff6b6b', '#4dabf7', '#51cf66', '#ffd43b', '#cc5de8',
@@ -166,7 +171,7 @@ let renderTimer = null;
 let demoTimer = null;
 
 // Hooks that route.js plugs into (see the bridge at the bottom of this file).
-const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null };
+const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null, tap: null };
 
 const LS = {
   name: 'convoy.name',
@@ -269,13 +274,78 @@ function maybeUpdateTheme() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Tap gestures and the heading-up bearing
+ * ------------------------------------------------------------------ */
+let tapTimer = null;
+
+function onMapTap() {
+  // While the driving controls are hidden, a tap just brings them back.
+  if (document.body.classList.contains('nav-hidden')) {
+    if (hooks.tap) hooks.tap();
+    return;
+  }
+  if (!CFG.tapZoom.enabled) return;
+  if (tapTimer) {                       // second tap of a double tap
+    clearTimeout(tapTimer); tapTimer = null;
+    map.zoomIn();
+    return;
+  }
+  tapTimer = setTimeout(() => {
+    tapTimer = null;
+    map.zoomOut();
+  }, CFG.tapZoom.delayMs);
+}
+
+function wireTapGestures(container) {
+  let down = null;
+  const inControl = (e) => !!(e.target && e.target.closest && e.target.closest('.leaflet-control'));
+  const onDown = (e) => {
+    down = inControl(e) ? null : { x: e.clientX, y: e.clientY, t: Date.now() };
+  };
+  const onUp = (e) => {
+    const d = down; down = null;
+    if (!d || inControl(e)) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CFG.tapZoom.moveTolerancePx) return; // a drag
+    if (Date.now() - d.t > 700) return;                                                   // a long press
+    onMapTap();
+  };
+  if (window.PointerEvent) {
+    container.addEventListener('pointerdown', onDown);
+    container.addEventListener('pointerup', onUp);
+    container.addEventListener('pointercancel', () => { down = null; });
+  } else {
+    container.addEventListener('click', onMapTap);
+  }
+}
+
+let mapBearing = 0;
+
+// Rotate the map so the direction of travel points up. Holds the last bearing
+// when stopped, so it doesn't snap back to north at every red light.
+function updateBearing(me) {
+  if (!CFG.bearing.enabled || !map || typeof map.setBearing !== 'function') return;
+  if (!me || me.hdg == null || isNaN(me.hdg)) return;
+  if (me.spd != null && me.spd < CFG.bearing.minSpeedMps) return;
+  const diff = ((me.hdg - mapBearing + 540) % 360) - 180;   // shortest signed turn
+  mapBearing = (mapBearing + diff * CFG.bearing.lerp + 360) % 360;
+  try { map.setBearing(mapBearing); } catch (e) { /* plugin unavailable */ }
+}
+
+/* ------------------------------------------------------------------ *
  * Map
  * ------------------------------------------------------------------ */
 function initMap() {
-  map = L.map('map', { zoomControl: false, attributionControl: true })
-         .setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
+  map = L.map('map', {
+    zoomControl: false,
+    attributionControl: true,
+    doubleClickZoom: false,   // tap gestures are handled below
+    rotate: true,             // honoured by leaflet-rotate, ignored without it
+    bearing: 0,
+    touchRotate: false,
+  }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   setTheme((new Date().getHours() >= 19 || new Date().getHours() < 6) ? 'dark' : 'light');
+  wireTapGestures(map.getContainer());
 }
 
 /* ------------------------------------------------------------------ *
@@ -576,6 +646,7 @@ function onFix(pos) {
   if (hooks.tick) hooks.tick();
   if (hooks.onFix) hooks.onFix(me);
   maybeUpdateTheme();
+  updateBearing(me);
 
   if (state.follow) map.panTo([me.lat, me.lng], { animate: true, duration: 0.4 });
   if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
@@ -937,7 +1008,8 @@ window.Convoy = {
   toast, setStatus, state, send, fitAll, focusPeer, setVehicle,
   map: () => map,
   publishRoute, clearSharedRoute, hooks,
-  _internals: { sunTimes, themeFor, applyTheme, setTheme },
+  _internals: { sunTimes, themeFor, applyTheme, setTheme, onMapTap, updateBearing,
+                getBearing: () => mapBearing },
 };
 
 /* ------------------------------------------------------------------ *
