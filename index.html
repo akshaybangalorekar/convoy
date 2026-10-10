@@ -37,7 +37,9 @@
      to hit by accident. -->
 <div class="rail" id="rail">
   <button id="btnLeave" class="btn-sm danger" title="Leave room">Leave</button>
+  <button id="btnRooms" class="btn-sm" title="Saved rooms">Rooms</button>
   <button id="btnShare" class="btn-sm" title="Copy invite link">Share</button>
+  <button id="btnTalk" class="btn-sm" title="Start a voice call">Talk</button>
   <button id="btnRoute" class="btn-sm" title="Plan a route">Route</button>
 </div>
 
@@ -144,6 +146,8 @@
     <h1>Everyone on one map</h1>
     <p class="sub">Pick a room code, share the link with your group, and every phone that opens it shows up live on this map. Built for road trips, rides, hikes and meet-ups.</p>
 
+    <div id="savedRooms" class="saved-rooms"></div>
+
     <label for="inName">Your name</label>
     <input id="inName" maxlength="24" placeholder="e.g. Akshay" autocomplete="name" />
 
@@ -152,6 +156,7 @@
 
     <button id="btnJoin" class="primary">Join room</button>
     <button id="btnDemo" class="ghost">Preview with 4 demo cars</button>
+    <button id="btnJoinCancel" class="ghost" style="display:none">Back to the map</button>
 
     <p class="fine">
       Everyone with the room code can see this map, and the connection uses a public relay.
@@ -178,6 +183,25 @@
   </div>
 </div>
 
+<!-- Incoming voice call -->
+<div id="callIncoming" class="call-incoming">
+  <div class="call-who" id="callWho">—</div>
+  <div class="call-btns">
+    <button id="callAccept" class="mini on">Join call</button>
+    <button id="callDecline" class="mini">Decline</button>
+  </div>
+</div>
+
+<!-- In-call bar -->
+<div id="callBar" class="call-bar">
+  <span class="call-dot"></span>
+  <span id="callStatus">In a call</span>
+  <div class="call-btns">
+    <button id="callMute" class="mini">Push to talk</button>
+    <button id="callLeave" class="mini danger">Leave</button>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -187,6 +211,7 @@
         integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG" crossorigin=""></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="route.js"></script>
+<script src="voice.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

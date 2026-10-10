@@ -1,10 +1,10 @@
 {
   "name": "convoy",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "private": true,
-  "description": "Live group map with routing — see everyone in your group on one map, navigate there together, and keep navigating with no signal. Full-screen driving mode, heading-up rotation, day/night map, no backend.",
+  "description": "Live group map with routing, saved rooms and push-to-talk voice — see everyone in your group on one map, talk to them, navigate there together, and keep navigating with no signal. No backend.",
   "scripts": {
-    "test": "node --no-experimental-fetch tests/route-test.js && node --no-experimental-fetch tests/pwa-test.js && node tests/app-test.js",
+    "test": "node --no-experimental-fetch tests/rooms-voice-test.js && node --no-experimental-fetch tests/route-test.js && node --no-experimental-fetch tests/pwa-test.js && node tests/app-test.js",
     "serve": "python3 -m http.server 8080"
   },
   "devDependencies": {

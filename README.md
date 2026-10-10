@@ -121,6 +121,18 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
   line is drawn dashed in a different colour so it's clear it isn't yours.
 - Clearing the route clears it for everyone.
 
+**Saved rooms**
+- Every room you join is remembered on your phone, along with who was in it. Tap
+  **Rooms** — or just open the app again — and rejoin with one tap, no retyping codes.
+- Forget a room any time from the same list.
+
+**Group voice calls**
+- Tap **Talk** and every phone in the room rings. Whoever answers joins the call.
+- Default is **push to talk**: hold the Talk button to speak. The call-bar button switches
+  to **open mic** so everyone can talk at once.
+- The audio is peer to peer and encrypted (DTLS-SRTP). Ringing and call setup ride on the
+  room's existing relay, so there is no extra server to run.
+
 **Offline & remote driving**
 - **Save the route**, and turn-by-turn, spoken prompts, remaining distance and the step
   list all keep working with **no signal at all** — the route is stored on the device and
@@ -264,6 +276,17 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
   navigating without signal. If you want offline map imagery, point the tile layer at a
   source that permits it: your own tile server, a provider plan that allows offline use
   (MapTiler, Stadia, Thunderforest), or Protomaps PMTiles vector tiles.
+- **Voice calls need a TURN server to be reliable.** Only public STUN is configured, which
+  is enough on many home and office networks but fails on strict NATs and some mobile
+  carriers. Add a TURN server to `CFG.iceServers` in `voice.js` to make calls work
+  everywhere.
+- **Call setup travels over the public relay in the clear.** The audio itself is
+  encrypted end to end, but anyone with the room code can see that a call is happening
+  and who is on it. Treat call metadata as public.
+- **The voice mesh suits small groups.** Every phone holds a connection to every other, so
+  it is comfortable to about six people and degrades past that.
+- **Saved rooms live on one device.** They are kept in the browser's local storage, so a
+  friend only sees a room they have joined before. Nothing is stored on a server.
 - **Map rotation needs a third-party plugin.** Leaflet cannot rotate a map on its own,
   so heading-up mode uses `leaflet-rotate`, which patches parts of Leaflet's internals.
   If it fails to load the app carries on unchanged with a north-up map; set
@@ -372,10 +395,22 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 
 ---
 
+`voice.js` — group calls:
+
+```js
+iceServers: [ ... ],   // add a TURN server here so calls work on every network
+ringMs: 30000,         // how long an incoming call rings before giving up
+maxPeers: 8,           // refuse new connections past this
+```
+
 ## Testing
 
-Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 212 checks in total:
+Four headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and
+speech) cover the real `app.js`, `route.js` and `voice.js` — 254 checks in total:
+
+- `tests/rooms-voice-test.js` — saving and forgetting rooms, remembering who was in them,
+  rejoining from the list, ringing the room, accepting and declining a call, the offer /
+  answer handshake, push-to-talk versus open mic, hanging up, and a blocked microphone.
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,

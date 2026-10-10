@@ -171,7 +171,8 @@ let renderTimer = null;
 let demoTimer = null;
 
 // Hooks that route.js plugs into (see the bridge at the bottom of this file).
-const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null, tap: null };
+const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null, tap: null,
+                onVoice: null, onLeave: null };
 
 const LS = {
   name: 'convoy.name',
@@ -566,6 +567,10 @@ function onMessage(topic, payload) {
   if (msg.t === 'bye') { removePeer(msg.id); renderPeople(); return; }
   if (msg.t === 'route') { if (hooks.onRoute) hooks.onRoute(msg); return; }
   if (msg.t === 'route-clear') { if (hooks.onRouteClear) hooks.onRouteClear(msg); return; }
+  if (typeof msg.t === 'string' && msg.t.indexOf('voice-') === 0) {
+    if (hooks.onVoice) hooks.onVoice(msg);
+    return;
+  }
   if (msg.t !== 'pos' || typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
 
   let p = state.peers.get(msg.id);
@@ -577,6 +582,7 @@ function onMessage(topic, payload) {
       trail: [], isMe: false, demo: false,
     };
     state.peers.set(msg.id, p);
+    rememberMember(state.room, msg.id, p.name);
     toast(p.name + ' joined');
   } else {
     p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
@@ -797,12 +803,15 @@ function join(name, room) {
   renderPeople();
   requestWakeLock();
   maybeShowInstallHint();
+  rememberRoom(room, name);
+  $('btnJoinCancel').style.display = 'none';
 
   try { history.replaceState(null, '', location.pathname + '#r=' + encodeURIComponent(room)); } catch (e) {}
 }
 
 function leave(showJoin = true) {
   if (state.joined && !state.demo) send({ t: 'bye', id: state.me.id, ts: Date.now() });
+  if (hooks.onLeave) hooks.onLeave();
   stopDemo();
   if (client) { try { client.end(true); } catch (e) {} client = null; }
   if (publishTimer) { clearInterval(publishTimer); publishTimer = null; }
@@ -904,6 +913,16 @@ function wire() {
     $('btnNames').classList.toggle('on', on);
   });
 
+  // Saved rooms: rejoin without retyping the code.
+  $('btnRooms').addEventListener('click', () => {
+    renderSavedRooms();
+    $('btnJoinCancel').style.display = state.joined ? '' : 'none';
+    $('join').classList.remove('hidden');
+  });
+  $('btnJoinCancel').addEventListener('click', () => {
+    if (state.joined) $('join').classList.add('hidden');
+  });
+
   // Enter key joins
   ['inName', 'inRoom'].forEach((id) => {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
@@ -911,6 +930,93 @@ function wire() {
 
   window.addEventListener('beforeunload', () => {
     if (state.joined && !state.demo) send({ t: 'bye', id: state.me.id, ts: Date.now() });
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Saved rooms and who was in them
+ * ------------------------------------------------------------------ */
+const LS_ROOMS = 'convoy.rooms';
+
+function loadRooms() {
+  try { return JSON.parse(localStorage.getItem(LS_ROOMS) || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function saveRooms(all) {
+  try { localStorage.setItem(LS_ROOMS, JSON.stringify(all)); } catch (e) { /* full */ }
+}
+function roomRecord(code) {
+  const all = loadRooms();
+  if (!all[code]) all[code] = { code, firstSeen: Date.now(), members: {} };
+  return { all, r: all[code] };
+}
+
+function rememberRoom(code, name) {
+  if (!code) return;
+  const { all, r } = roomRecord(code);
+  r.lastSeen = Date.now();
+  if (name) r.name = name;
+  if (state.me) r.members[state.me.id] = { name: state.me.name, lastSeen: Date.now() };
+  saveRooms(all);
+  renderSavedRooms();
+}
+
+function rememberMember(code, id, name) {
+  if (!code || !id) return;
+  const { all, r } = roomRecord(code);
+  r.lastSeen = Date.now();
+  const prev = r.members[id] || {};
+  r.members[id] = { name: name || prev.name || 'Someone', lastSeen: Date.now() };
+  saveRooms(all);
+}
+
+function forgetRoom(code) {
+  const all = loadRooms();
+  delete all[code];
+  saveRooms(all);
+  renderSavedRooms();
+  toast('Forgot "' + code + '"');
+}
+
+function fmtWhen(ts) {
+  if (!ts) return '';
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return days + ' days ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+function renderSavedRooms() {
+  const box = $('savedRooms');
+  if (!box) return;
+  const all = loadRooms();
+  const codes = Object.keys(all).sort((a, b) => (all[b].lastSeen || 0) - (all[a].lastSeen || 0));
+  if (!codes.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="sr-title">Your rooms</div>' + codes.slice(0, 8).map((c) => {
+    const r = all[c];
+    const names = Object.values(r.members || {}).map((m) => m.name).filter(Boolean);
+    const n = names.length;
+    const who = names.slice(0, 4).join(', ') + (n > 4 ? ' +' + (n - 4) : '');
+    return '<div class="sr-row" data-code="' + esc(c) + '">' +
+      '<div class="sr-main"><div class="sr-code">' + esc(c) + '</div>' +
+      '<div class="sr-meta">' + n + (n === 1 ? ' person' : ' people') +
+      (who ? ' · ' + esc(who) : '') +
+      (r.lastSeen ? ' · ' + fmtWhen(r.lastSeen) : '') + '</div></div>' +
+      '<button class="mini sr-forget" data-forget="' + esc(c) + '">Forget</button></div>';
+  }).join('');
+
+  box.querySelectorAll('.sr-row').forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      if (ev.target && ev.target.classList && ev.target.classList.contains('sr-forget')) return;
+      const code = el.getAttribute('data-code');
+      const name = ($('inName').value || '').trim() || (state.me && state.me.name) || 'Someone';
+      if (state.joined) leave(false);
+      join(name, code);
+    });
+  });
+  box.querySelectorAll('.sr-forget').forEach((b) => {
+    b.addEventListener('click', (ev) => { ev.stopPropagation(); forgetRoom(b.getAttribute('data-forget')); });
   });
 }
 
@@ -1029,6 +1135,8 @@ function boot() {
   applyTheme();
   setInterval(applyTheme, CFG.theme.checkMs);
   if (window.ConvoyRoute) window.ConvoyRoute.init(window.Convoy);
+  if (window.ConvoyVoice) window.ConvoyVoice.init(window.Convoy);
+  renderSavedRooms();
 
   // Prefill from URL / storage
   const hashRoom = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');

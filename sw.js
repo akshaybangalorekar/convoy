@@ -22,6 +22,7 @@ const SHELL = [
   './index.html',
   './app.js',
   './route.js',
+  './voice.js',
   './styles.css',
   './manifest.webmanifest',
   './icon.svg',

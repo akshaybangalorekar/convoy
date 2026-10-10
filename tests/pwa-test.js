@@ -45,6 +45,9 @@ function testStaticFiles() {
   check('the bottom panels start clear of the rail',
         /#panel, \.navstatus, \.a2hs \{ left: var\(--rail-off\)/.test(css));
 
+  check('voice.js is precached and loaded',
+        /voice\.js/.test(read('sw.js')) && /voice\.js/.test(html));
+
   // --- manifest
   let mf = null;
   try { mf = JSON.parse(read('manifest.webmanifest')); } catch (e) { /* leave null */ }

@@ -612,3 +612,47 @@ body.nav-hidden .navstatus { display: none; }
   /* on wide screens the people panel sits top-left, clear of the rail */
   .rail { bottom: calc(12px + var(--safe-bottom)); }
 }
+
+/* ---------- Saved rooms ---------- */
+.saved-rooms { margin: 0 0 16px; }
+.sr-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.sr-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  margin-bottom: 6px; cursor: pointer;
+}
+.sr-row:hover { background: var(--surface-2); }
+.sr-main { flex: 1; min-width: 0; }
+.sr-code { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-forget { flex: 0 0 auto; }
+
+/* ---------- Voice calls ---------- */
+.call-incoming, .call-bar {
+  position: fixed; z-index: 55; left: var(--rail-off); right: 10px;
+  top: calc(58px + var(--safe-top));
+  display: none; align-items: center; gap: 12px;
+  background: rgba(27,39,64,.99); border: 1px solid var(--ok);
+  border-radius: 14px; padding: 12px 14px; backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0,0,0,.55);
+}
+.call-incoming.show, .call-bar.show { display: flex; }
+.call-who { flex: 1; font-weight: 700; font-size: 15px; }
+#callStatus { flex: 1; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.call-btns { display: flex; gap: 8px; flex: 0 0 auto; }
+.call-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 8px var(--ok); flex: 0 0 auto;
+}
+body.navigating .call-incoming, body.navigating .call-bar { top: calc(104px + var(--safe-top)); }
+
+/* while talking, make the Talk button look live */
+body.in-call #btnTalk { background: var(--ok); border-color: var(--ok); color: #06121f; }
+body.in-call #btnTalk:active { filter: brightness(1.25); }
+
+@media (min-width: 720px) {
+  .call-incoming, .call-bar { left: var(--rail-off); right: auto; width: 360px; }
+}
