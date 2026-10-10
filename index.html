@@ -117,6 +117,19 @@
     <button id="rtGo" class="primary">Get route</button>
     <div id="rtSummary" class="summary"></div>
     <ol id="rtSteps" class="steps"></ol>
+
+    <div class="offline-block">
+      <div class="offline-title">Offline</div>
+      <div class="offline-note">Save this route so turn-by-turn and spoken prompts
+        keep working when there's no signal. (Map tiles can't be pre-downloaded —
+        OpenStreetMap's tile policy doesn't allow it.)</div>
+      <div class="offline-actions">
+        <button id="offlineSave" class="mini on">Save route</button>
+        <button id="offlineCheck" class="mini">Check coverage</button>
+        <button id="offlineClear" class="mini">Clear</button>
+      </div>
+      <div class="offline-status" id="offlineStatus"></div>
+    </div>
   </div>
 </section>
 
@@ -149,6 +162,15 @@
   <div class="a2hs-btns">
     <button id="a2hsGo" class="mini on">Install</button>
     <button id="a2hsClose" class="mini">Not now</button>
+  </div>
+</div>
+
+<!-- Offline prompt: save the route when the signal is at risk -->
+<div id="offlineBar" class="offline-bar">
+  <div class="offline-bar-txt" id="offlineBarTxt">—</div>
+  <div class="offline-bar-btns">
+    <button id="offlineBarYes" class="mini on">Save route</button>
+    <button id="offlineBarNo" class="mini">Not now</button>
   </div>
 </div>
 

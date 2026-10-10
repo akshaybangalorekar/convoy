@@ -1,8 +1,8 @@
 {
   "name": "convoy",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "Live group map with routing — see everyone in your group on one map and navigate there together. Installable, works offline, country-scoped address search, no backend.",
+  "description": "Live group map with routing — see everyone in your group on one map, navigate there together, and keep navigating with no signal. Installable, country-scoped search, no backend.",
   "scripts": {
     "test": "node --no-experimental-fetch tests/route-test.js && node --no-experimental-fetch tests/pwa-test.js && node tests/app-test.js",
     "serve": "python3 -m http.server 8080"

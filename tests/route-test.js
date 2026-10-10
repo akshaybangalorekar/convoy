@@ -112,11 +112,28 @@ const PHOTON_US_ONLY = {
 };
 
 const REVERSE_IN = { address: { country: 'India', country_code: 'in' } };
+const REVERSE_AU = { address: { country: 'Australia', country_code: 'au' } };
 
 const NOMINATIM_IN = [{
   display_name: 'MG Road, Bengaluru, Karnataka, India',
   lat: '12.9756', lon: '77.6068',
   address: { country_code: 'in', country: 'India' },
+}];
+
+// Australian places, needed when the app has detected it is in Australia
+// (the country filter would otherwise reject the Indian fixtures).
+const PHOTON_AU = {
+  features: [{
+    properties: { name: 'Sydney Opera House', city: 'Sydney', state: 'New South Wales',
+                  country: 'Australia', countrycode: 'au' },
+    geometry: { coordinates: [151.2153, -33.8568] },
+  }],
+};
+
+const NOMINATIM_AU = [{
+  display_name: 'Sydney Opera House, Sydney, New South Wales, Australia',
+  lat: '-33.8568', lon: '151.2153',
+  address: { country_code: 'au', country: 'Australia' },
 }];
 
 /* ---------- Stubs ---------- */
@@ -173,13 +190,28 @@ function makeStubs(window, opts = {}) {
     const u = String(url);
     calls.push(u);
     if (u.includes('/reverse')) {
-      return { ok: true, status: 200, json: async () => REVERSE_IN };
+      return { ok: true, status: 200, json: async () => (opts.countryAU ? REVERSE_AU : REVERSE_IN) };
+    }
+    // Australian coverage service (ACCC): layer discovery, then point queries.
+    if (u.includes('MapServer/layers')) {
+      return { ok: true, status: 200, json: async () => ({ layers: [
+        { id: 1, name: 'Optus 4G Outdoor Mobile Coverage (ACCC)' },
+        { id: 19, name: "Telstra's Claimed 4G 'Outdoor' Mobile Coverage (ACCC)" },
+      ] }) };
+    }
+    if (u.includes('MapServer/') && u.includes('/query')) {
+      const m = /geometry=([-\d.]+),([-\d.]+)/.exec(u);
+      const lat = m ? parseFloat(m[2]) : 0;
+      const covered = !(lat < 18.930);          // simulate a gap in the south
+      return { ok: true, status: 200, json: async () => ({ count: covered ? 1 : 0 }) };
     }
     if (u.includes('photon')) {
-      return { ok: true, status: 200, json: async () => (opts.photonUSOnly ? PHOTON_US_ONLY : PHOTON) };
+      return { ok: true, status: 200, json: async () => (
+        opts.countryAU ? PHOTON_AU : (opts.photonUSOnly ? PHOTON_US_ONLY : PHOTON)) };
     }
     if (u.includes('nominatim')) {
-      return { ok: true, status: 200, json: async () => (opts.noMatches ? [] : NOMINATIM_IN) };
+      return { ok: true, status: 200, json: async () => (
+        opts.countryAU ? NOMINATIM_AU : (opts.noMatches ? [] : NOMINATIM_IN)) };
     }
     if (u.includes('/route/v1/')) {
       routeCalls++;
@@ -547,6 +579,144 @@ async function testCountryNoMatches() {
   check('suggests turning the filter off', /Turn the country filter off/.test(sugg), sugg);
 }
 
+/* ---------- Test 10: saving the route for offline use ---------- */
+async function testOfflineSaveAndRestore() {
+  const { window, stubs } = boot();
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+  d.getElementById('rtTo').value = 'Gateway of India';
+  d.getElementById('rtGo').click();
+  await sleep(80);
+  check('route planned before saving', /min/.test(d.getElementById('rtSummary').textContent),
+        d.getElementById('rtSummary').textContent);
+
+  d.getElementById('offlineSave').click();
+  const raw = window.localStorage.getItem('convoy.savedRoute');
+  check('route saved to local storage', !!raw && raw.length > 100, String(raw && raw.length));
+  check('saved payload keeps the steps', /"steps"/.test(raw || ''));
+  check('saved payload keeps the geometry', /"geometry"/.test(raw || ''));
+  check('offline status shows what is saved',
+        /Saved:/.test(d.getElementById('offlineStatus').textContent),
+        d.getElementById('offlineStatus').textContent);
+
+  d.getElementById('offlineClear').click();
+  check('Clear removes the saved route', !window.localStorage.getItem('convoy.savedRoute'));
+  check('status resets after clearing',
+        /No route saved/.test(d.getElementById('offlineStatus').textContent),
+        d.getElementById('offlineStatus').textContent);
+
+  // A fresh load with a saved route should restore it without re-broadcasting.
+  const second = boot();
+  joinRoom(second.window, second.stubs);
+  second.window.localStorage.setItem('convoy.savedRoute', raw);
+  second.window.__fix(fix(A));
+  await sleep(60);
+  const sd = second.window.document;
+  check('saved route restored on the next visit',
+        /min/.test(sd.getElementById('rtSummary').textContent),
+        sd.getElementById('rtSummary').textContent);
+  check('restored route is not re-broadcast to the room',
+        second.stubs.clients[0].published.filter((m) => m.includes('"t":"route"')).length === 0);
+}
+
+/* ---------- Test 11: prompting when the signal drops ---------- */
+async function testOfflineSignalPrompt() {
+  async function planned() {
+    const ctx = boot();
+    const d = ctx.window.document;
+    joinRoom(ctx.window, ctx.stubs);
+    ctx.window.__fix(fix(A));
+    await sleep(30);
+    d.getElementById('btnRoute').click();
+    d.getElementById('rtTo').value = 'Gateway of India';
+    d.getElementById('rtGo').click();
+    await sleep(80);
+    return ctx;
+  }
+
+  const a = await planned();
+  check('no offline prompt while the signal is fine',
+        !a.window.document.getElementById('offlineBar').classList.contains('show'));
+
+  a.window.dispatchEvent(new a.window.Event('offline'));
+  await sleep(20);
+  const txt = a.window.document.getElementById('offlineBarTxt').textContent;
+  check('losing signal raises the prompt',
+        a.window.document.getElementById('offlineBar').classList.contains('show'));
+  check('prompt says why', /lost signal/.test(txt), txt);
+  check('prompt offers to save the route', /save this route/i.test(txt), txt);
+
+  a.window.document.getElementById('offlineBarNo').click();
+  check('Not now dismisses the prompt',
+        !a.window.document.getElementById('offlineBar').classList.contains('show'));
+  check('Not now does not save anything', !a.window.localStorage.getItem('convoy.savedRoute'));
+
+  const b = await planned();
+  b.window.dispatchEvent(new b.window.Event('offline'));
+  await sleep(20);
+  b.window.document.getElementById('offlineBarYes').click();
+  check('Save from the prompt stores the route',
+        !!b.window.localStorage.getItem('convoy.savedRoute'));
+  check('prompt closes after saving',
+        !b.window.document.getElementById('offlineBar').classList.contains('show'));
+}
+
+/* ---------- Test 12: coverage check is country-gated ---------- */
+async function testCoverageGate() {
+  const { window, stubs } = boot();          // reverse-geocodes as India
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+  d.getElementById('rtTo').value = 'Gateway of India';
+  d.getElementById('rtGo').click();
+  await sleep(120);
+
+  // the automatic check stays quiet outside AU, so ask explicitly
+  d.getElementById('offlineCheck').click();
+  await sleep(60);
+  check('coverage check skipped outside Australia',
+        /only set up for AU/.test(d.getElementById('toast').textContent),
+        d.getElementById('toast').textContent);
+  check('no coverage service calls were made',
+        !stubs.calls.some((u) => u.includes('MapServer')), 'MapServer was called');
+}
+
+/* ---------- Test 13: warning about predicted coverage gaps ---------- */
+async function testCoverageGaps() {
+  const { window, stubs } = boot({ countryAU: true });
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+  d.getElementById('rtTo').value = 'Sydney Opera House';
+  d.getElementById('rtGo').click();
+  await sleep(250);
+
+  check('coverage layers were discovered',
+        stubs.calls.some((u) => u.includes('MapServer/layers')));
+  check('coverage was sampled along the route',
+        stubs.calls.filter((u) => u.includes('/query')).length >= 2,
+        String(stubs.calls.filter((u) => u.includes('/query')).length));
+  const txt = d.getElementById('offlineBarTxt').textContent;
+  check('warns about the predicted gap', /no predicted 4G coverage/.test(txt), txt);
+  check('the warning offers to save the route', /save this route/i.test(txt), txt);
+
+  d.getElementById('offlineBarNo').click();
+  d.getElementById('offlineCheck').click();
+  await sleep(250);
+  check('manual coverage check reports the gap',
+        /no predicted 4G coverage/.test(d.getElementById('toast').textContent),
+        d.getElementById('toast').textContent);
+  check('manual check re-offers to save',
+        d.getElementById('offlineBar').classList.contains('show'));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -558,6 +728,10 @@ async function testCountryNoMatches() {
     await testCountryScope();
     await testCountryFallback();
     await testCountryNoMatches();
+    await testOfflineSaveAndRestore();
+    await testOfflineSignalPrompt();
+    await testCoverageGate();
+    await testCoverageGaps();
   } catch (e) {
     results.push({ name: 'suite crashed: ' + e.message, ok: false,
                    extra: e.stack ? String(e.stack).split('\n')[1] : '' });

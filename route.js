@@ -55,6 +55,34 @@
     // break ties in favour of fewer turns, less distance and a straighter line.
     weights: { dist: 0.02, turn: 12, wind: 60 },
     rerouteMinSave: 60,    // only offer a new route if it saves at least this long
+
+    /* Offline support.
+     *
+     * NOTE: we deliberately do NOT prefetch map tiles. OpenStreetMap's Tile
+     * Usage Policy forbids "download for offline" buttons and any pre-emptive
+     * fetching of tiles the user isn't viewing, and blocks apps that do it.
+     * Instead we save the ROUTE itself (our own data) so turn-by-turn keeps
+     * working with no signal, and warn when coverage is predicted to drop.
+     */
+    offline: {
+      storeKey: 'convoy.savedRoute',
+      pingMs: 45000,          // how often to test whether we still have data
+      pingTimeoutMs: 6000,
+      failsToPrompt: 2,
+      suggestOverM: 150000,   // suggest saving on drives longer than this
+      // Australian coverage check: ACCC / Dept of Infrastructure, CC BY 2.5 AU.
+      // Set enabled:false, or point `service` elsewhere, for other countries.
+      coverage: {
+        enabled: true,
+        countries: ['au'],
+        service: 'https://spatial.infrastructure.gov.au/server/rest/services/' +
+                 'Mobile_Coverages_and_Sites_ACCC/MapServer',
+        layerMatch: /Telstra.*4G.*Outdoor/i,
+        sampleEveryM: 8000,
+        maxSamples: 30,
+        concurrency: 4,
+      },
+    },
   };
 
   const MODES = {
@@ -89,6 +117,8 @@
     suggestTimer: null,
     busy: false,
     pending: null,     // a better route waiting for the driver's consent
+    offlinePrompted: false,
+    coverageWarned: false,
   };
 
   /* ------------------------------------------------------------------ *
@@ -192,6 +222,7 @@
 
   let countryTries = 0;
   function onFix() {
+    maybeRestoreSaved();
     if (R.country || countryTries >= 3) return;
     const me = API.state.me;
     if (!me || me.lat == null) return;
@@ -592,8 +623,14 @@
     renderSummary(route);
     renderSteps(route);
 
-    if (route.mine && API.state.joined && !API.state.demo) {
+    if (route.mine && API.state.joined && !API.state.demo && !opts.noBroadcast) {
       API.publishRoute(sharePayload(route));
+    }
+    startHeartbeat();
+    refreshOfflineStatus();
+    if (route.mine && !opts.noBroadcast) {
+      maybeSuggestOffline(route);
+      warnCoverage(route);
     }
     if (!opts.silent) {
       if (!route.mine) {
@@ -656,6 +693,8 @@
   function clearRoute(broadcast) {
     if (R.active && R.active.mine && broadcast) API.clearSharedRoute();
     hideReroute();
+    hideOfflineBar();
+    stopHeartbeat();
     stopNav();
     clearDrawing();
     R.active = null;
@@ -830,6 +869,7 @@
   /* Never swap a route silently — always ask the driver first. */
   function offerReroute(route, save, offRoute) {
     R.pending = route;
+    hideOfflineBar();          // one prompt at a time
     $('rerouteTxt').textContent = offRoute
       ? 'You are off the route. Use a new route to your destination?'
       : `A faster route is available — saves ${fmtDuration(save)}. Switch to it?`;
@@ -839,6 +879,266 @@
   function hideReroute() {
     R.pending = null;
     $('reroute').classList.remove('show');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Offline: saving the route, spotting a dropping signal, and warning
+   * about predicted coverage gaps along the drive.
+   * ------------------------------------------------------------------ */
+
+  /* --- saving the route itself (our own data, nothing to do with tiles) --- */
+
+  function saveRouteOffline() {
+    if (!R.active) { API.toast('Plan a route first'); return; }
+    const r = R.active;
+    const payload = {
+      v: 1, ts: Date.now(),
+      mode: r.mode, distance: r.distance, duration: r.duration,
+      start: r.start, end: r.end, by: r.by || 'you',
+      geometry: downsample(r.geometry, 1500),
+      steps: r.steps.slice(0, CFG.shareMaxSteps),
+    };
+    try {
+      localStorage.setItem(CFG.offline.storeKey, JSON.stringify(payload));
+      API.toast('Route saved — turn-by-turn will work without signal');
+    } catch (e) {
+      API.toast('Could not save the route (storage full)');
+    }
+    refreshOfflineStatus();
+  }
+
+  function loadSavedRoute() {
+    try {
+      const raw = localStorage.getItem(CFG.offline.storeKey);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d || !d.geometry || !d.geometry.length) return null;
+      return {
+        mode: d.mode || 'car', distance: d.distance || 0, duration: d.duration || 0,
+        geometry: d.geometry, steps: d.steps || [],
+        start: d.start || {}, end: d.end || {}, by: d.by || 'saved', mine: true,
+        savedAt: d.ts,
+      };
+    } catch (e) { return null; }
+  }
+
+  function clearSavedRoute() {
+    try { localStorage.removeItem(CFG.offline.storeKey); } catch (e) { /* ignore */ }
+    refreshOfflineStatus();
+    API.toast('Saved route cleared');
+  }
+
+  function refreshOfflineStatus() {
+    const el = $('offlineStatus');
+    if (!el) return;
+    const saved = loadSavedRoute();
+    if (!saved) { el.textContent = 'No route saved for offline use.'; return; }
+    const when = saved.savedAt ? new Date(saved.savedAt).toLocaleDateString() : '';
+    el.textContent = 'Saved: ' + shortLabel(saved.end.label || 'destination', 26) +
+      (when ? ' (' + when + ')' : '') + ' · ' + API.fmtDist(saved.distance);
+  }
+
+  let restoredSaved = false;
+  function maybeRestoreSaved() {
+    if (restoredSaved || R.active) return;
+    restoredSaved = true;
+    const saved = loadSavedRoute();
+    if (!saved) return;
+    applyRoute(saved, { silent: true, noBroadcast: true });
+    API.toast('Restored saved route to ' + shortLabel(saved.end.label || 'destination', 24));
+  }
+
+  /* --- is the connection actually holding up? --- */
+
+  let hbTimer = null, hbFails = 0, hbOffline = false;
+
+  async function ping() {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), CFG.offline.pingTimeoutMs);
+      const res = await fetch('sw.js?ping=' + Date.now(),
+        { method: 'HEAD', cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(t);
+      return !!res && res.ok;
+    } catch (e) { return false; }
+  }
+
+  function startHeartbeat() {
+    if (hbTimer) return;
+    hbTimer = setInterval(async () => {
+      if (!R.active) return;
+      const ok = await ping();
+      if (ok) { hbFails = 0; hbOffline = false; return; }
+      hbFails++;
+      if (!hbOffline) hbOffline = true;
+      if (hbFails >= CFG.offline.failsToPrompt && !R.offlinePrompted) {
+        R.offlinePrompted = true;
+        offerOffline('Your signal is dropping');
+      }
+    }, CFG.offline.pingMs);
+  }
+
+  function stopHeartbeat() {
+    if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
+    hbFails = 0; hbOffline = false;
+  }
+
+  window.addEventListener('offline', () => {
+    if (R.active && !R.offlinePrompted) {
+      R.offlinePrompted = true;
+      offerOffline('You have lost signal');
+    }
+  });
+
+  /* --- predicted coverage along the route (Australia, ACCC data) --- */
+
+  let coverageLayer = null;   // null = not looked up, false = unavailable, else {id,name}
+
+  async function coverageLayerInfo() {
+    if (coverageLayer !== null) return coverageLayer;
+    coverageLayer = false;
+    try {
+      const res = await fetch(CFG.offline.coverage.service + '/layers?f=json',
+        { headers: { Accept: 'application/json' } });
+      if (!res.ok) return coverageLayer;
+      const d = await res.json();
+      const hit = (d.layers || []).find((l) => CFG.offline.coverage.layerMatch.test(l.name || ''));
+      if (hit) coverageLayer = { id: hit.id, name: hit.name };
+    } catch (e) { /* leave unavailable */ }
+    return coverageLayer;
+  }
+
+  async function coveredAt(lat, lng) {
+    const info = await coverageLayerInfo();
+    if (!info) return null;
+    try {
+      const u = CFG.offline.coverage.service + '/' + info.id + '/query' +
+        '?geometry=' + lng + ',' + lat +
+        '&geometryType=esriGeometryPoint&inSR=4326' +
+        '&spatialRel=esriSpatialRelIntersects&returnCountOnly=true&f=json';
+      const res = await fetch(u, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return null;
+      const d = await res.json();
+      if (typeof d.count !== 'number') return null;
+      return d.count > 0;
+    } catch (e) { return null; }
+  }
+
+  function pointAtDistance(geom, cum, d) {
+    const total = cum[cum.length - 1] || 0;
+    if (total <= 0) return { lat: geom[0][0], lng: geom[0][1] };
+    const t = Math.max(0, Math.min(total, d));
+    let i = 1;
+    while (i < cum.length && cum[i] < t) i++;
+    const a = geom[i - 1], b = geom[i] || geom[geom.length - 1];
+    const seg = (cum[i] - cum[i - 1]) || 1;
+    const f = (t - cum[i - 1]) / seg;
+    return { lat: a[0] + (b[0] - a[0]) * f, lng: a[1] + (b[1] - a[1]) * f };
+  }
+
+  function sampleAlong(route, everyM, max) {
+    const geom = route.geometry;
+    if (!geom || geom.length < 2) return [];
+    const cum = buildCumulative(geom);
+    const total = cum[cum.length - 1] || 0;
+    if (!total) return [];
+    const n = Math.min(max, Math.max(2, Math.round(total / everyM)));
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const at = (total * i) / n;
+      const p = pointAtDistance(geom, cum, at);
+      out.push({ lat: p.lat, lng: p.lng, km: at / 1000 });
+    }
+    return out;
+  }
+
+  function gapsFrom(samples) {
+    const gaps = [];
+    let cur = null;
+    for (const s of samples) {
+      if (!s.covered) {
+        if (!cur) cur = { fromKm: s.km, toKm: s.km };
+        else cur.toKm = s.km;
+      } else if (cur) { gaps.push(cur); cur = null; }
+    }
+    if (cur) gaps.push(cur);
+    return gaps;
+  }
+
+  async function checkCoverage(route, opts) {
+    opts = opts || {};
+    const cc = CFG.offline.coverage;
+    if (!cc.enabled) return null;
+    if (!R.country) { if (opts.verbose) API.toast('Waiting for a location fix first'); return null; }
+    if (cc.countries.length && cc.countries.indexOf(R.country) === -1) {
+      if (opts.verbose) API.toast('Coverage check is only set up for ' + cc.countries.join(', ').toUpperCase());
+      return null;
+    }
+
+    const samples = sampleAlong(route, cc.sampleEveryM, cc.maxSamples);
+    if (samples.length < 2) return null;
+
+    const info = await coverageLayerInfo();
+    if (!info) {
+      if (opts.verbose) API.toast('Coverage service not reachable');
+      return null;
+    }
+
+    let idx = 0;
+    let failed = false;
+    async function worker() {
+      while (idx < samples.length) {
+        const s = samples[idx++];
+        const c = await coveredAt(s.lat, s.lng);
+        if (c === null) { failed = true; return; }
+        s.covered = c;
+      }
+    }
+    await Promise.all(Array.from({ length: cc.concurrency }, worker));
+    if (failed || samples.some((s) => s.covered === undefined)) {
+      if (opts.verbose) API.toast('Coverage lookup failed — try again later');
+      return null;
+    }
+
+    const gaps = gapsFrom(samples);
+    const km = gaps.reduce((a, g) => a + (g.toKm - g.fromKm), 0);
+    const result = { total: route.distance / 1000, gaps, km, layer: info.name, samples: samples.length };
+    if (opts.verbose) {
+      API.toast(gaps.length
+        ? 'About ' + Math.round(km) + ' km of this route has no predicted 4G coverage'
+        : 'Predicted 4G coverage along this route');
+    }
+    return result;
+  }
+
+  /* --- prompting the driver --- */
+
+  function offerOffline(reason) {
+    if (!R.active) return;
+    hideReroute();             // one prompt at a time
+    $('offlineBarTxt').textContent = reason +
+      ' — save this route so navigation keeps working without signal?';
+    $('offlineBar').classList.add('show');
+  }
+
+  function hideOfflineBar() { $('offlineBar').classList.remove('show'); }
+
+  // A long drive is worth saving up front, before coverage becomes a problem.
+  function maybeSuggestOffline(route) {
+    if (R.offlinePrompted) return;
+    if (route.distance < CFG.offline.suggestOverM) return;
+    R.offlinePrompted = true;
+    setTimeout(() => offerOffline('This is a long drive'), 1200);
+  }
+
+  // After a route is drawn, look for predicted coverage gaps and warn if found.
+  async function warnCoverage(route) {
+    if (R.coverageWarned) return;
+    const res = await checkCoverage(route);
+    if (!res || !res.gaps.length) return;
+    R.coverageWarned = true;
+    const km = Math.round(res.km);
+    offerOffline('About ' + km + ' km of this route has no predicted 4G coverage');
   }
 
   /* ------------------------------------------------------------------ *
@@ -889,6 +1189,23 @@
     $('scopeToggle').addEventListener('change', () => setScope($('scopeToggle').checked));
     updateScopeUI();
 
+    // Offline controls
+    $('offlineSave').addEventListener('click', saveRouteOffline);
+    $('offlineCheck').addEventListener('click', async () => {
+      if (!R.active) { API.toast('Plan a route first'); return; }
+      API.toast('Checking coverage along the route…');
+      const res = await checkCoverage(R.active, { verbose: true });
+      if (res && res.gaps.length) {
+        R.coverageWarned = true;
+        offerOffline('About ' + Math.round(res.km) +
+          ' km of this route has no predicted 4G coverage');
+      }
+    });
+    $('offlineClear').addEventListener('click', clearSavedRoute);
+    $('offlineBarYes').addEventListener('click', () => { hideOfflineBar(); saveRouteOffline(); });
+    $('offlineBarNo').addEventListener('click', hideOfflineBar);
+    refreshOfflineStatus();
+
     // If a destination address is pasted in and Enter pressed, go.
     ['rtFrom', 'rtTo'].forEach((id) => {
       $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
@@ -903,6 +1220,7 @@
   window.ConvoyRoute = {
     init,
     // exposed for the test harness
-    _internals: { pickBest, parseOsrmRoute, buildFromOsrm, stepText, TURN_TYPES },
+    _internals: { pickBest, parseOsrmRoute, buildFromOsrm, stepText, TURN_TYPES,
+                  CFG, checkCoverage, loadSavedRoute, sampleAlong },
   };
 })();

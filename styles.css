@@ -539,3 +539,33 @@ body.a2hs-on #panel { bottom: calc(76px + var(--safe-bottom)); }
 .scope.unknown { cursor: default; }
 
 .sugg-empty { padding: 10px 12px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+
+/* ---------- Offline ---------- */
+.offline-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.offline-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px;
+}
+.offline-note { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 10px; }
+.offline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.offline-actions .mini { flex: 1; }
+.offline-status { margin-top: 9px; font-size: 12px; color: var(--warn); }
+
+.offline-bar {
+  position: fixed; z-index: 46; left: 10px; right: 10px;
+  top: calc(58px + var(--safe-top));
+  display: none; flex-direction: column; gap: 10px;
+  background: rgba(27,39,64,.98); border: 1px solid var(--warn);
+  border-radius: 14px; padding: 13px 14px; backdrop-filter: blur(12px);
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
+}
+.offline-bar.show { display: flex; }
+.offline-bar-txt { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.offline-bar-btns { display: flex; gap: 8px; }
+.offline-bar-btns .mini { flex: 1; padding: 10px; font-size: 13px; }
+
+body.navigating .offline-bar { top: calc(104px + var(--safe-top)); }
+
+@media (min-width: 720px) {
+  .offline-bar { left: auto; right: 12px; width: 360px; }
+}

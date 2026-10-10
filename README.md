@@ -105,6 +105,21 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
   line is drawn dashed in a different colour so it's clear it isn't yours.
 - Clearing the route clears it for everyone.
 
+**Offline & remote driving**
+- **Save the route**, and turn-by-turn, spoken prompts, remaining distance and the step
+  list all keep working with **no signal at all** — the route is stored on the device and
+  restored automatically next time you open the app.
+- The app watches whether the connection is actually holding up. When it starts to drop,
+  you're prompted to save the route while you still can.
+- In **Australia** it also checks the ACCC / Department of Infrastructure mobile coverage
+  data along your route and warns you before you set off: *"About 24 km of this route has
+  no predicted 4G coverage."* There's a **Check coverage** button too.
+- **What it deliberately does not do:** pre-download map tiles. OpenStreetMap's Tile
+  Usage Policy prohibits "download for offline" buttons and any pre-emptive tile
+  fetching, and blocks apps that do it. So the map background is only what you've already
+  viewed — it's the *navigation* that's saved. For offline map imagery you need your own
+  tile source; see the notes below.
+
 ---
 
 ## How a route is chosen
@@ -227,6 +242,18 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
 - **The "fuel-efficient" preference is a heuristic.** Fewer turns and less distance do
   generally mean less fuel, but Convoy has no fuel model — it's a weighted score, not a
   consumption estimate.
+- **Offline map tiles aren't included, and that's deliberate.** Pre-fetching tiles from
+  `tile.openstreetmap.org` is prohibited by the OSM Tile Usage Policy, and apps that do it
+  are blocked without notice. What *is* saved is the route itself, which is enough to keep
+  navigating without signal. If you want offline map imagery, point the tile layer at a
+  source that permits it: your own tile server, a provider plan that allows offline use
+  (MapTiler, Stadia, Thunderforest), or Protomaps PMTiles vector tiles.
+- **Coverage warnings are predictions, not measurements.** The Australian data is each
+  carrier's own predictive model — outdoor, at ground level, 100 m resolution, refreshed
+  quarterly. It doesn't reflect being inside a vehicle or a building, and it isn't a live
+  reading of your phone's signal. The signal-drop prompt is the real-world check.
+- **The coverage check is set up for Australia only.** Other countries would need a
+  comparable service wired into `CFG.offline.coverage`.
 - **Address coverage is uneven, and thinnest in India.** The geocoders are
   OpenStreetMap based, so rural Indian addresses, house numbers and newer layouts are
   patchy. Google Maps and MapmyIndia/Mappls have noticeably deeper Indian address data —
@@ -279,6 +306,16 @@ brokers: [ ... ],  // add your own broker
 routers: { car: [...], bike: [...], foot: [...] },  // add your own routing server
 geocoders: [ ... ],        // add your own geocoder
 countryScope: true,        // restrict address search to the detected country
+offline: {
+  suggestOverM: 150000,    // suggest saving the route on drives longer than this
+  pingMs: 45000,           // how often to test whether we still have data
+  coverage: {
+    enabled: true,
+    countries: ['au'],     // the coverage check is wired up for Australia
+    service: '<ArcGIS REST coverage service>',
+    layerMatch: /Telstra.*4G.*Outdoor/i,
+  },
+},
 offRouteM: 90,             // metres from the line before "off route"
 arriveM: 40,               // metres to the destination = arrived
 MODES.car.speak: [500, 200, 60],   // announcement thresholds, in metres
@@ -305,13 +342,14 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 152 checks in total:
+`app.js` and `route.js` — 177 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,
   country-scoped address search, routing, choosing between alternatives, the re-route
   consent prompt, step wording, shared routes, live navigation, mute, off-route
-  detection and failure handling.
+  detection, saving/restoring the route for offline use, the signal-drop prompt, and the
+  coverage warning and its country gating.
 - `tests/pwa-test.js` — manifest and icon consistency (every declared icon is a real PNG
   of the size it claims), that every file the service worker precaches actually exists,
   and the iOS and Android install flows.
