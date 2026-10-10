@@ -22,6 +22,26 @@ const CFG = {
   minMoveM: 12,             // publish early if we moved this far
   fallbackCenter: { lat: 12.9716, lng: 77.5946 }, // Bengaluru
   fallbackZoom: 13,
+
+  /* Day / night basemap. Dark after sunset, light after sunrise. */
+  theme: {
+    auto: true,
+    checkMs: 300000,      // re-evaluate every 5 minutes
+    light: {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      filter: null,
+    },
+    dark: {
+      // OSM's standard tiles are the only keyless raster source, so the night map
+      // is those same tiles darkened by a CSS filter. Point `url` at a real dark
+      // basemap (CARTO Dark Matter, Stadia, self-hosted) and set filter:null to
+      // get a proper night map — those need an API key.
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      filter: 'invert(1) hue-rotate(180deg) brightness(.92) contrast(.92) saturate(.6)',
+    },
+  },
 };
 
 const PALETTE = ['#ff6b6b', '#4dabf7', '#51cf66', '#ffd43b', '#cc5de8',
@@ -155,16 +175,107 @@ const LS = {
 };
 
 /* ------------------------------------------------------------------ *
+ * Sunrise / sunset (NOAA algorithm) and the day-night basemap
+ * ------------------------------------------------------------------ */
+const RAD = Math.PI / 180, DEG = 180 / Math.PI;
+
+function sunTimes(date, lat, lng) {
+  const y = date.getFullYear(), mo = date.getMonth() + 1, dy = date.getDate();
+  const jd = Date.UTC(y, mo - 1, dy) / 86400000 + 2440587.5;
+  const T = (jd - 2451545.0) / 36525;
+
+  const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
+  const M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  const ecc = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = M * RAD;
+  const C = Math.sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) +
+            Math.sin(2 * Mr) * (0.019993 - 0.000101 * T) +
+            Math.sin(3 * Mr) * 0.000289;
+  const omega = 125.04 - 1934.136 * T;
+  const lambda = (L0 + C) - 0.00569 - 0.00478 * Math.sin(omega * RAD);
+
+  const e0 = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60;
+  const obl = e0 + 0.00256 * Math.cos(omega * RAD);
+  const decl = Math.asin(Math.sin(obl * RAD) * Math.sin(lambda * RAD)) * DEG;
+
+  const yv = Math.tan(obl * RAD / 2) ** 2;
+  const eqTime = 4 * DEG * (
+      yv * Math.sin(2 * L0 * RAD)
+    - 2 * ecc * Math.sin(Mr)
+    + 4 * ecc * yv * Math.sin(Mr) * Math.cos(2 * L0 * RAD)
+    - 0.5 * yv * yv * Math.sin(4 * L0 * RAD)
+    - 1.25 * ecc * ecc * Math.sin(2 * Mr));
+
+  const latR = lat * RAD, decR = decl * RAD;
+  const cosHA = Math.cos(90.833 * RAD) / (Math.cos(latR) * Math.cos(decR)) -
+                Math.tan(latR) * Math.tan(decR);
+  const base = Date.UTC(y, mo - 1, dy);
+  const noonMin = 720 - 4 * lng - eqTime;
+  const noon = new Date(base + noonMin * 60000);
+
+  if (cosHA > 1) return { polar: 'night', sunrise: null, sunset: null, noon };
+  if (cosHA < -1) return { polar: 'day', sunrise: null, sunset: null, noon };
+
+  const HA = Math.acos(cosHA) * DEG;
+  return {
+    polar: null, noon,
+    sunrise: new Date(base + (noonMin - 4 * HA) * 60000),
+    sunset: new Date(base + (noonMin + 4 * HA) * 60000),
+  };
+}
+
+// Pure: which basemap should be showing at this moment and place?
+function themeFor(date, lat, lng) {
+  const t = sunTimes(date, lat, lng);
+  if (t.polar === 'day') return 'light';
+  if (t.polar === 'night') return 'dark';
+  const now = date.getTime();
+  return (now < t.sunrise.getTime() || now >= t.sunset.getTime()) ? 'dark' : 'light';
+}
+
+let currentTiles = null;
+let themeMode = 'light';
+let lastThemeCheck = 0;
+
+function setTheme(mode) {
+  if (!map) return;
+  const cfg = CFG.theme[mode] || CFG.theme.light;
+  themeMode = mode;
+  if (currentTiles) { map.removeLayer(currentTiles); currentTiles = null; }
+  currentTiles = L.tileLayer(cfg.url, { maxZoom: 19, attribution: cfg.attribution }).addTo(map);
+  currentTiles.setZIndex(0);
+  // Filter only the tile pane, so routes, trails and markers stay crisp.
+  const pane = map.getPane('tilePane');
+  if (pane) pane.style.filter = cfg.filter || '';
+}
+
+function applyTheme() {
+  const override = (location.search.match(/[?&]theme=(dark|light)/) || [])[1];
+  const me = state.me;
+  if (me && me.lat != null) {
+    setTheme(override || themeFor(new Date(), me.lat, me.lng));
+  } else {
+    // No fix yet: fall back to the local clock.
+    const h = new Date().getHours();
+    setTheme(override || ((h >= 19 || h < 6) ? 'dark' : 'light'));
+  }
+}
+
+function maybeUpdateTheme() {
+  const now = Date.now();
+  if (now - lastThemeCheck < 60000) return;
+  lastThemeCheck = now;
+  applyTheme();
+}
+
+/* ------------------------------------------------------------------ *
  * Map
  * ------------------------------------------------------------------ */
 function initMap() {
   map = L.map('map', { zoomControl: false, attributionControl: true })
          .setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  setTheme((new Date().getHours() >= 19 || new Date().getHours() < 6) ? 'dark' : 'light');
 }
 
 /* ------------------------------------------------------------------ *
@@ -179,7 +290,8 @@ function ensureMarker(p) {
     `</div>`;
   const icon = L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
   p._marker = L.marker([p.lat, p.lng], {
-    icon, interactive: true, keyboard: false, zIndexOffset: p.isMe ? 1000 : 0,
+    icon, interactive: true, keyboard: false, bubblingMouseEvents: false,
+    zIndexOffset: p.isMe ? 1000 : 0,
   }).addTo(map);
   p._marker.on('click', () => identify(p));
   return p._marker;
@@ -463,6 +575,7 @@ function onFix(pos) {
   publishNow(false);
   if (hooks.tick) hooks.tick();
   if (hooks.onFix) hooks.onFix(me);
+  maybeUpdateTheme();
 
   if (state.follow) map.panTo([me.lat, me.lng], { animate: true, duration: 0.4 });
   if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
@@ -824,6 +937,7 @@ window.Convoy = {
   toast, setStatus, state, send, fitAll, focusPeer, setVehicle,
   map: () => map,
   publishRoute, clearSharedRoute, hooks,
+  _internals: { sunTimes, themeFor, applyTheme, setTheme },
 };
 
 /* ------------------------------------------------------------------ *
@@ -840,6 +954,8 @@ function boot() {
   wire();
   initInstall();
   initServiceWorker();
+  applyTheme();
+  setInterval(applyTheme, CFG.theme.checkMs);
   if (window.ConvoyRoute) window.ConvoyRoute.init(window.Convoy);
 
   // Prefill from URL / storage

@@ -569,3 +569,32 @@ body.navigating .offline-bar { top: calc(104px + var(--safe-top)); }
 @media (min-width: 720px) {
   .offline-bar { left: auto; right: 12px; width: 360px; }
 }
+
+/* ---------- Controls on the left ---------- */
+:root { --rail-off: 94px; }
+
+#topbar { justify-content: flex-end; }
+
+.rail {
+  position: fixed; z-index: 22; left: 10px;
+  top: calc(58px + var(--safe-top));
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rail .btn-sm { text-align: left; min-width: 74px; }
+
+/* the floating panels start after the rail */
+.navbanner, .reroute, .offline-bar { left: var(--rail-off); }
+
+@media (min-width: 720px) {
+  .rail { top: calc(64px + var(--safe-top)); }
+  #panel { left: var(--rail-off); right: auto; }
+  .sheet { left: var(--rail-off); right: auto; }
+  .navbanner, .navstatus, .reroute, .offline-bar, .a2hs {
+    left: var(--rail-off); right: auto; width: 360px;
+  }
+}
+
+/* ---------- Immersive navigation: full-screen map ---------- */
+body.nav-hidden .rail,
+body.nav-hidden .nav-btns,
+body.nav-hidden .navstatus { display: none; }

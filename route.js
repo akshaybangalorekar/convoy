@@ -49,6 +49,7 @@
     shareMaxSteps: 80,
     offRouteM: 90,         // metres from the line before we call it off-route
     arriveM: 40,           // metres to destination = arrived
+    navAutoHideMs: 6000,   // how long the controls stay up after a tap
     alternatives: 3,       // ask for alternatives and pick the best one
     // Secondary penalties, in seconds. The route's own duration is the
     // primary term, so a genuinely quicker road always wins; these just
@@ -745,18 +746,42 @@
   /* ------------------------------------------------------------------ *
    * Live navigation
    * ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ *
+   * Immersive navigation: hide the controls, tap the map to bring them back
+   * ------------------------------------------------------------------ */
+  let chromeTimer = null;
+
+  function setChromeHidden(hidden) {
+    document.body.classList.toggle('nav-hidden', !!hidden);
+  }
+
+  function revealChrome() {
+    setChromeHidden(false);
+    clearTimeout(chromeTimer);
+    chromeTimer = setTimeout(() => { if (R.nav) setChromeHidden(true); }, CFG.navAutoHideMs);
+  }
+
+  function toggleChrome() {
+    if (document.body.classList.contains('nav-hidden')) revealChrome();
+    else { clearTimeout(chromeTimer); setChromeHidden(true); }
+  }
+
   function startNav() {
     if (!R.active) return;
     R.nav = true;
     R.spoken = {};
     document.body.classList.add('navigating');
     openPanel(false);
+    setChromeHidden(true);          // full-screen map; tap to bring the controls back
+    API.toast('Tap the map for controls');
     speak('Starting navigation');
     tick();
   }
 
   function stopNav() {
     R.nav = false;
+    clearTimeout(chromeTimer);
+    setChromeHidden(false);
     document.body.classList.remove('navigating');
     try { speechSynthesis.cancel(); } catch (e) {}
   }
@@ -870,6 +895,7 @@
   function offerReroute(route, save, offRoute) {
     R.pending = route;
     hideOfflineBar();          // one prompt at a time
+    revealChrome();            // a prompt needs to be tappable
     $('rerouteTxt').textContent = offRoute
       ? 'You are off the route. Use a new route to your destination?'
       : `A faster route is available — saves ${fmtDuration(save)}. Switch to it?`;
@@ -1116,6 +1142,7 @@
   function offerOffline(reason) {
     if (!R.active) return;
     hideReroute();             // one prompt at a time
+    revealChrome();            // a prompt needs to be tappable
     $('offlineBarTxt').textContent = reason +
       ' — save this route so navigation keeps working without signal?';
     $('offlineBar').classList.add('show');
@@ -1205,6 +1232,10 @@
     $('offlineBarYes').addEventListener('click', () => { hideOfflineBar(); saveRouteOffline(); });
     $('offlineBarNo').addEventListener('click', hideOfflineBar);
     refreshOfflineStatus();
+
+    // Tap the map while navigating to bring the controls back.
+    const m = API.map();
+    if (m && m.on) m.on('click', () => { if (R.nav) toggleChrome(); });
 
     // If a destination address is pasted in and Enter pressed, go.
     ['rtFrom', 'rtTo'].forEach((id) => {

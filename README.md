@@ -76,6 +76,10 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 - Breadcrumb trails, distance and bearing from you, speed, and how long since each
   person was last seen.
 - Tap a vehicle or a list row to jump to that person. Follow-me and fit-all buttons.
+- **Controls sit on the left edge**, within reach in a right-hand-drive car.
+- The basemap **turns dark after sunset and light again after sunrise**, using real sun
+  times computed for your position — so it's right whether you're in Sydney in October
+  or Melbourne in June. There's a `?theme=dark` / `?theme=light` override for testing.
 
 **Routing & navigation**
 - Type a **start** and **destination** address, with type-ahead suggestions. Tap
@@ -98,6 +102,10 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
   preference for shorter, straighter, fewer-turn roads. The summary tells you why.
 - Off-route detection, remaining distance / time / progress, and a one-tap
   **Recalculate** that always asks before changing anything.
+- **Immersive navigation**: the moment you start navigating, every control gets out of
+  the way for a full-screen map showing the cars in your room. **Tap the map** to bring
+  the controls back; they fade out again a few seconds later. Prompts that need an
+  answer — a re-route offer, a coverage warning — bring the controls back on their own.
 
 **Shared with the room**
 - A route belongs to the room: whoever sets it, everyone sees the same start,
@@ -248,6 +256,12 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
   navigating without signal. If you want offline map imagery, point the tile layer at a
   source that permits it: your own tile server, a provider plan that allows offline use
   (MapTiler, Stadia, Thunderforest), or Protomaps PMTiles vector tiles.
+- **The night map is a darkened version of the same tiles, not a purpose-built dark
+  basemap.** OSM's standard tiles are the only keyless raster source, so the dark theme
+  applies a CSS filter to them — easier on the eyes at night, but not as clean as a real
+  dark style. CARTO Dark Matter or Stadia would look better, and both need a free API
+  key (CARTO's raster tiles now serve a visible watermark without one). Point
+  `CFG.theme.dark.url` at such a source and set `filter: null` to switch over.
 - **Coverage warnings are predictions, not measurements.** The Australian data is each
   carrier's own predictive model — outdoor, at ground level, 100 m resolution, refreshed
   quarterly. It doesn't reflect being inside a vehicle or a building, and it isn't a live
@@ -298,6 +312,11 @@ staleMs: 90000,    // when a peer is greyed out
 dropMs: 600000,    // when a peer is removed
 maxTrail: 60,      // breadcrumb points per person
 brokers: [ ... ],  // add your own broker
+theme: {
+  auto: true,      // dark after sunset, light after sunrise
+  checkMs: 300000, // how often to re-evaluate
+  dark: { url: '<tile url>', filter: 'invert(1) hue-rotate(180deg) ...' },
+},
 ```
 
 `route.js` — routing and navigation:
@@ -342,14 +361,14 @@ To use a different map provider, change the `L.tileLayer(...)` URL in `initMap()
 ## Testing
 
 Three headless jsdom suites (stubbed Leaflet, MQTT, fetch and speech) cover the real
-`app.js` and `route.js` — 177 checks in total:
+`app.js` and `route.js` — 194 checks in total:
 
 - `tests/app-test.js` — join → live message → render → leave, demo mode, invite links.
 - `tests/route-test.js` — vehicle markers and the names toggle, geocoding,
   country-scoped address search, routing, choosing between alternatives, the re-route
   consent prompt, step wording, shared routes, live navigation, mute, off-route
-  detection, saving/restoring the route for offline use, the signal-drop prompt, and the
-  coverage warning and its country gating.
+  detection, saving/restoring the route for offline use, the signal-drop prompt, the
+  coverage warning and its country gating, immersive navigation, and the day/night map.
 - `tests/pwa-test.js` — manifest and icon consistency (every declared icon is a real PNG
   of the size it claims), that every file the service worker precaches actually exists,
   and the iOS and Android install flows.

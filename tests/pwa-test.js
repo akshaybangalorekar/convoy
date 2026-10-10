@@ -32,6 +32,10 @@ function testStaticFiles() {
   check('has apple-mobile-web-app-title', /apple-mobile-web-app-title/.test(html));
   check('declares a dark color-scheme', /name="color-scheme"[^>]*dark/.test(html));
   check('has the install bar markup', /id="a2hs"/.test(html) && /id="a2hsGo"/.test(html));
+  check('controls live in the left-hand rail',
+        /class="rail"[\s\S]*?id="btnRoute"[\s\S]*?id="btnShare"[\s\S]*?id="btnLeave"/.test(html));
+  check('the rail is outside the top bar',
+        html.indexOf('class="rail"') > html.indexOf('</header>'));
 
   // --- manifest
   let mf = null;
@@ -111,9 +115,10 @@ function makeStubs(window) {
   const layer = () => {
     const o = {};
     ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds', 'getBounds',
-     'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup']
+     'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup', 'setZIndex']
       .forEach((m) => { o[m] = () => o; });
     o.getZoom = () => 13;
+    o.getPane = () => ({ style: {} });
     o.getElement = () => ({ classList: { toggle() {}, add() {}, remove() {} }, querySelector: () => null });
     return o;
   };

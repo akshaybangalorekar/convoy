@@ -141,7 +141,7 @@ function makeStubs(window, opts = {}) {
   const layer = () => {
     const o = {};
     ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds', 'getBounds',
-     'removeLayer', 'on', 'off', 'getZoom', 'bindPopup', 'setStyle']
+     'removeLayer', 'on', 'off', 'getZoom', 'bindPopup', 'setStyle', 'setZIndex']
       .forEach((m) => { o[m] = () => o; });
     o.getZoom = () => 13;
     o.getElement = () => ({ classList: { toggle() {}, add() {}, remove() {} } });
@@ -149,8 +149,18 @@ function makeStubs(window, opts = {}) {
   };
 
   // Markers really insert their HTML into the document, so we can inspect them.
+  const maps = [];
   window.L = {
-    map: layer, tileLayer: layer, polyline: layer, latLngBounds: layer,
+    map() {
+      const o = layer();
+      o._h = {}; o._pane = { style: {} };
+      o.on = (ev, fn) => { (o._h[ev] = o._h[ev] || []).push(fn); return o; };
+      o._emit = (ev) => (o._h[ev] || []).forEach((f) => f());
+      o.getPane = () => o._pane;
+      maps.push(o);
+      return o;
+    },
+    tileLayer: layer, polyline: layer, latLngBounds: layer,
     control: { zoom: () => ({ addTo: () => {} }) },
     divIcon: (o) => o,
     marker(latlng, o) {
@@ -243,7 +253,7 @@ function makeStubs(window, opts = {}) {
     clearWatch() {},
   };
 
-  return { clients, calls, spoken, routeCalls: () => routeCalls };
+  return { clients, calls, spoken, maps, routeCalls: () => routeCalls };
 }
 
 function boot(opts = {}) {
@@ -717,6 +727,62 @@ async function testCoverageGaps() {
         d.getElementById('offlineBar').classList.contains('show'));
 }
 
+/* ---------- Test 14: immersive navigation and the day/night map ---------- */
+async function testImmersiveAndTheme() {
+  const { window, stubs } = boot();
+  const d = window.document;
+  joinRoom(window, stubs);
+  window.__fix(fix(A));
+  await sleep(30);
+  d.getElementById('btnRoute').click();
+  d.getElementById('rtTo').value = 'Gateway of India';
+  d.getElementById('rtGo').click();
+  await sleep(80);
+
+  check('controls visible before navigating', !d.body.classList.contains('nav-hidden'));
+  d.getElementById('rtStart').click();
+  check('controls hidden when navigation starts', d.body.classList.contains('nav-hidden'));
+  check('navigation mode is on', d.body.classList.contains('navigating'));
+
+  const map = stubs.maps[0];
+  check('a map click handler is registered', !!map && typeof map._emit === 'function');
+  map._emit('click');
+  check('tapping the map brings the controls back', !d.body.classList.contains('nav-hidden'));
+
+  // shorten the auto-hide so the test does not wait six seconds
+  window.ConvoyRoute._internals.CFG.navAutoHideMs = 40;
+  map._emit('click');            // hide
+  check('tapping again hides them', d.body.classList.contains('nav-hidden'));
+  map._emit('click');            // reveal, with the short timer
+  await sleep(90);
+  check('controls auto-hide again shortly after', d.body.classList.contains('nav-hidden'));
+
+  d.getElementById('navStop').click();
+  check('stopping navigation restores the controls', !d.body.classList.contains('nav-hidden'));
+  check('navigation mode cleared', !d.body.classList.contains('navigating'));
+
+  // --- day / night basemap
+  const T = window.Convoy._internals;
+  check('sun/theme helpers are exposed', typeof T.themeFor === 'function');
+  const mid = new Date(Date.UTC(2026, 9, 11, 2, 0, 0));    // 13:00 Sydney
+  const night = new Date(Date.UTC(2026, 9, 11, 12, 0, 0)); // 23:00 Sydney
+  check('Sydney daytime uses the light map',
+        T.themeFor(mid, -33.8688, 151.2093) === 'light',
+        T.themeFor(mid, -33.8688, 151.2093));
+  check('Sydney night uses the dark map',
+        T.themeFor(night, -33.8688, 151.2093) === 'dark',
+        T.themeFor(night, -33.8688, 151.2093));
+  check('Arctic midsummer is always light',
+        T.themeFor(new Date(Date.UTC(2026, 5, 21, 0, 0, 0)), 80, 0) === 'light');
+
+  T.setTheme('dark');
+  check('dark theme filters the tile pane',
+        /invert/.test(stubs.maps[0]._pane.style.filter || ''), stubs.maps[0]._pane.style.filter);
+  T.setTheme('light');
+  check('light theme clears the filter',
+        (stubs.maps[0]._pane.style.filter || '') === '', stubs.maps[0]._pane.style.filter);
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -732,6 +798,7 @@ async function testCoverageGaps() {
     await testOfflineSignalPrompt();
     await testCoverageGate();
     await testCoverageGaps();
+    await testImmersiveAndTheme();
   } catch (e) {
     results.push({ name: 'suite crashed: ' + e.message, ok: false,
                    extra: e.stack ? String(e.stack).split('\n')[1] : '' });
