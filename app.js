@@ -104,6 +104,43 @@ function colorFor(str) {
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
   return PALETTE[(h >>> 0) % PALETTE.length];
 }
+
+// Two ids can hash to the same colour, so hand out unique ones instead. Your own car
+// always takes the first colour; everyone else takes their preferred colour, or the next
+// free one when that is taken. Every phone computes the same assignment, so a car looks
+// the same on every screen.
+function assignColors() {
+  const taken = new Set();
+  let changed = false;
+  const give = (p, preferred) => {
+    let c = preferred;
+    if (taken.has(c)) {
+      const start = Math.max(0, PALETTE.indexOf(c));
+      for (let k = 1; k <= PALETTE.length; k++) {
+        const cand = PALETTE[(start + k) % PALETTE.length];
+        if (!taken.has(cand)) { c = cand; break; }
+      }
+    }
+    taken.add(c);
+    if (p.color !== c) { p.color = c; changed = true; }
+  };
+  if (state.me) give(state.me, PALETTE[0]);
+  else taken.add(PALETTE[0]);
+  Array.from(state.peers.values())
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .forEach((p) => give(p, colorFor(p.id)));
+  return changed;
+}
+
+// Repaint everything if the unique-colour pass moved anyone.
+function refreshColors() {
+  if (!assignColors()) return;
+  allPeople().forEach((p) => {
+    if (p._marker) p._marker.setIcon(makeIcon(p));
+    if (p._line) p._line.setStyle({ color: p.color });
+  });
+  renderPeople();
+}
 function rand(n) {
   const a = new Uint8Array(n); (crypto || window.msCrypto).getRandomValues(a);
   return Array.from(a, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, n);
@@ -156,7 +193,8 @@ const state = {
   topic: null,
   joined: false,
   demo: false,
-  follow: true,
+  follow: false,
+  autoFit: true,      // keep every car in view until the user takes control
   wakeLock: null,
   lastPublish: 0,
   lastSentFix: null,
@@ -169,6 +207,9 @@ let reconnectTimer = null;
 let publishTimer = null;
 let renderTimer = null;
 let demoTimer = null;
+let lastAutoView = 0;   // when we last moved the map ourselves — guards the drag/zoom
+let lastFitAt = 0;      // listeners against mistaking our own move for the user's
+const AUTOFIT_MS = 4000;
 
 // Hooks that route.js plugs into (see the bridge at the bottom of this file).
 const hooks = { onRoute: null, onRouteClear: null, tick: null, onFix: null, tap: null,
@@ -347,19 +388,27 @@ function initMap() {
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   setTheme((new Date().getHours() >= 19 || new Date().getHours() < 6) ? 'dark' : 'light');
   wireTapGestures(map.getContainer());
+  // Dragging or zooming by hand hands the view back to you.
+  map.on('dragstart zoomstart', () => {
+    if (Date.now() - lastAutoView > 700) takeViewControl();
+  });
 }
 
 /* ------------------------------------------------------------------ *
  * Marker / trail rendering
  * ------------------------------------------------------------------ */
-function ensureMarker(p) {
-  if (p._marker) return p._marker;
+function makeIcon(p) {
   const html =
     `<div class="mk${p.isMe ? ' me' : ''}" style="color:${p.color}">` +
       glyphMarkup() +
       `<div class="lbl">${esc(p.name)}${p.isMe ? ' (you)' : ''}</div>` +
     `</div>`;
-  const icon = L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
+  return L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
+
+function ensureMarker(p) {
+  if (p._marker) return p._marker;
+  const icon = makeIcon(p);
   p._marker = L.marker([p.lat, p.lng], {
     icon, interactive: true, keyboard: false, bubblingMouseEvents: false,
     zIndexOffset: p.isMe ? 1000 : 0,
@@ -408,6 +457,7 @@ function removePeer(id) {
   if (p._marker) map.removeLayer(p._marker);
   if (p._line) map.removeLayer(p._line);
   state.peers.delete(id);
+  refreshColors();
 }
 
 function allPeople() {
@@ -489,17 +539,48 @@ function toast(msg, ms = 2400) {
 function focusPeer(id) {
   const p = id === (state.me && state.me.id) ? state.me : state.peers.get(id);
   if (!p || p.lat == null) return;
-  state.follow = false;
-  $('btnFollow').classList.remove('on');
-  map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15), { animate: true });
+  takeViewControl();
+  lastAutoView = Date.now();
+  map.setView([p.lat, p.lng], Math.max(map.getZoom(), 16), { animate: true });
 }
 
+// Zoom out just far enough to hold everyone, and in close when the group is bunched up —
+// so cars parked together still read as separate pins rather than one blob.
 function fitAll() {
   const people = allPeople();
   if (people.length < 1) return;
-  if (people.length === 1) { map.setView([people[0].lat, people[0].lng], 15); return; }
+  lastAutoView = Date.now();
+  if (people.length === 1) { map.setView([people[0].lat, people[0].lng], 16); return; }
   const bounds = L.latLngBounds(people.map((p) => [p.lat, p.lng]));
-  map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+  map.fitBounds(bounds, { padding: [70, 70], maxZoom: 17, animate: true });
+}
+
+// The view follows the group by default. Dragging, zooming, tapping a car or Follow me
+// hands it back to you.
+function maybeAutoView() {
+  const people = allPeople();
+  if (state.autoFit && people.length >= 2) {
+    if (Date.now() - lastFitAt < AUTOFIT_MS) return;   // don't chase every fix
+    lastFitAt = Date.now();
+    fitAll();
+    return;
+  }
+  if (state.follow && state.me && state.me.lat != null) {
+    lastAutoView = Date.now();
+    map.panTo([state.me.lat, state.me.lng], { animate: true, duration: 0.4 });
+  }
+}
+
+function syncViewButtons() {
+  $('btnFit').classList.toggle('on', !!state.autoFit);
+  $('btnFollow').classList.toggle('on', !!state.follow);
+}
+
+function takeViewControl() {
+  if (!state.autoFit && !state.follow) return;
+  state.autoFit = false;
+  state.follow = false;
+  syncViewButtons();
 }
 
 /* ------------------------------------------------------------------ *
@@ -583,6 +664,7 @@ function onMessage(topic, payload) {
     };
     state.peers.set(msg.id, p);
     rememberMember(state.room, msg.id, p.name);
+    refreshColors();
     toast(p.name + ' joined');
   } else {
     p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
@@ -654,8 +736,8 @@ function onFix(pos) {
   maybeUpdateTheme();
   updateBearing(me);
 
-  if (state.follow) map.panTo([me.lat, me.lng], { animate: true, duration: 0.4 });
   if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
+  maybeAutoView();
 }
 
 function onGeoError(err) {
@@ -715,7 +797,7 @@ function startDemo() {
   const cars = names.map((name, i) => {
     const id = 'demo-' + (i + 1);
     const p = {
-      id, name, color: PALETTE[(i + 2) % PALETTE.length],
+      id, name, color: PALETTE[0],
       lat: center.lat, lng: center.lng, spd: 11 + Math.random() * 3,
       hdg: 0, acc: 6, ts: Date.now(), trail: [], isMe: false, demo: true,
       _d: (route.total / names.length) * (i + 1), _spd: 11 + Math.random() * 4,
@@ -723,6 +805,7 @@ function startDemo() {
     state.peers.set(id, p);
     return p;
   });
+  refreshColors();
 
   const step = (p, dt) => {
     p._spd += (Math.random() - 0.5) * 0.6;
@@ -742,7 +825,7 @@ function startDemo() {
     step(state.me, 1);
     cars.forEach((p) => step(p, 1));
     renderPeople();
-    if (state.follow) map.panTo([state.me.lat, state.me.lng], { animate: true, duration: 0.4 });
+    maybeAutoView();
   }, 1000);
 
   map.setView([center.lat, center.lng], 14);
@@ -883,12 +966,11 @@ function wire() {
   $('btnDemo').addEventListener('click', () => {
     const name = ($('inName').value || '').trim().slice(0, 24) || 'You';
     state.me = {
-      id: 'me-' + rand(6), name, color: colorFor('me-' + name),
+      id: 'me-' + rand(6), name, color: PALETTE[0],
       lat: null, lng: null, spd: null, hdg: null, acc: null,
       ts: Date.now(), trail: [], isMe: true, _first: true,
     };
     state.joined = true;
-    state.me.color = PALETTE[0];
     $('roomLabel').textContent = 'demo';
     $('join').classList.add('hidden');
     $('panel').classList.add('show');
@@ -900,12 +982,23 @@ function wire() {
 
   $('btnShare').addEventListener('click', share);
   $('btnLeave').addEventListener('click', () => leave(true));
-  $('btnFit').addEventListener('click', fitAll);
+  $('btnFit').addEventListener('click', () => {
+    state.autoFit = true;
+    state.follow = false;
+    syncViewButtons();
+    lastFitAt = 0;
+    fitAll();
+  });
   $('btnFollow').addEventListener('click', () => {
     state.follow = !state.follow;
-    $('btnFollow').classList.toggle('on', state.follow);
-    if (state.follow && state.me && state.me.lat != null) map.panTo([state.me.lat, state.me.lng]);
+    if (state.follow) state.autoFit = false;
+    syncViewButtons();
+    if (state.follow && state.me && state.me.lat != null) {
+      lastAutoView = Date.now();
+      map.panTo([state.me.lat, state.me.lng]);
+    }
   });
+  syncViewButtons();
 
   // Names are off by default so the map stays readable while driving.
   $('btnNames').addEventListener('click', () => {
@@ -1152,7 +1245,8 @@ window.Convoy = {
   rooms: { load: loadRooms, save: saveRooms, render: renderSavedRooms, remember: rememberRoom },
   mergeRooms,
   _internals: { sunTimes, themeFor, applyTheme, setTheme, onMapTap, updateBearing,
-                getBearing: () => mapBearing },
+                getBearing: () => mapBearing, PALETTE, assignColors, refreshColors,
+                maybeAutoView, takeViewControl, syncViewButtons },
 };
 
 /* ------------------------------------------------------------------ *
@@ -1184,9 +1278,10 @@ function boot() {
   $('inName').value = savedName;
   $('inRoom').value = savedRoom;
 
-  if (savedName && hashRoom) {
-    // Arrived via an invite link and we already know the name — join straight away.
-    join(savedName, normRoom(hashRoom));
+  if (savedName && savedRoom) {
+    // An invite link, or just someone opening the app again: go straight into the room,
+    // so the join screen (and the Forget buttons on it) does not reappear every launch.
+    join(savedName, normRoom(savedRoom));
   } else if (hashRoom) {
     toast('Enter your name to join "' + normRoom(hashRoom) + '"');
   }

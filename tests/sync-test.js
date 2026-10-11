@@ -12,7 +12,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function layer() {
   const o = {};
   ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds', 'getBounds',
-   'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup', 'setZIndex']
+   'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup', 'setZIndex', 'setIcon']
     .forEach((m) => { o[m] = () => o; });
   o.getZoom = () => 13;
   o.getPane = () => ({ style: {} });

@@ -39,7 +39,11 @@
   <button id="btnLeave" class="btn-sm danger" title="Leave room">Leave</button>
   <button id="btnRooms" class="btn-sm" title="Saved rooms">Rooms</button>
   <button id="btnShare" class="btn-sm" title="Copy invite link">Share</button>
-  <button id="btnTalk" class="btn-sm" title="Start a voice call">Talk</button>
+  <div class="rail-row">
+    <button id="btnTalk" class="btn-sm" title="Start a voice call">Talk</button>
+    <button id="micSwitch" class="switch" role="switch" aria-checked="false"
+            aria-label="Microphone" title="Microphone"><span class="knob"></span></button>
+  </div>
   <button id="btnRoute" class="btn-sm" title="Plan a route">Route</button>
 </div>
 
@@ -48,8 +52,8 @@
   <div class="panel-head">
     <span id="peopleCount">0 people</span>
     <div class="panel-actions">
-      <button id="btnFollow" class="btn-sm toggle on" title="Keep the map centred on you">Follow me</button>
-      <button id="btnFit" class="btn-sm" title="Zoom to fit everyone">Fit all</button>
+      <button id="btnFollow" class="btn-sm toggle" title="Keep the map centred on you">Follow me</button>
+      <button id="btnFit" class="btn-sm toggle on" title="Keep everyone in view">Fit all</button>
       <button id="btnNames" class="btn-sm toggle" title="Show names on the map">Names</button>
     </div>
   </div>

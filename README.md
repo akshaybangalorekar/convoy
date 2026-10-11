@@ -122,9 +122,10 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 - Clearing the route clears it for everyone.
 
 **Saved rooms**
-- Every room you join is remembered on your phone, along with who was in it. Tap
-  **Rooms** — or just open the app again — and rejoin with one tap, no retyping codes.
-- Forget a room any time from the same list.
+- Every room you join is remembered on your phone, along with who was in it.
+- Opening the app again drops you straight back into your last room, so the join screen —
+  and its Forget buttons — does not reappear on every launch.
+- Tap **Rooms** to switch rooms or forget one.
 
 **Sharing those rooms with the whole group**
 - The app has no backend, so a public GitHub repo stands in for one. Your phone holds a
@@ -137,10 +138,18 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
 
 **Group voice calls**
 - Tap **Talk** and every phone in the room rings. Whoever answers joins the call.
-- Default is **push to talk only**: the microphone is live exactly while you hold the Talk
-  button, so nobody hears you — or the road noise around you — between presses.
+- The microphone is a switch: tap **Talk**, or the switch beside it, once to open your mic
+  and again to close it. It is closed by default, so nobody hears you — or the road noise
+  around you — until you deliberately open it.
 - The audio is peer to peer and encrypted (DTLS-SRTP). Ringing and call setup ride on the
   room's existing relay, so there is no extra server to run.
+
+**One map, everyone on it**
+- Every car gets its own colour, handed out so no two match — and the same car is the same
+  colour on every phone in the room.
+- The map keeps everyone in frame by default, zooming in close when the group bunches up so
+  parked cars still read as separate pins rather than one blob. Drag or zoom and it hands
+  the view back to you; **Fit all** takes it again, **Follow me** centres on you instead.
 
 **Offline & remote driving**
 - **Save the route**, and turn-by-turn, spoken prompts, remaining distance and the step
@@ -315,6 +324,8 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
 - **GitHub limits unauthenticated reads to 60 an hour per IP.** The app reads through the
   raw CDN instead, which is not subject to that, but the CDN caches for a few minutes — so
   a change can take a couple of minutes to reach the other phones.
+- **Colours are unique up to ten cars.** There are ten in the palette, so past that two
+  cars will have to share one.
 - **Map rotation needs a third-party plugin.** Leaflet cannot rotate a map on its own,
   so heading-up mode uses `leaflet-rotate`, which patches parts of Leaflet's internals.
   If it fails to load the app carries on unchanged with a north-up map; set
@@ -442,9 +453,12 @@ pullMs: 300000,        // re-read the shared list every 5 minutes
 
 ## Testing
 
-Five headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and speech)
-cover the real `app.js`, `route.js`, `voice.js` and `sync.js` — 290 checks in total:
+Six headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and speech)
+cover the real `app.js`, `route.js`, `voice.js` and `sync.js` — 329 checks in total:
 
+- `tests/map-test.js` — rejoining the last room on launch, a first run still asking for a
+  room, unique and cross-phone-consistent car colours, and the auto-fit that keeps everyone
+  in frame.
 - `tests/sync-test.js` — the owner's phone storing a token and committing the room list, a
   reader seeing shared rooms with no token and never writing, a rejected token, and repo
   parsing.

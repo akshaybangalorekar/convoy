@@ -12,7 +12,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function layer() {
   const o = {};
   ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds', 'getBounds',
-   'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup', 'setZIndex']
+   'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup', 'setZIndex', 'setIcon']
     .forEach((m) => { o[m] = () => o; });
   o.getZoom = () => 13;
   o.getPane = () => ({ style: {} });
@@ -172,7 +172,7 @@ async function testOutgoingCall() {
   check('the call bar appears', d.getElementById('callBar').classList.contains('show'));
   check('the page is marked in-call', d.body.classList.contains('in-call'));
   check('the microphone was requested', stubs.streams.length === 1, String(stubs.streams.length));
-  check('push-to-talk starts muted', stubs.streams[0]._track.enabled === false,
+  check('the microphone starts switched off', stubs.streams[0]._track.enabled === false,
         String(stubs.streams[0]._track.enabled));
 
   c._emit('message', 'x', Buffer.from(JSON.stringify({
@@ -186,29 +186,41 @@ async function testOutgoingCall() {
   check('the call bar counts them', /2/.test(d.getElementById('callStatus').textContent),
         d.getElementById('callStatus').textContent);
 
-  // Push to talk: the microphone is live only while the button is held.
+  // The microphone is a switch: tap once for on, tap again for off.
   const talk = d.getElementById('btnTalk');
-  check('there is no open-mic control', !d.getElementById('callMute'));
-  const usePointer = window.PointerEvent !== undefined;
-  const fire = (type) => talk.dispatchEvent(usePointer
-    ? new window.PointerEvent(type, { bubbles: true })
-    : new window.MouseEvent(type, { bubbles: true }));
-
-  fire('pointerdown'); fire('mousedown');
-  await sleep(10);
-  check('holding Talk opens the microphone', stubs.streams[0]._track.enabled === true,
+  const sw = d.getElementById('micSwitch');
+  check('there is a microphone switch beside Talk', !!sw);
+  check('the microphone starts off', stubs.streams[0]._track.enabled === false,
         String(stubs.streams[0]._track.enabled));
-  check('the bar shows you are speaking', /Speaking/.test(d.getElementById('callStatus').textContent),
+  check('the switch starts off', !sw.classList.contains('on'));
+  check('the bar says the mic is off', /mic off/.test(d.getElementById('callStatus').textContent),
         d.getElementById('callStatus').textContent);
-  check('the bar lights up while speaking', d.getElementById('callBar').classList.contains('live'));
 
-  fire('pointerup'); fire('mouseup');
+  sw.click();
   await sleep(10);
-  check('releasing mutes again', stubs.streams[0]._track.enabled === false);
-  check('the bar stops showing Speaking', !/Speaking/.test(d.getElementById('callStatus').textContent),
+  check('tapping the switch opens the microphone', stubs.streams[0]._track.enabled === true);
+  check('the switch slides on', sw.classList.contains('on'));
+  check('the switch reports itself as checked', sw.getAttribute('aria-checked') === 'true');
+  check('the bar says the mic is on', /mic on/.test(d.getElementById('callStatus').textContent),
         d.getElementById('callStatus').textContent);
+  check('the bar lights up while the mic is open', d.getElementById('callBar').classList.contains('live'));
+
+  sw.click();
+  await sleep(10);
+  check('tapping again closes the microphone', stubs.streams[0]._track.enabled === false);
+  check('the switch slides back off', !sw.classList.contains('on'));
+  check('the switch reports itself as unchecked', sw.getAttribute('aria-checked') === 'false');
   check('the bar drops the live mark', !d.getElementById('callBar').classList.contains('live'));
-  check('the bar says to hold to talk', /hold to talk/i.test(d.getElementById('callStatus').textContent));
+
+  // The Talk button does the same thing once you are in a call.
+  talk.click();
+  await sleep(10);
+  check('Talk also opens the microphone', stubs.streams[0]._track.enabled === true);
+  check('the switch follows the Talk button', sw.classList.contains('on'));
+  talk.click();
+  await sleep(10);
+  check('Talk closes it again', stubs.streams[0]._track.enabled === false);
+  check('the switch follows back off', !sw.classList.contains('on'));
 
   d.getElementById('callLeave').click();
   await sleep(20);

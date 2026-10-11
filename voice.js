@@ -38,7 +38,7 @@
     initiator: false,
     incoming: null,      // { callId, from, by, timer }
     peers: {},           // id -> { pc, el, pending: [] }
-    holding: false,      // true while the Talk button is held down
+    mic: false,          // true while the microphone is switched on
     local: null,
   };
 
@@ -112,8 +112,9 @@
   }
 
   function applyMicState() {
-    // Push to talk only: the microphone is live exactly while the button is held.
-    if (V.local) V.local.getAudioTracks().forEach((t) => { t.enabled = !!V.holding; });
+    // Tap once for on, once for off. The track is switched off entirely when the mic is
+    // closed, so nothing is transmitted — not merely muted locally.
+    if (V.local) V.local.getAudioTracks().forEach((t) => { t.enabled = !!V.mic; });
     updateStatus();
   }
 
@@ -121,11 +122,15 @@
     const el = $('callStatus');
     if (!el || !V.active) return;
     const n = peerCount();
-    el.textContent = V.holding
-      ? 'Speaking…'
-      : 'In a call · ' + (n + 1) + (n === 0 ? ' · waiting' : ' · hold to talk');
+    el.textContent = 'In a call · ' + (n + 1) + ' · mic ' + (V.mic ? 'on' : 'off') +
+                     (n === 0 ? ' · waiting' : '');
     const bar = $('callBar');
-    if (bar) bar.classList.toggle('live', !!V.holding);
+    if (bar) bar.classList.toggle('live', !!V.mic);
+    const sw = $('micSwitch');
+    if (sw) {
+      sw.classList.toggle('on', !!V.mic);
+      sw.setAttribute('aria-checked', V.mic ? 'true' : 'false');
+    }
   }
 
   function stopMic() {
@@ -202,6 +207,7 @@
     V.callId = 'v-' + Math.random().toString(36).slice(2, 10);
     V.active = true;
     V.initiator = true;
+    V.mic = false;
     send({ t: 'voice-invite', callId: V.callId });
     API.toast('Calling the room…');
     renderBar();
@@ -233,9 +239,10 @@
     V.callId = inc.callId;
     V.active = true;
     V.initiator = false;
+    V.mic = false;
     send({ t: 'voice-accept', callId: V.callId, to: inc.from });
     renderBar();
-    API.toast('Joined the call — hold Talk to speak');
+    API.toast('Joined the call — tap Talk to switch your mic on');
   }
 
   function decline(silent) {
@@ -297,7 +304,7 @@
     V.active = false;
     V.initiator = false;
     V.callId = null;
-    V.holding = false;
+    V.mic = false;
     renderBar();
   }
 
@@ -322,14 +329,24 @@
       bar.classList.remove('show', 'live');
       $('btnTalk').textContent = 'Talk';
       $('btnTalk').classList.remove('on');
+      const sw = $('micSwitch');
+      if (sw) { sw.classList.remove('on'); sw.setAttribute('aria-checked', 'false'); }
       document.body.classList.remove('in-call');
       return;
     }
     bar.classList.add('show');
-    $('btnTalk').textContent = 'Hold to talk';
+    $('btnTalk').textContent = 'Talk';
     $('btnTalk').classList.add('on');
     document.body.classList.add('in-call');
     applyMicState();
+  }
+
+  function toggleMic() {
+    if (!V.active) return;
+    V.mic = !V.mic;
+    applyMicState();
+    renderBar();
+    API.toast(V.mic ? 'Microphone on — you are talking' : 'Microphone off');
   }
 
   /* ---------------------------------------------------------------- *
@@ -337,37 +354,21 @@
    * ---------------------------------------------------------------- */
   function init(api) {
     API = api;
-    if (typeof RTCPeerConnection !== 'function') {
-      // Still allow starting a call from a device that can't, so we fail loudly.
-    }
 
     const talk = $('btnTalk');
-    const isTouch = window.PointerEvent !== undefined;
 
-    const down = (e) => {
-      if (!V.active) return;                 // a plain tap starts the call
-      if (e && e.preventDefault) e.preventDefault();
-      V.holding = true;
-      applyMicState();
-    };
-    const up = () => {
-      if (!V.holding) return;
-      V.holding = false;
-      applyMicState();
-    };
-
+    // One tap starts a call; after that, a tap switches the microphone on or off.
     talk.addEventListener('click', () => {
-      // While in a call the button is a push-to-talk key — press and hold only.
       if (!V.active) startCall();
+      else toggleMic();
     });
-    if (isTouch) {
-      talk.addEventListener('pointerdown', down);
-      talk.addEventListener('pointerup', up);
-      talk.addEventListener('pointercancel', up);
-      talk.addEventListener('pointerleave', up);
-    } else {
-      talk.addEventListener('mousedown', down);
-      talk.addEventListener('mouseup', up);
+
+    const sw = $('micSwitch');
+    if (sw) {
+      sw.addEventListener('click', (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        toggleMic();
+      });
     }
 
     $('callAccept').addEventListener('click', acceptCall);
@@ -395,6 +396,6 @@
   window.ConvoyVoice = {
     init,
     _internals: { CFG, V, startCall, acceptCall, decline, leaveCall, onMessage,
-                  renderBar, updateStatus, peerCount },
+                  renderBar, updateStatus, toggleMic, peerCount },
   };
 })();
