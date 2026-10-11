@@ -126,6 +126,15 @@ for notched phones, and a compact layout for landscape when the phone is in a mo
   **Rooms** — or just open the app again — and rejoin with one tap, no retyping codes.
 - Forget a room any time from the same list.
 
+**Sharing those rooms with the whole group**
+- The app has no backend, so a public GitHub repo stands in for one. Your phone holds a
+  token and writes `rooms.json`; every other phone just reads the public file.
+- That is what makes it one-way: reading a public repo needs no credentials at all, so
+  there is no token on anyone else's phone to lose. Only yours can save.
+- Set it up by **long-pressing the room chip** — the owner settings are hidden there.
+- Nothing syncs until you fill that in. Without it the app works exactly as before, with
+  rooms kept on the phone you joined them from.
+
 **Group voice calls**
 - Tap **Talk** and every phone in the room rings. Whoever answers joins the call.
 - Default is **push to talk only**: the microphone is live exactly while you hold the Talk
@@ -193,6 +202,8 @@ and **Keep current**. Nothing is swapped until you say so.
 | **FOSSGIS OSRM** | Routing via `routed-car`, `routed-bike` and `routed-foot` — three separate servers, one per travel mode. Free, no key. |
 | **SpeechSynthesis API** | Spoken turn prompts. Built into the browser. |
 | **Service worker** | Makes the app installable and serves it offline — it caches the app shell, the CDN libraries and the tiles you've already viewed. |
+| **WebRTC** | Peer-to-peer audio for group calls. Signalling rides on the same MQTT topic; the audio itself never touches a server. |
+| **A public GitHub repo** | Optional. Stands in for a backend so saved rooms can be shared. Your phone writes it with a token; everyone else only reads it. |
 
 Messages are small JSON blobs published to one topic per room:
 
@@ -207,9 +218,14 @@ sarvam-convoy/v1/<room-code>/bus
   "geometry":[[lat,lng],...], "steps":[{"text":"Turn left onto MG Road", ...}] }
 
 { "t":"route-clear", "id":"c-9f2k..." }
+
+{ "t":"voice-invite", "id":"c-9f2k...", "by":"Priya", "callId":"v-7x2a" }
+{ "t":"voice-offer",  "id":"c-9f2k...", "to":"c-1a2b...", "callId":"v-7x2a", "sdp":{...} }
 ```
 
-Nothing is stored on a server; when the last person leaves, the room is empty.
+Nothing about the live map is stored on a server; when the last person leaves, the room is
+empty. The only thing that persists anywhere is the saved-room list, and only if you turn on
+GitHub sync — and then it is a file in your own repo.
 
 ---
 
@@ -285,8 +301,20 @@ This is a **working prototype**, and its simplicity comes with real trade-offs:
   and who is on it. Treat call metadata as public.
 - **The voice mesh suits small groups.** Every phone holds a connection to every other, so
   it is comfortable to about six people and degrades past that.
-- **Saved rooms live on one device.** They are kept in the browser's local storage, so a
-  friend only sees a room they have joined before. Nothing is stored on a server.
+- **Saved rooms live on one device unless you turn on GitHub sync.** Without it they are
+  kept in the browser's local storage, so a friend only sees a room they have joined before.
+  With it, the shared list is world-readable — anyone who finds the repo can read the room
+  codes and the names in them. The live map is already public through the relay, so this
+  adds names and history, not positions.
+- **Every save is a commit.** The repo's history keeps every version of the room list and
+  will grow. Use a dedicated repo so it never mixes with real code.
+- **A token in browser storage is not a vault.** It is readable by anyone who unlocks your
+  phone and opens the developer tools, and by any script that runs on the page. Use a
+  fine-grained token limited to that one repo, with **Contents: read and write**, and an
+  expiry you rotate — never a classic token with broad `repo` scope.
+- **GitHub limits unauthenticated reads to 60 an hour per IP.** The app reads through the
+  raw CDN instead, which is not subject to that, but the CDN caches for a few minutes — so
+  a change can take a couple of minutes to reach the other phones.
 - **Map rotation needs a third-party plugin.** Leaflet cannot rotate a map on its own,
   so heading-up mode uses `leaflet-rotate`, which patches parts of Leaflet's internals.
   If it fails to load the app carries on unchanged with a north-up map; set
@@ -403,11 +431,23 @@ ringMs: 30000,         // how long an incoming call rings before giving up
 maxPeers: 8,           // refuse new connections past this
 ```
 
+`sync.js` — shared rooms over GitHub:
+
+```js
+file: 'rooms.json',    // the file written to the repo root
+branch: 'main',        // the branch it is written to
+pushDebounceMs: 8000,  // at most one commit every 8s while you join rooms
+pullMs: 300000,        // re-read the shared list every 5 minutes
+```
+
 ## Testing
 
-Four headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and
-speech) cover the real `app.js`, `route.js` and `voice.js` — 259 checks in total:
+Five headless jsdom suites (stubbed Leaflet, MQTT, WebRTC, getUserMedia, fetch and speech)
+cover the real `app.js`, `route.js`, `voice.js` and `sync.js` — 290 checks in total:
 
+- `tests/sync-test.js` — the owner's phone storing a token and committing the room list, a
+  reader seeing shared rooms with no token and never writing, a rejected token, and repo
+  parsing.
 - `tests/rooms-voice-test.js` — saving and forgetting rooms, remembering who was in them,
   rejoining from the list, ringing the room, accepting and declining a call, the offer /
   answer handshake, push-to-talk gating, hanging up, and a blocked microphone.

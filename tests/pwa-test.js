@@ -47,6 +47,8 @@ function testStaticFiles() {
 
   check('voice.js is precached and loaded',
         /voice\.js/.test(read('sw.js')) && /voice\.js/.test(html));
+  check('sync.js is precached and loaded',
+        /sync\.js/.test(read('sw.js')) && /sync\.js/.test(html));
 
   // --- manifest
   let mf = null;

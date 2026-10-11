@@ -201,6 +201,33 @@
   </div>
 </div>
 
+<!-- Owner settings: reachable only by a long press on the room chip -->
+<div id="settings" class="overlay hidden">
+  <div class="card">
+    <div class="brand"><span class="dot"></span> Convoy</div>
+    <h1>Owner settings</h1>
+    <p class="sub">Only this phone needs these. Everyone else just joins with the room code — reading the repo needs no token at all.</p>
+
+    <label for="inRepo">Rooms repo</label>
+    <input id="inRepo" placeholder="owner/name" autocomplete="off" spellcheck="false" />
+
+    <label for="inToken">GitHub token</label>
+    <input id="inToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
+
+    <p class="fine">
+      Kept only in this browser. Never in the app's source, and never sent to anyone in the room.
+      Use a fine-grained token limited to this one repo, with <b>Contents: read and write</b>, and a
+      short expiry you rotate.
+    </p>
+
+    <button id="btnSaveSync" class="primary">Save</button>
+    <button id="btnSyncNow" class="ghost">Sync now</button>
+    <button id="btnClearSync" class="ghost">Clear token</button>
+    <button id="btnSettingsClose" class="ghost">Close</button>
+    <p id="syncStatus" class="fine"></p>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -211,6 +238,7 @@
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="route.js"></script>
 <script src="voice.js"></script>
+<script src="sync.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

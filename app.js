@@ -916,6 +916,7 @@ function wire() {
   // Saved rooms: rejoin without retyping the code.
   $('btnRooms').addEventListener('click', () => {
     renderSavedRooms();
+    if (window.ConvoySync) window.ConvoySync.pull();
     $('btnJoinCancel').style.display = state.joined ? '' : 'none';
     $('join').classList.remove('hidden');
   });
@@ -959,6 +960,39 @@ function rememberRoom(code, name) {
   if (state.me) r.members[state.me.id] = { name: state.me.name, lastSeen: Date.now() };
   saveRooms(all);
   renderSavedRooms();
+  if (window.ConvoySync) window.ConvoySync.schedulePush();
+}
+
+// Union a shared room list into what is on this phone. The owner's phone is the
+// only writer, so a reader never loses anything it already had.
+function mergeRooms(remote) {
+  if (!remote || typeof remote !== 'object') return 0;
+  const all = loadRooms();
+  let changed = 0;
+  Object.keys(remote).forEach((code) => {
+    const r = remote[code];
+    if (!r || typeof r !== 'object' || !code) return;
+    const cur = all[code];
+    if (!cur) {
+      all[code] = {
+        code, name: r.name,
+        firstSeen: r.firstSeen || Date.now(), lastSeen: r.lastSeen || Date.now(),
+        members: Object.assign({}, r.members || {}),
+      };
+      changed++;
+      return;
+    }
+    if ((r.lastSeen || 0) > (cur.lastSeen || 0)) { cur.lastSeen = r.lastSeen; changed++; }
+    if (r.name && !cur.name) cur.name = r.name;
+    cur.members = cur.members || {};
+    Object.keys(r.members || {}).forEach((id) => {
+      const rm = r.members[id] || {};
+      const cm = cur.members[id];
+      if (!cm || (rm.lastSeen || 0) > (cm.lastSeen || 0)) { cur.members[id] = rm; changed++; }
+    });
+  });
+  if (changed) { saveRooms(all); renderSavedRooms(); }
+  return changed;
 }
 
 function rememberMember(code, id, name) {
@@ -975,6 +1009,7 @@ function forgetRoom(code) {
   delete all[code];
   saveRooms(all);
   renderSavedRooms();
+  if (window.ConvoySync) window.ConvoySync.schedulePush();
   toast('Forgot "' + code + '"');
 }
 
@@ -1114,6 +1149,8 @@ window.Convoy = {
   toast, setStatus, state, send, fitAll, focusPeer, setVehicle,
   map: () => map,
   publishRoute, clearSharedRoute, hooks,
+  rooms: { load: loadRooms, save: saveRooms, render: renderSavedRooms, remember: rememberRoom },
+  mergeRooms,
   _internals: { sunTimes, themeFor, applyTheme, setTheme, onMapTap, updateBearing,
                 getBearing: () => mapBearing },
 };
@@ -1136,7 +1173,9 @@ function boot() {
   setInterval(applyTheme, CFG.theme.checkMs);
   if (window.ConvoyRoute) window.ConvoyRoute.init(window.Convoy);
   if (window.ConvoyVoice) window.ConvoyVoice.init(window.Convoy);
+  if (window.ConvoySync) window.ConvoySync.init(window.Convoy);
   renderSavedRooms();
+  if (window.ConvoySync) window.ConvoySync.pull();
 
   // Prefill from URL / storage
   const hashRoom = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
