@@ -1,13 +1,20 @@
-/* Convoy — offering to put the app on the home screen.
+/* Convoy — getting the app onto the phone properly, on both kinds of phone.
  *
- * On Android (Chrome, Edge, Samsung Internet, Brave) and on desktop Chrome the browser
- * hands us a deferred install prompt that we can fire from our own button, so it is a
- * single tap. On iOS Safari there is no such API — Apple does not allow a page to
- * trigger it — so the most we can do is point at the Share button. That is a platform
- * limit, not an oversight, and the card says so plainly rather than pretending.
+ * Three different situations, and the card says a different thing for each:
  *
- * It is offered once, on a phone that has never used the app, and only when the app is
- * not already installed. Dismissing it is remembered.
+ *   1. Inside another app's browser (WhatsApp, Instagram, Facebook, an Android
+ *      WebView). This is what happens when someone taps a link shared in a chat.
+ *      Location, notifications and installing all need the real browser, so the
+ *      card tells them how to get there. It is the most important of the three,
+ *      because a shared link almost always lands here first.
+ *
+ *   2. Android (Chrome, Edge, Samsung Internet, Brave) and desktop Chrome. The
+ *      browser hands us a deferred install prompt that we fire from our own
+ *      button, so it is one tap.
+ *
+ *   3. iOS Safari. There is no install API — Apple does not let a page trigger
+ *      it — so the card points at the Share button instead. That is a platform
+ *      limit, not an oversight.
  */
 (function () {
   'use strict';
@@ -30,6 +37,27 @@
     try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
   }
 
+  function isIOS() {
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    // iPadOS reports itself as a Mac, but has a touch screen.
+    return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+  }
+
+  // Are we inside another app's browser rather than a real one? Everything shared through
+  // a chat opens here first, and it is missing location, notifications and installing.
+  function appBrowser() {
+    const ua = navigator.userAgent || '';
+    if (/WhatsApp|FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|TikTok|SnapChat/i.test(ua)) {
+      return true;
+    }
+    if (/Android/.test(ua) && /\bwv\b/.test(ua)) return true;
+    // An iOS in-app browser is a WKWebView: it says Mobile but never Safari. The real
+    // browsers on iOS (Safari, Chrome, Firefox, Edge) all say Safari in the user agent.
+    if (/iPhone|iPad|iPod/.test(ua) && !/Safari/.test(ua)) return true;
+    return false;
+  }
+
   // Already running as an installed app, rather than in a browser tab?
   function isStandalone() {
     try {
@@ -43,38 +71,51 @@
   // Never used it on this phone: no name and no room kept.
   const isFirstTime = () => !read(LS.name) && !read(LS.room);
 
-  function isIOS() {
-    const ua = navigator.userAgent || '';
-    if (/iPad|iPhone|iPod/.test(ua)) return true;
-    // iPadOS reports itself as a Mac, but has a touch screen.
-    return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
-  }
-
   function hide() {
     const card = $('installCard');
     if (card) card.classList.add('hidden');
   }
 
-  function wireDismiss() {
+  function setTitle(text) {
+    const el = $('installTitle');
+    if (el) el.textContent = text;
+  }
+
+  function wireDismiss(persist) {
     const no = $('btnInstallNo');
     if (!no) return;
     no.addEventListener('click', () => {
-      write(LS.dismissed, '1');
+      if (persist) write(LS.dismissed, '1');
       hide();
     });
   }
+
+  const DONE = '<button id="btnInstallNo" class="linkish">Not now</button>';
 
   function render() {
     const card = $('installCard');
     const body = $('installBody');
     if (!card || !body) return;
 
-    if (deferred) {
+    if (appBrowser()) {
+      // The most useful message of the three: this is where a shared link lands.
+      setTitle('Open Convoy in your browser');
+      body.innerHTML =
+        '<p class="install-steps">' +
+          (isIOS() ? 'Tap the menu at the top, then <b>Open in Safari</b>.'
+                   : 'Tap the <b>&#8942;</b> menu at the top, then <b>Open in Chrome</b>.') +
+        '</p>' +
+        '<p class="install-sub">Your location, notifications and adding Convoy to the home ' +
+        'screen all need the real browser — the one built into a chat app cannot do them.</p>' +
+        DONE;
+      wireDismiss(false);          // worth saying again next time; not remembered
+    } else if (deferred) {
+      setTitle('Keep Convoy on your home screen');
       body.innerHTML =
         '<p class="install-sub">It opens full-screen, like an app, and keeps working when ' +
         'the signal drops.</p>' +
         '<button id="btnInstall" class="primary">Add to home screen</button>' +
-        '<button id="btnInstallNo" class="linkish">Not now</button>';
+        DONE;
       $('btnInstall').addEventListener('click', async () => {
         const held = deferred;
         deferred = null;
@@ -84,24 +125,44 @@
           await held.userChoice;
         } catch (e) { /* they closed it */ }
       });
+      wireDismiss(true);
     } else if (isIOS()) {
+      setTitle('Keep Convoy on your home screen');
       body.innerHTML =
         '<p class="install-steps">Tap the <b>Share</b> button in Safari, then choose ' +
         '<b>Add to Home Screen</b>.</p>' +
-        '<button id="btnInstallNo" class="linkish">Not now</button>';
+        '<p class="install-sub">Notifications only work once it is on your home screen.</p>' +
+        DONE;
+      wireDismiss(true);
     } else {
       hide();          // nothing we can offer on this browser
       return;
     }
 
-    wireDismiss();
     card.classList.remove('hidden');
   }
 
   function maybeOffer() {
-    if (offered || isStandalone() || read(LS.dismissed) || !isFirstTime()) return;
+    if (offered) return;
+
+    // Inside another app's browser, say so even to someone who has used the app before:
+    // the app is genuinely limited here, so it is a compatibility note, not a sales pitch.
+    if (appBrowser()) { offered = true; render(); return; }
+
+    if (isStandalone() || read(LS.dismissed) || !isFirstTime()) return;
+    // Nothing to offer yet on Android until the browser says it can be installed.
+    if (!deferred && !isIOS()) return;
+
     offered = true;
     render();
+  }
+
+  // Location was refused. If we are inside another app's browser, that is usually why —
+  // so say it again even if the card was dismissed.
+  function showOpenInBrowser() {
+    if (!appBrowser()) return;
+    const card = $('installCard');
+    if (card) card.classList.remove('hidden');
   }
 
   function init() {
@@ -114,13 +175,11 @@
       write(LS.dismissed, '1');
       hide();
     });
-
-    // iOS never fires the event, so offer on the spot instead of waiting for one.
-    if (isIOS()) setTimeout(maybeOffer, 400);
+    maybeOffer();
   }
 
   window.ConvoyInstall = {
-    init, maybeOffer, isStandalone, isFirstTime, isIOS,
+    init, maybeOffer, isStandalone, isFirstTime, isIOS, appBrowser, showOpenInBrowser,
     _internals: { hasPrompt: () => !!deferred, hide, render },
   };
 })();

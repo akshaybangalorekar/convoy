@@ -49,7 +49,12 @@ button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
-#map { position: fixed; inset: 0; background: var(--bg); }
+#map {
+  position: fixed; inset: 0; background: var(--bg);
+  /* iOS ignores user-scalable=no, so a double tap would zoom the page. This stops it,
+     and Leaflet handles pinch and drag itself. */
+  touch-action: none;
+}
 
 /* ---------- Shared bits ---------- */
 .card {
@@ -175,11 +180,15 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 /* ---------- Overlays ---------- */
 .overlay {
   position: fixed; inset: 0; z-index: 50;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-start; justify-content: center;
   padding: 18px; background: rgba(0, 0, 0, 0.35);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 .overlay.hidden { display: none; }
+/* `margin: auto` centres the card when it fits and lets it scroll when it does not —
+   which is what happens on iOS when the keyboard comes up. */
+.overlay > .card, .overlay > .join-stack { margin: auto; }
 
 .join-card, .search-card { width: 100%; max-width: 420px; padding: 26px 22px 22px; }
 .search-card { max-height: 82vh; display: flex; flex-direction: column; }
@@ -288,7 +297,6 @@ input:focus { outline: none; border-color: var(--accent); }
 /* ---------- Offering to install ---------- */
 .join-stack {
   width: 100%; max-width: 420px;
-  max-height: 100%; overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px;
 }
 .join-card { width: 100%; padding: 26px 22px 22px; }

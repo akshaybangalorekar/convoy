@@ -76,10 +76,8 @@ async function testIOSGetsInstructions() {
   } });
   await sleep(30);
   check('iOS is recognised', api.window.ConvoyInstall.isIOS() === true);
-  check('nothing is offered straight away', !shown(api));
-
-  await sleep(500);            // iOS never fires the event, so we offer on a timer
-  check('the card still appears on an iPhone', shown(api), body(api));
+  check('the card appears without waiting for an event iOS will never fire',
+        shown(api), body(api));
   check('with the instructions, since there is no button we can press',
         /Share/.test(body(api)) && /Add to Home Screen/.test(body(api)), body(api));
   check('and no install button that would do nothing',
@@ -112,6 +110,89 @@ async function testInviteSurvivesInstalling() {
         d.getElementById('btnGo').textContent === 'Join group', d.getElementById('btnGo').textContent);
 }
 
+/* ---------- Links shared through a chat land in the app's own browser ---------- */
+// An iOS in-app browser is a WKWebView: it says Mobile but never Safari.
+const APP_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+                '(KHTML, like Gecko) Mobile/15E148';
+// Android in-app browsers are WebViews, which mark themselves with "wv".
+const APP_ANDROID = 'Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230805.001; wv) ' +
+                    'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.0.0 ' +
+                    'Mobile Safari/537.36';
+const REAL_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 ' +
+                 '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const REAL_ANDROID = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 ' +
+                     '(KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36';
+
+const withUA = (ua) => (w) => Object.defineProperty(w.navigator, 'userAgent',
+  { configurable: true, get: () => ua });
+
+async function testSharedLinksLandInAppBrowsers() {
+  const ios = boot({ setup: withUA(APP_IOS) });
+  await sleep(30);
+  check('an iPhone\'s in-app browser is recognised',
+        ios.window.ConvoyInstall.appBrowser() === true);
+  check('the card appears straight away, with no waiting for an event', shown(ios), body(ios));
+  check('it says to open Convoy in the real browser',
+        /Open Convoy in your browser/i.test(card(ios).textContent), card(ios).textContent);
+  check('and where that button is on an iPhone', /Safari/.test(body(ios)), body(ios));
+  check('explaining what will not work in there',
+        /location/i.test(body(ios)) && /notification/i.test(body(ios)), body(ios));
+  check('and offering no install button that could not work',
+        !ios.document.getElementById('btnInstall'));
+
+  const android = boot({ setup: withUA(APP_ANDROID) });
+  await sleep(30);
+  check('an Android in-app browser is recognised',
+        android.window.ConvoyInstall.appBrowser() === true);
+  check('and it points at Chrome', /Chrome/.test(body(android)), body(android));
+}
+
+async function testRealBrowsersAreNotMistakenForAppBrowsers() {
+  const safari = boot({ setup: withUA(REAL_IOS) });
+  check('Safari is not mistaken for an app browser',
+        safari.window.ConvoyInstall.appBrowser() === false);
+  const chrome = boot({ setup: withUA(REAL_ANDROID) });
+  check('nor is Chrome on Android', chrome.window.ConvoyInstall.appBrowser() === false);
+  const plain = boot();
+  check('nor is a desktop browser', plain.window.ConvoyInstall.appBrowser() === false);
+}
+
+async function testTheAppBrowserNoteRepeats() {
+  const api = boot({ setup: withUA(APP_ANDROID) });
+  await sleep(30);
+  api.document.getElementById('btnInstallNo').click();
+  await sleep(10);
+  check('it can be dismissed for now', !shown(api));
+  check('but that is not remembered, because it matters on every visit',
+        api.window.localStorage.getItem('convoy.install.dismissed') === null,
+        String(api.window.localStorage.getItem('convoy.install.dismissed')));
+}
+
+async function testItIsShownEvenToSomeoneWhoHasUsedTheApp() {
+  const api = boot({ setup: (w) => {
+    w.localStorage.setItem('convoy.name', 'Akshay');
+    w.localStorage.setItem('convoy.room', 'goa-trip');
+    withUA(APP_IOS)(w);
+  } });
+  await sleep(30);
+  check('a returning user inside a chat app is still told the app is limited there',
+        shown(api), body(api));
+}
+
+async function testARefusedLocationSaysWhy() {
+  const api = boot({ setup: withUA(APP_IOS) });
+  await sleep(30);
+  api.document.getElementById('btnInstallNo').click();
+  await sleep(10);
+  check('dismissed for now', !shown(api));
+
+  api.join('Akshay', 'goa-trip');
+  api.geoError(1);                       // permission denied
+  await sleep(10);
+  check('a refused location brings the note back, since that is usually the reason',
+        shown(api), body(api));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -122,6 +203,11 @@ async function testInviteSurvivesInstalling() {
     await testIOSGetsInstructions();
     await testInviteIsRemembered();
     await testInviteSurvivesInstalling();
+    await testSharedLinksLandInAppBrowsers();
+    await testRealBrowsersAreNotMistakenForAppBrowsers();
+    await testTheAppBrowserNoteRepeats();
+    await testItIsShownEvenToSomeoneWhoHasUsedTheApp();
+    await testARefusedLocationSaysWhy();
   } catch (e) { crash(e); }
   finish('install');
 })();

@@ -176,6 +176,9 @@ function boot(opts = {}) {
       });
     },
 
+    /** Report a geolocation failure, as the browser would. */
+    geoError(code) { if (geo.err) geo.err({ code: code || 1 }); },
+
     /** Feed a message into the room, as if another phone sent it. */
     recv(msg) {
       const c = clients[clients.length - 1];

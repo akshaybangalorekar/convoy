@@ -256,6 +256,92 @@ async function testLeave() {
   check('the map is cleared of people', api.window.Convoy.state.peers.size === 0);
 }
 
+/* ---------- Inviting, on both kinds of phone ---------- */
+async function testTheInviteCarriesTheLink() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  check('the invite link carries the room', /#r=goa-trip$/.test(api.window.Convoy.inviteLink()),
+        api.window.Convoy.inviteLink());
+
+  let shared = null;
+  Object.defineProperty(api.window.navigator, 'share', {
+    configurable: true, value: async (data) => { shared = data; },
+  });
+  await api.window.Convoy.share();
+  await sleep(10);
+
+  check('the phone\'s own share sheet is used where there is one', !!shared,
+        JSON.stringify(shared));
+  check('the link is in the text, which is what WhatsApp on Android reads',
+        !!shared && shared.text.indexOf('#r=goa-trip') >= 0, shared && shared.text);
+  check('and in the url field as well, for everything that reads that instead',
+        !!shared && /#r=goa-trip$/.test(shared.url || ''), shared && shared.url);
+}
+
+async function testCopyingWhenSharingIsUnavailable() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  Object.defineProperty(api.window.navigator, 'clipboard',
+    { configurable: true, value: undefined });
+  let asked = null;
+  api.window.document.execCommand = (cmd) => { asked = cmd; return true; };
+
+  await api.window.Convoy.share();
+  await sleep(10);
+  check('the old copy method is used when the clipboard API is missing',
+        asked === 'copy', String(asked));
+  check('and it says the link is copied',
+        /copied/i.test(api.document.getElementById('banner').textContent),
+        api.document.getElementById('banner').textContent);
+}
+
+async function testTheLinkIsShownWhenNothingElseWorks() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  Object.defineProperty(api.window.navigator, 'clipboard',
+    { configurable: true, value: undefined });
+  api.window.document.execCommand = () => false;
+
+  await api.window.Convoy.share();
+  await sleep(10);
+  const card = api.document.getElementById('shareCard');
+  check('the link is shown so it can be copied by hand',
+        !card.classList.contains('hidden'));
+  check('with the link in it',
+        /#r=goa-trip$/.test(api.document.getElementById('shareUrl').value),
+        api.document.getElementById('shareUrl').value);
+
+  api.document.getElementById('btnShareClose').click();
+  check('and it can be closed', card.classList.contains('hidden'));
+}
+
+async function testBothLinkShapesWork() {
+  const hash = boot({ setup: (w) => { w.history.replaceState(null, '', '/#r=hash-room'); } });
+  await sleep(20);
+  check('a link with a hash works', hash.window.Convoy.roomFromUrl() === 'hash-room',
+        hash.window.Convoy.roomFromUrl());
+  check('and fills the code in',
+        hash.document.getElementById('inRoom').value === 'hash-room',
+        hash.document.getElementById('inRoom').value);
+
+  const query = boot({ setup: (w) => { w.history.replaceState(null, '', '/?r=query-room'); } });
+  await sleep(20);
+  check('a link with a query works too, since some chat apps keep only that',
+        query.window.Convoy.roomFromUrl() === 'query-room', query.window.Convoy.roomFromUrl());
+  check('and fills the code in as well',
+        query.document.getElementById('inRoom').value === 'query-room',
+        query.document.getElementById('inRoom').value);
+  check('and the button offers to join',
+        query.document.getElementById('btnGo').textContent === 'Join group',
+        query.document.getElementById('btnGo').textContent);
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -268,6 +354,10 @@ async function testLeave() {
     await testDestinationShared();
     await testNotifications();
     await testLeave();
+    await testTheInviteCarriesTheLink();
+    await testCopyingWhenSharingIsUnavailable();
+    await testTheLinkIsShownWhenNothingElseWorks();
+    await testBothLinkShapesWork();
   } catch (e) { crash(e); }
   finish('app');
 })();

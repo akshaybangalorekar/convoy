@@ -53,6 +53,29 @@ moves it back to the top instead of listing it twice.
 
 It then opens full-screen like any other app.
 
+## The same on an iPhone and an Android
+
+Everything works on both. Three things differ, and two of them are Apple's decisions rather
+than ours:
+
+- **A link shared in a chat opens in the chat app's own browser.** WhatsApp, Instagram and
+  Facebook all do this. That browser has no location, no notifications and no installing — so
+  the app notices where it is and says **"Open Convoy in your browser"**, pointing at the right
+  button for the phone it is on. This is the one to know about if you are sharing by WhatsApp:
+  the link works, but the recipient should open it in Safari or Chrome for the full app.
+- **Installing is one tap on Android and two on an iPhone.** Android hands the app its own
+  install prompt, which it fires from its own button. Safari has no such thing — Apple does not
+  let a page trigger it — so the card points at the Share button instead.
+- **Notifications on an iPhone need the app installed.** In a plain Safari tab iOS gives a page
+  no way to notify you at all. Once Convoy is on the home screen it can ask, and then it behaves
+  like Android. On Android it works in the tab as well. Vibration is Android only, because
+  `navigator.vibrate` does not exist in Safari.
+
+Everything else behaves identically: the live map, the destination anyone can set, everyone's
+arrival time, the notifications that do arrive, unique car colours, the view that keeps everyone
+in frame, one tap out and two taps in, the last five places, and — on Android, which is the only
+one with a back button — back closing the search sheet instead of leaving the app.
+
 ## The one thing to know about notifications
 
 The ping appears as a banner on screen and a vibration **whenever the app is open**, and as a
@@ -203,7 +226,7 @@ proper night map.
 ## Testing
 
 Seven headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 356 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 401 checks:
 
 ```bash
 npm install
@@ -211,8 +234,9 @@ npm test
 ```
 
 - `tests/app-test.js` — starting a group, joining by code and by link, people appearing,
-  arrival times computed and shared, destination changes from either side, and every
-  notification.
+  arrival times computed and shared, destination changes from either side, every notification,
+  and inviting: the link going into the share text as well as the url, the older copy method,
+  the link shown by hand when nothing else works, and both shapes of invite link.
 - `tests/presence-test.js` — announcing that our own app went to the background and back,
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
@@ -222,7 +246,8 @@ npm test
   treated as leaving, that Leave is, and that the whole group comes back with the room.
 - `tests/install-test.js` — who gets offered the install and who does not, the browser's own
   prompt being fired from our button, dismissing it being remembered, the iOS instructions
-  where there is no prompt to fire, and an invite code surviving the install.
+  where there is no prompt to fire, an invite code surviving the install, and a link opened
+  inside a chat app being spotted and answered with the right advice for each phone.
 - `tests/route-test.js` — place search, the suburb beating the city, the postcode, a fuller
   answer arriving after the quick one, a service answering with an empty list not hiding one
   that has an answer, a broken service not emptying the search, the country restriction never

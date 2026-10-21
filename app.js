@@ -106,6 +106,16 @@
     } catch (e) { return 'c-' + rand(8); }
   }
 
+  // The room code can arrive as #r=... or ?r=... — some chat apps and link handlers keep
+  // only one of the two, so both are accepted.
+  function roomFromUrl() {
+    try {
+      const fromHash = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
+      if (fromHash) return fromHash;
+      return new URLSearchParams(location.search).get('r') || '';
+    } catch (e) { return ''; }
+  }
+
   function normRoom(s) {
     return String(s || '').trim().toLowerCase()
       .replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
@@ -775,6 +785,10 @@
       2: 'Location is unavailable right now',
       3: 'Location timed out, retrying',
     }[err.code] || 'Location error');
+    // If this is the browser built into a chat app, that is usually why — say so.
+    if (window.ConvoyInstall && window.ConvoyInstall.showOpenInBrowser) {
+      window.ConvoyInstall.showOpenInBrowser();
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -1050,18 +1064,58 @@
     updateGoLabel();
   }
 
+  const inviteLink = () => location.origin + location.pathname +
+    '#r=' + encodeURIComponent(state.room);
+
+  // The modern clipboard first, then the old way — which is what still works inside the
+  // browsers built into chat apps, where the clipboard API is often blocked.
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) { /* fall through to the old way */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
+  }
+
+  // Last resort: show the link so it can be copied by hand.
+  function showLink(url) {
+    const card = $('shareCard');
+    if (!card) return;
+    $('shareUrl').value = url;
+    card.classList.remove('hidden');
+    setTimeout(() => { try { $('shareUrl').select(); } catch (e) {} }, 80);
+  }
+
   async function share() {
-    const url = location.origin + location.pathname + '#r=' + encodeURIComponent(state.room);
-    const text = 'Join my Convoy group "' + state.room + '"';
+    const url = inviteLink();
+    // WhatsApp on Android reads the `text` field and can drop a separate `url`, so the
+    // link goes in both. This is the difference between the message arriving with a
+    // tappable link and arriving as bare words.
+    const text = 'Join my Convoy group: ' + url;
+
     try {
-      if (navigator.share) { await navigator.share({ title: 'Convoy', text, url }); return; }
-    } catch (e) { /* the user dismissed it */ }
-    try {
-      await navigator.clipboard.writeText(url);
-      toast('Invite link copied');
-    } catch (e) {
-      banner(url);
-    }
+      if (navigator.share) {
+        await navigator.share({ title: 'Convoy', text, url });
+        return;
+      }
+    } catch (e) { /* they dismissed the share sheet, or it is unavailable here */ }
+
+    if (await copyText(url)) { banner('Invite link copied — paste it into your chat'); return; }
+    showLink(url);
   }
 
   /* ---------------------------------------------------------------- *
@@ -1172,6 +1226,7 @@
     });
 
     $('btnInvite').addEventListener('click', share);
+    $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
     $('btnLeave').addEventListener('click', () => { stopDemo(); leave(); });
     $('btnRecenter').addEventListener('click', () => {
       state.autoFit = true;
@@ -1229,7 +1284,7 @@
     renderDest();
 
     // A room in the link, or the one we were in last time.
-    const hash = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
+    const hash = roomFromUrl();
     let savedRoom = '';
     let savedName = '';
     let invited = '';
@@ -1259,8 +1314,8 @@
   }
 
   window.Convoy = {
-    CFG, state, esc, toast, setDest, clearDest, join, leave, share,
-    map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom,
+    CFG, state, esc, toast, setDest, clearDest, join, leave, share, copyText, inviteLink,
+    map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom, roomFromUrl,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
                   presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest,

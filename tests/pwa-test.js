@@ -64,6 +64,28 @@ try {
   check('the offer is remembered once dismissed', /install\.dismissed/.test(install));
   check('an invite link is kept, so installing does not lose the room',
         /convoy\.invite/.test(app));
+
+  /* ---------- Same on both kinds of phone ---------- */
+  check('a link opened inside a chat app is noticed', /function appBrowser/.test(install));
+  check('and it says to open Convoy in the real browser',
+        /Open Convoy in your browser/.test(install));
+  check('pointing at Safari on an iPhone and Chrome on Android',
+        /Open in Safari/.test(install) && /Open in Chrome/.test(install));
+  check('a refused location says the same thing', /showOpenInBrowser/.test(install));
+  check('the invite link goes in the share text as well as the url',
+        /Join my Convoy group: ' \+ url/.test(app));
+  check('the old copy method is kept for browsers that block the clipboard',
+        /execCommand/.test(app));
+  check('the link is shown to copy by hand when nothing else works',
+        /id="shareUrl"/.test(html) && /function showLink/.test(app));
+  check('both link shapes are accepted, hash and query',
+        /function roomFromUrl/.test(app) && /location\.search/.test(app));
+  check('the back button closes the search sheet rather than leaving the app',
+        /convoySheet/.test(read('route.js')) && /popstate/.test(read('route.js')));
+  check('the map does not let a double tap zoom the page on iOS',
+        /touch-action: none/.test(css));
+  check('overlays scroll, so the keyboard does not push the card off screen',
+        /overflow-y: auto/.test(css) && /margin: auto/.test(css));
   check('a room lasts a week by default', /roomDays: 7/.test(app));
   check('nobody is dropped from the room while it is open', /roomLifeMs/.test(app));
   check('closing the app is not treated as leaving', !/beforeunload/.test(app));
@@ -110,7 +132,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v5/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v6/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

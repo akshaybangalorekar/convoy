@@ -317,17 +317,36 @@
     });
   }
 
+  // Android's back button should close the sheet, not leave the app. Pushing a history
+  // entry when the sheet opens gives back something to do; iOS has no back button, but
+  // the swipe-back gesture fires the same event, so both behave alike.
+  let pushed = false;
+
   function openSearch() {
     $('search').classList.remove('hidden');
     $('inSearch').value = '';
     $('btnClearDest').style.display = API.state.dest ? '' : 'none';
     showRecent();
+    if (!pushed) {
+      try { history.pushState({ convoySheet: 'search' }, ''); pushed = true; } catch (e) {}
+    }
     setTimeout(() => { try { $('inSearch').focus(); } catch (e) {} }, 60);
   }
 
   function closeSearch() {
     $('search').classList.add('hidden');
     try { $('inSearch').blur(); } catch (e) {}
+    if (pushed) {
+      pushed = false;
+      try { history.back(); } catch (e) {}
+    }
+  }
+
+  // The back button (or the swipe) was used while the sheet was open.
+  function onPop() {
+    if (!pushed) return;
+    pushed = false;
+    closeSearch();
   }
 
   function renderResults(list) {
@@ -371,6 +390,7 @@
 
   function init(api) {
     API = api;
+    window.addEventListener('popstate', onPop);
     $('btnSearchClose').addEventListener('click', closeSearch);
     $('btnClearDest').addEventListener('click', () => {
       API.clearDest();

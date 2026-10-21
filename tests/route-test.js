@@ -476,6 +476,32 @@ async function testSearchSheet() {
   check('and tells the room', !!api.sent('dest-clear'));
 }
 
+/* ---------- The back button, which only Android has ---------- */
+async function testTheBackButtonClosesTheSheet() {
+  const api = boot({ fetch: driveOk });
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  check('the sheet is open', !d.getElementById('search').classList.contains('hidden'));
+
+  api.window.dispatchEvent(new api.window.Event('popstate'));     // the back button
+  await sleep(20);
+  check('the back button closes the sheet rather than leaving the app',
+        d.getElementById('search').classList.contains('hidden'));
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  check('and it can be opened again', !d.getElementById('search').classList.contains('hidden'));
+  d.getElementById('btnSearchClose').click();
+  await sleep(20);
+  check('closing it by hand works too', d.getElementById('search').classList.contains('hidden'));
+  check('and a stray back event after that does nothing',
+        (api.window.dispatchEvent(new api.window.Event('popstate')), true));
+}
+
 /* ---------- Recently searched places ---------- */
 // Every query returns a place named after the query, so each one is distinguishable.
 const placeNamedAfterTheQuery = (url) => {
@@ -615,6 +641,7 @@ async function testHistoryIsPerPhone() {
     await testSearchBiasedToYou();
     await testDrive();
     await testSearchSheet();
+    await testTheBackButtonClosesTheSheet();
     await testRecentPlaces();
     await testHistoryIsPerPhone();
   } catch (e) { crash(e); }

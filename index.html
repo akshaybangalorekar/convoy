@@ -62,7 +62,7 @@
   <div id="installCard" class="card install-card hidden">
     <div class="install-head">
       <span class="install-icon" aria-hidden="true"></span>
-      <strong>Keep Convoy on your home screen</strong>
+      <strong id="installTitle">Keep Convoy on your home screen</strong>
     </div>
     <div id="installBody"></div>
   </div>
@@ -97,6 +97,16 @@
     </div>
     <ul id="results" class="results"></ul>
     <button id="btnClearDest" class="ghost">Clear the destination</button>
+  </div>
+</div>
+
+<!-- Fallback for inviting, when the share sheet and the clipboard are both unavailable -->
+<div id="shareCard" class="overlay hidden">
+  <div class="card join-card">
+    <h1>Invite</h1>
+    <p class="sub">Copy this link and send it to your group.</p>
+    <input id="shareUrl" readonly />
+    <button id="btnShareClose" class="primary">Done</button>
   </div>
 </div>
 
