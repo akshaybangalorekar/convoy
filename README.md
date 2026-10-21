@@ -102,7 +102,7 @@ makes a server unnecessary here rather than merely absent.
 |---|---|
 | **Leaflet + OpenStreetMap** | Draws the map and the cars. Free, no API key. |
 | **MQTT over WebSocket** | One topic per room carries positions, the destination and arrival times. |
-| **Photon / Nominatim** | Place search. Photon first, OpenStreetMap's Nominatim as the fallback. Both free, no key. |
+| **Photon / Nominatim** | Place search. Photon first, OpenStreetMap's Nominatim as the fallback. Both free, no key. Results are reassembled from the parts each service returns — number and street, then suburb, then state and postcode — so a result reads `25 Chippendale Road, Templestowe, Victoria 3106` rather than a bare name. The search also leans towards where the phone is, so the street near you beats a namesake far away. |
 | **FOSSGIS OSRM** | The car route from you to the destination, which gives your arrival time. Free, no key. |
 | **Notifications API** | The system ping, with an on-screen banner and vibration as well. |
 | **Service worker** | Installable, works offline, and keeps the map tiles you have already seen. |
@@ -164,7 +164,7 @@ proper night map.
 ## Testing
 
 Five headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
-MQTT, geolocation, notifications and network — 225 checks:
+MQTT, geolocation, notifications and network — 239 checks:
 
 ```bash
 npm install
@@ -178,8 +178,9 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
-- `tests/route-test.js` — place search, the fallback when Photon is down, the car route, and
-  the search sheet end to end.
+- `tests/route-test.js` — place search, the fallback when Photon is down, how an address is
+  reassembled from its parts, the bias towards where the phone is, the car route, and the
+  search sheet end to end.
 - `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
   everyone in frame, and the one-tap-out / two-taps-in gestures.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are

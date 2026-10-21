@@ -43,10 +43,40 @@
     }
   }
 
+  // Join the pieces of an address, dropping the empty ones and anything repeated.
   function tidy(list) {
-    const seen = [];
-    list.forEach((x) => { if (x && seen.indexOf(x) < 0) seen.push(x); });
-    return seen.join(', ');
+    const out = [];
+    list.forEach((v) => {
+      String(v == null ? '' : v).split(', ').forEach((piece) => {
+        const t = piece.trim();
+        if (t && out.indexOf(t) < 0) out.push(t);
+      });
+    });
+    return out.join(', ');
+  }
+
+  // Photon hands back the parts of an address separately. Put them back together the way
+  // an address is written: number and street, then the suburb, then the state and
+  // postcode. The country only appears when nothing else places it.
+  function addressFrom(p) {
+    const num = p.housenumber || '';
+    const road = p.street || '';
+    const line1 = (num && road) ? (num + ' ' + road) : (road || p.name || num || '');
+    const area = p.suburb || p.neighbourhood || p.locality || p.city || p.district || '';
+    const region = [p.state, p.postcode].filter(Boolean).join(' ') || p.country || '';
+    return tidy([line1, area, region]);
+  }
+
+  // The same, from Nominatim's address breakdown.
+  function addressFromNominatim(r) {
+    const a = r.address || {};
+    const num = a.house_number || '';
+    const road = a.road || '';
+    const line1 = (num && road) ? (num + ' ' + road) : (road || r.name || num || '');
+    const area = a.suburb || a.neighbourhood || a.city_district || a.town ||
+                 a.village || a.city || a.municipality || '';
+    const region = [a.state, a.postcode].filter(Boolean).join(' ') || a.country || '';
+    return tidy([line1, area, region]);
   }
 
   async function viaPhoton(q) {
@@ -55,27 +85,33 @@
     const box = CFG.countryBox[CFG.country];
     if (box) url += '&bbox=' + box;
 
+    // Bias towards where the phone is, so a street near you beats a namesake far away.
+    const me = API && API.state && API.state.me;
+    if (me && me.lat != null) url += '&lat=' + me.lat + '&lon=' + me.lng;
+
     const j = await getJson(url, CFG.timeoutMs);
     if (!j || !Array.isArray(j.features)) return null;
     return j.features
       .filter((f) => f && f.geometry && Array.isArray(f.geometry.coordinates))
       .map((f) => {
-        const p = f.properties || {};
         const c = f.geometry.coordinates;
-        return { lat: c[1], lng: c[0], label: tidy([p.name, p.street, p.city || p.district, p.state, p.country]) };
+        return { lat: c[1], lng: c[0], label: addressFrom(f.properties || {}) };
       })
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
 
   async function viaNominatim(q) {
     let url = CFG.nominatim + '?q=' + encodeURIComponent(q) +
-              '&format=jsonv2&limit=' + CFG.maxResults;
+              '&format=jsonv2&limit=' + CFG.maxResults + '&addressdetails=1';
     if (CFG.country) url += '&countrycodes=' + CFG.country;
 
     const j = await getJson(url, CFG.timeoutMs);
     if (!Array.isArray(j)) return null;
     return j
-      .map((r) => ({ lat: parseFloat(r.lat), lng: parseFloat(r.lon), label: r.display_name || '' }))
+      .map((r) => ({
+        lat: parseFloat(r.lat), lng: parseFloat(r.lon),
+        label: addressFromNominatim(r) || r.display_name || '',
+      }))
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
 
@@ -174,6 +210,6 @@
 
   window.ConvoyRoute = {
     init, openSearch, closeSearch, search, drive,
-    _internals: { CFG, getJson, tidy },
+    _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim },
   };
 })();
