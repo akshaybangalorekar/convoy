@@ -251,6 +251,43 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Recent places
+   *
+   * The last few places this phone chose. Kept on the phone and nowhere else —
+   * it is never sent to the room, so it is yours alone, not the group's.
+   * ---------------------------------------------------------------- */
+  const RECENT_KEY = 'convoy.recent';
+  const RECENT_MAX = 5;
+
+  const isPlace = (p) => !!p && typeof p.lat === 'number' && typeof p.lng === 'number' &&
+                         typeof p.label === 'string' && p.label !== '';
+
+  const samePlace = (a, b) => !!a && !!b && a.label === b.label &&
+    Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lng - b.lng) < 1e-5;
+
+  function loadRecent() {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) return [];
+      return list.filter(isPlace).slice(0, RECENT_MAX);
+    } catch (e) { return []; }
+  }
+
+  function saveRecent(list) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); }
+    catch (e) { /* full or blocked; the history is a nicety, not essential */ }
+  }
+
+  // Choosing somewhere again moves it back to the top rather than listing it twice.
+  function rememberPlace(place) {
+    if (!isPlace(place)) return;
+    const list = loadRecent().filter((p) => !samePlace(p, place));
+    list.unshift({ lat: place.lat, lng: place.lng, label: place.label, ts: Date.now() });
+    saveRecent(list);
+  }
+
+  /* ---------------------------------------------------------------- *
    * The search sheet
    * ---------------------------------------------------------------- */
   let debounce = null;
@@ -259,11 +296,32 @@
     $('results').innerHTML = '<li class="hint">' + text + '</li>';
   }
 
+  // Shown on opening the sheet: where this phone last went, ready to tap again.
+  function showRecent() {
+    const list = loadRecent();
+    const ul = $('results');
+    if (!list.length) {
+      showHint('Type at least ' + CFG.minChars + ' letters to search.');
+      return;
+    }
+    ul.innerHTML = '<li class="head">Recent</li>' + list.map((r, i) =>
+      '<li data-recent="' + i + '">' + API.esc(r.label) + '</li>').join('');
+    ul.querySelectorAll('li[data-recent]').forEach((li) => {
+      li.addEventListener('click', () => {
+        const r = list[parseInt(li.getAttribute('data-recent'), 10)];
+        if (!r) return;
+        API.setDest(r.lat, r.lng, r.label);
+        rememberPlace(r);
+        closeSearch();
+      });
+    });
+  }
+
   function openSearch() {
     $('search').classList.remove('hidden');
     $('inSearch').value = '';
     $('btnClearDest').style.display = API.state.dest ? '' : 'none';
-    showHint('Type at least ' + CFG.minChars + ' letters to search.');
+    showRecent();
     setTimeout(() => { try { $('inSearch').focus(); } catch (e) {} }, 60);
   }
 
@@ -282,6 +340,7 @@
         const r = list[parseInt(li.getAttribute('data-i'), 10)];
         if (!r) return;
         API.setDest(r.lat, r.lng, r.label);
+        rememberPlace(r);
         closeSearch();
       });
     });
@@ -319,6 +378,8 @@
     });
     $('inSearch').addEventListener('input', () => {
       if (debounce) clearTimeout(debounce);
+      // Clearing the box brings the recent places back.
+      if (!$('inSearch').value.trim()) { showRecent(); return; }
       debounce = setTimeout(runSearch, CFG.debounceMs);
     });
     $('inSearch').addEventListener('keydown', (e) => {
@@ -331,6 +392,6 @@
     init, openSearch, closeSearch, search, drive,
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
-                  diag, takeEnrichment },
+                  diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX },
   };
 })();

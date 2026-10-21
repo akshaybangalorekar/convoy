@@ -476,6 +476,124 @@ async function testSearchSheet() {
   check('and tells the room', !!api.sent('dest-clear'));
 }
 
+/* ---------- Recently searched places ---------- */
+// Every query returns a place named after the query, so each one is distinguishable.
+const placeNamedAfterTheQuery = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    const q = decodeURIComponent((url.split('q=')[1] || '').split('&')[0] || '');
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [145.0, -37.8] },
+        properties: {
+          name: q, street: q, housenumber: '1', locality: 'Carnegie',
+          state: 'Victoria', postcode: '3163', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return Promise.resolve({ ok: true, status: 200, json: async () => ([]) });
+};
+
+// Open the sheet, type, and take the first result.
+async function pick(api, text) {
+  const d = api.document;
+  d.getElementById('destRow').click();
+  await sleep(20);
+  d.getElementById('inSearch').value = text;
+  d.getElementById('inSearch').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  await sleep(480);
+  const row = d.querySelector('#results li[data-i]');
+  if (row) row.click();
+  await sleep(30);
+}
+
+async function testRecentPlaces() {
+  const api = boot({ fetch: placeNamedAfterTheQuery });
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  const recent = () => api.window.ConvoyRoute._internals.loadRecent();
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  check('with no history the sheet just says what to do',
+        /letters/.test(d.getElementById('results').textContent),
+        d.getElementById('results').textContent);
+
+  await pick(api, 'alpha street');
+  check('choosing a place remembers it', recent().length === 1, JSON.stringify(recent()));
+  check('with its name', /alpha/i.test(recent()[0].label), JSON.stringify(recent()));
+
+  await pick(api, 'bravo street');
+  await pick(api, 'charlie street');
+  check('and keeps the newest first',
+        /charlie/i.test(recent()[0].label) && /bravo/i.test(recent()[1].label),
+        JSON.stringify(recent().map((r) => r.label)));
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  const opened = d.getElementById('results').textContent;
+  check('the sheet opens on the recent places', /Recent/.test(opened), opened);
+  check('listing them', /charlie/i.test(opened) && /alpha/i.test(opened), opened);
+
+  const rows = d.querySelectorAll('#results li[data-recent]');
+  check('each one can be tapped', rows.length === 3, String(rows.length));
+  rows[2].click();                                   // the oldest: alpha
+  await sleep(30);
+  check('tapping one sets the destination',
+        !!api.window.Convoy.state.dest && /alpha/i.test(api.window.Convoy.state.dest.label),
+        JSON.stringify(api.window.Convoy.state.dest));
+  check('and closes the sheet', d.getElementById('search').classList.contains('hidden'));
+  check('and moves it to the top of the history',
+        /alpha/i.test(recent()[0].label), JSON.stringify(recent().map((r) => r.label)));
+  check('without listing it twice', recent().length === 3, String(recent().length));
+
+  for (const t of ['delta', 'echo', 'foxtrot', 'golf']) await pick(api, t + ' street');
+  check('only the last five are kept', recent().length === 5, String(recent().length));
+  // alpha was re-picked above, so it moved up the list; bravo and charlie are the ones
+  // that have aged out.
+  check('and the oldest have fallen off',
+        !/bravo/i.test(JSON.stringify(recent())) && !/charlie/i.test(JSON.stringify(recent())),
+        JSON.stringify(recent().map((r) => r.label)));
+
+  // Typing looks somewhere new; clearing the box brings the history back.
+  d.getElementById('destRow').click();
+  await sleep(20);
+  d.getElementById('inSearch').value = 'xylophone street';
+  d.getElementById('inSearch').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  await sleep(480);
+  check('typing replaces the history with results',
+        !/Recent/.test(d.getElementById('results').textContent),
+        d.getElementById('results').textContent);
+  d.getElementById('inSearch').value = '';
+  d.getElementById('inSearch').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  await sleep(20);
+  check('clearing the box brings the history back',
+        /Recent/.test(d.getElementById('results').textContent),
+        d.getElementById('results').textContent);
+
+  check('the history lives on the phone, not on a server',
+        !!api.window.localStorage.getItem('convoy.recent'), 'missing');
+  check('and is never sent to the room',
+        !/recent/i.test((api.clients[0].published || []).join(' ')),
+        (api.clients[0].published || []).join(' ').slice(0, 160));
+}
+
+async function testHistoryIsPerPhone() {
+  const mine = boot({ fetch: placeNamedAfterTheQuery });
+  mine.join('Akshay', 'goa-trip');
+  await sleep(20);
+  await pick(mine, 'alpha street');
+  check('this phone has a history',
+        mine.window.ConvoyRoute._internals.loadRecent().length === 1);
+
+  const theirs = boot({ fetch: placeNamedAfterTheQuery });
+  check('another phone starts with none of it',
+        theirs.window.ConvoyRoute._internals.loadRecent().length === 0,
+        JSON.stringify(theirs.window.ConvoyRoute._internals.loadRecent()));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -497,6 +615,8 @@ async function testSearchSheet() {
     await testSearchBiasedToYou();
     await testDrive();
     await testSearchSheet();
+    await testRecentPlaces();
+    await testHistoryIsPerPhone();
   } catch (e) { crash(e); }
   finish('route');
 })();

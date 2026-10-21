@@ -305,3 +305,10 @@ input:focus { outline: none; border-color: var(--accent); }
 .install-steps { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; }
 .install-card .primary { padding: 13px; font-size: 16px; }
 .install-card .linkish { margin-top: 6px; }
+
+/* The Recent heading above the search results */
+.results li.head {
+  padding: 10px 6px 5px; border-top: 0; cursor: default;
+  font-size: 12px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--muted);
+}

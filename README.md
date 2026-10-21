@@ -41,6 +41,11 @@ To see it work on one phone, tap **Just looking? Preview with demo cars** on the
 On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
 instead, and a finger that moves was panning, not tapping.
 
+Searching for a destination keeps your **last five places** at the top of the search sheet,
+ready to tap again. That history is kept on your phone and nowhere else — it is never sent to
+the room, so it is yours alone rather than the group's. Picking somewhere you have been before
+moves it back to the top instead of listing it twice.
+
 ## Put it on your phone
 
 - **iPhone (Safari):** Share → Add to Home Screen.
@@ -198,7 +203,7 @@ proper night map.
 ## Testing
 
 Seven headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 337 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 356 checks:
 
 ```bash
 npm install
@@ -222,8 +227,8 @@ npm test
   answer arriving after the quick one, a service answering with an empty list not hiding one
   that has an answer, a broken service not emptying the search, the country restriction never
   being the reason for nothing, the message saying which of the two kinds of failure it was,
-  the bias towards where the phone is, the rate gap and the cache, the car route, and the
-  search sheet.
+  the bias towards where the phone is, the rate gap and the cache, the recent-places history
+  and its five-item cap, the car route, and the search sheet.
 - `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
   everyone in frame, and the one-tap-out / two-taps-in gestures.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are
@@ -240,6 +245,8 @@ npm test
   signal, that person shows a dash until it recovers.
 - **The relay is public.** Anyone who guesses the room code can watch the room. Use a code
   that is hard to guess and do not post it publicly.
+- **Your recent places live on your phone.** They are not shared with the room and are not
+  on any server, so a phone that is wiped loses them.
 - **The roster lives on each phone.** A phone that has never had the room does not know who
   was in it, so the group reappears only on phones that were there — which is every phone
   that had the room, since each one keeps its own copy.
