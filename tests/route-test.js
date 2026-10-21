@@ -188,21 +188,108 @@ async function testSuburbBeatsTheCity() {
         label === '92 Mimosa Road, Carnegie, Victoria 3163', label);
 }
 
-async function testAddressGoesToNominatimFirst() {
+async function testAnAddressGetsTheFullAddress() {
   const api = boot({ fetch: nominatimCarnegie });
   const hits = await api.window.ConvoyRoute.search('92 mimosa road');
   const label = (hits[0] && hits[0].label) || '';
 
-  check('an address is looked up by the service built for addresses',
-        /Carnegie/.test(label), label);
+  check('an address search returns the address', hits.length === 1, JSON.stringify(hits));
   check('with the suburb', /Carnegie/.test(label), label);
   check('and the postcode', /3163/.test(label), label);
   check('and not just the country', !/Australia/.test(label), label);
 
   const urls = api.netCalls.map((c) => c.url);
-  check('the address service is asked first',
-        !!urls[0] && urls[0].indexOf('nominatim') >= 0, urls[0]);
-  check('it is asked for the address breakdown', /addressdetails=1/.test(urls[0] || ''), urls[0]);
+  check('the address service is consulted',
+        urls.some((u) => u.indexOf('nominatim') >= 0), urls.join(' '));
+  check('and asked for the address breakdown',
+        urls.some((u) => /addressdetails=1/.test(u)), urls.join(' '));
+}
+
+/* ---------- A service answering with nothing must not hide one with an answer ---------- */
+// Photon answers properly, but with an empty list. This is what broke the search:
+// an empty array is truthy, so `a || b` stopped there and never asked Nominatim.
+const photonAnswersEmpty = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ features: [] }) });
+  }
+  return nominatimCarnegie(url);
+};
+
+const nominatimAnswersEmpty = (url) => {
+  if (url.indexOf('nominatim.openstreetmap.org') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ([]) });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
+// Photon has the street; the address service is refusing us outright.
+const photonCarnegieNominatimDown = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [145.05, -37.89] },
+        properties: {
+          name: 'Mimosa Road', street: 'Mimosa Road', housenumber: '92',
+          city: 'Melbourne', locality: 'Carnegie', state: 'Victoria',
+          postcode: '3163', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return Promise.resolve({ ok: false, status: 403, json: async () => ({}) });
+};
+
+// Photon knows the street but not the postcode; Nominatim knows both.
+const photonThinNominatimRich = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [145.05, -37.89] },
+        properties: {
+          name: 'Mimosa Road', street: 'Mimosa Road', housenumber: '92',
+          city: 'Melbourne', locality: 'Carnegie', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return nominatimCarnegie(url);
+};
+
+async function testAnEmptyAnswerDoesNotHideTheOther() {
+  const api = boot({ fetch: photonAnswersEmpty });
+  const hits = await api.window.ConvoyRoute.search('92 mimosa road');
+  check('a service that answers with nothing does not hide the one with an answer',
+        hits.length === 1 && /Carnegie/.test(hits[0].label), JSON.stringify(hits));
+
+  const other = boot({ fetch: nominatimAnswersEmpty });
+  const none = await other.window.ConvoyRoute.search('92 mimosa road');
+  check('and the same the other way round', none.length === 0, JSON.stringify(none));
+}
+
+async function testResultsSurviveTheOtherServiceBeingDown() {
+  const api = boot({ fetch: photonCarnegieNominatimDown });
+  const hits = await api.window.ConvoyRoute.search('92 mimosa road');
+  check('a broken second service does not empty the search', hits.length === 1,
+        JSON.stringify(hits));
+  check('the first service\'s answer stands', /Mimosa Road/.test(hits[0].label),
+        hits[0].label);
+}
+
+async function testAThinAddressIsLookedUpAgain() {
+  const api = boot({ fetch: photonThinNominatimRich });
+  const hits = await api.window.ConvoyRoute.search('92 mimosa road');
+  const label = (hits[0] && hits[0].label) || '';
+  check('an address missing its postcode is looked up again', /3163/.test(label), label);
+  check('and the fuller answer wins',
+        label === '92 Mimosa Road, Carnegie, Victoria 3163', label);
+}
+
+async function testAPlaceIsNotLookedUpTwice() {
+  const api = boot({ fetch: photonCarnegie });
+  await api.window.ConvoyRoute.search('carnegie');
+  const urls = api.netCalls.map((c) => c.url);
+  check('a place name is not sent to the address service as well',
+        !urls.some((u) => u.indexOf('nominatim') >= 0), urls.join(' '));
 }
 
 async function testPlaceStillGoesToPhotonFirst() {
@@ -324,7 +411,11 @@ async function testSearchSheet() {
     await testStreetAddressLabel();
     await testFallbackAddressLabel();
     await testSuburbBeatsTheCity();
-    await testAddressGoesToNominatimFirst();
+    await testAnAddressGetsTheFullAddress();
+    await testAnEmptyAnswerDoesNotHideTheOther();
+    await testResultsSurviveTheOtherServiceBeingDown();
+    await testAThinAddressIsLookedUpAgain();
+    await testAPlaceIsNotLookedUpTwice();
     await testPlaceStillGoesToPhotonFirst();
     await testAddressServiceIsNotHammered();
     await testRepeatsAreCached();

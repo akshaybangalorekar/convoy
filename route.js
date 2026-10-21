@@ -19,9 +19,11 @@
     debounceMs: 350,
     maxResults: 6,
     timeoutMs: 9000,
-    // Nominatim's usage policy is one request a second at most. An address search now
-    // goes there first, so calls are spaced out to stay inside it.
+    // Nominatim's usage policy is one request a second at most, so calls are spaced out.
     nominatimGapMs: 1100,
+    // How long to wait for its second opinion on a street address before going with what
+    // Photon already gave us.
+    enrichMs: 3000,
   };
 
   let API = null;
@@ -119,8 +121,14 @@
     return j.features
       .filter((f) => f && f.geometry && Array.isArray(f.geometry.coordinates))
       .map((f) => {
+        const p = f.properties || {};
         const c = f.geometry.coordinates;
-        return { lat: c[1], lng: c[0], label: addressFrom(f.properties || {}) };
+        return {
+          lat: c[1], lng: c[0],
+          label: addressFrom(p),
+          // Did it come with enough to place it properly — a postcode or a state?
+          placed: !!(p.postcode || p.state),
+        };
       })
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
@@ -149,18 +157,35 @@
   // "92 mimosa road" is an address; "mimosa road" or "carnegie" is a place.
   const looksLikeAddress = (q) => /^\s*\d+[\s,]/.test(q);
 
+  // Do not wait on a service forever. Used for the second opinion below.
+  function withDeadline(promise, ms) {
+    return Promise.race([
+      promise.catch(() => null),
+      new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  }
+
   async function search(q) {
     const query = String(q || '').trim();
     if (query.length < CFG.minChars) return [];
     if (cache.has(query)) return cache.get(query);
 
-    let out;
-    if (looksLikeAddress(query)) {
-      // An address goes to Nominatim first: it keeps the suburb and postcode that
-      // Photon often leaves out, which is exactly what an address search is for.
-      out = (await viaNominatim(query)) || (await viaPhoton(query)) || [];
-    } else {
-      out = (await viaPhoton(query)) || (await viaNominatim(query)) || [];
+    // Photon first, always: it is quick, has no rate limit, and its answer means a search
+    // never comes back empty-handed just because the other service is unhappy.
+    //
+    // Note the `.length` checks. An empty list is TRUTHY in JavaScript, so a
+    // `a || b` here would let a service that answered with nothing hide the one that
+    // had the answer — which is exactly how this went wrong before.
+    let out = (await viaPhoton(query)) || [];
+
+    if (!out.length) {
+      out = (await viaNominatim(query)) || [];
+    } else if (looksLikeAddress(query) && !out.some((r) => r.placed)) {
+      // Photon often returns a street address without its suburb or postcode. When that
+      // happens, ask the service built for addresses and prefer its answer — but never
+      // wait long for it, and never let it replace a good answer with nothing.
+      const better = await withDeadline(viaNominatim(query), CFG.enrichMs);
+      if (better && better.length) out = better;
     }
 
     if (out.length) {
@@ -257,6 +282,6 @@
   window.ConvoyRoute = {
     init, openSearch, closeSearch, search, drive,
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
-                  pickArea, pickNominatimArea, looksLikeAddress, cache },
+                  pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline },
   };
 })();
