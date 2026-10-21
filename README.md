@@ -25,6 +25,17 @@ Open the link, type your name, and press **Start a new group**. You get a code a
 To bring someone in, tap **Invite** and send them the link. They type their name and they are
 on your map.
 
+Someone opening that link for the first time is also **offered the app on their home screen**,
+so it opens full-screen from then on rather than in a browser tab. On Android that is one tap —
+the browser hands the app its own install prompt and the app fires it from its own button.
+**On iOS Safari there is no such thing**: Apple does not let a page trigger the install, so the
+app shows where the Share button is and the user does it in two taps. That is a platform limit,
+not something we chose. The offer appears once, only on a phone that has never used the app,
+never inside an app that is already installed, and "Not now" is remembered.
+
+If someone installs from an invite link, the code they were invited with is kept, so the
+installed app still offers them the right room rather than starting a new one.
+
 To see it work on one phone, tap **Just looking? Preview with demo cars** on the join screen.
 
 On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
@@ -186,8 +197,8 @@ proper night map.
 
 ## Testing
 
-Six headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
-MQTT, geolocation, notifications and network — 291 checks:
+Seven headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
+stubbed Leaflet, MQTT, geolocation, notifications and network — 319 checks:
 
 ```bash
 npm install
@@ -204,6 +215,9 @@ npm test
 - `tests/room-test.js` — the room's life: that it lasts a week, that using it pushes the
   week out, that a phone quiet for an hour is still in the room, that closing the app is not
   treated as leaving, that Leave is, and that the whole group comes back with the room.
+- `tests/install-test.js` — who gets offered the install and who does not, the browser's own
+  prompt being fired from our button, dismissing it being remembered, the iOS instructions
+  where there is no prompt to fire, and an invite code surviving the install.
 - `tests/route-test.js` — place search, which service an address goes to and why, the suburb
   beating the city, the postcode, the fallback when one service is down, the bias towards
   where the phone is, the rate gap and the query cache, the car route, and the search sheet.

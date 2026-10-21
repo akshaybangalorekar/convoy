@@ -13,6 +13,7 @@ try {
   const css = read('styles.css');
   const sw = read('sw.js');
   const app = read('app.js');
+  const install = read('install.js');
 
   /* ---------- What the app is ---------- */
   check('the page loads the map library', /unpkg\.com\/leaflet@/.test(html));
@@ -53,6 +54,16 @@ try {
   check('a phone pushes its whole state on reconnecting', /function sendState/.test(app));
   check('the room, and the destination in it, are remembered on the phone',
         /convoy\.room\./.test(app));
+  check('install.js is precached and loaded',
+        /install\.js/.test(sw) && /install\.js/.test(html));
+  check('the app offers to go on the home screen', /function maybeOffer/.test(install));
+  check('using the browser\'s own prompt where it is allowed',
+        /beforeinstallprompt/.test(install));
+  check('and instructions for iOS, where it is not',
+        /Add to Home Screen/.test(install));
+  check('the offer is remembered once dismissed', /install\.dismissed/.test(install));
+  check('an invite link is kept, so installing does not lose the room',
+        /convoy\.invite/.test(app));
   check('a room lasts a week by default', /roomDays: 7/.test(app));
   check('nobody is dropped from the room while it is open', /roomLifeMs/.test(app));
   check('closing the app is not treated as leaving', !/beforeunload/.test(app));
@@ -99,7 +110,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v2/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v3/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

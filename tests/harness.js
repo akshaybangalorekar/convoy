@@ -126,6 +126,7 @@ function boot(opts = {}) {
   window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
 
   window.eval(fs.readFileSync(path.join(DIR, 'route.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(DIR, 'install.js'), 'utf8'));
   if (opts.setup) opts.setup(window);
   window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
 
@@ -142,6 +143,18 @@ function boot(opts = {}) {
 
     /** Fire a Leaflet map event, as the user dragging or zooming would. */
     mapFire(ev, arg) { (mapHandlers[ev] || []).forEach((fn) => fn(arg)); },
+
+    /** Fire the browser's install prompt, as Chrome does when the app is installable. */
+    installPrompt(outcome) {
+      const e = new window.Event('beforeinstallprompt');
+      const seen = { prompted: false };
+      Object.defineProperty(e, 'prompt', { configurable: true, value: () => { seen.prompted = true; } });
+      Object.defineProperty(e, 'userChoice', {
+        configurable: true, value: Promise.resolve({ outcome: outcome || 'accepted' }),
+      });
+      window.dispatchEvent(e);
+      return seen;
+    },
 
     /** Fill in the join card and press the button. */
     join(name, room) {

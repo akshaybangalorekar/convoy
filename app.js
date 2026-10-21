@@ -44,7 +44,8 @@
   const PALETTE = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de',
                    '#5ac8fa', '#ffcc00', '#ff2d55', '#30d158', '#5856d6'];
 
-  const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me' };
+  const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me',
+               invite: 'convoy.invite' };
 
   const state = {
     me: null,
@@ -1222,6 +1223,7 @@
         state, esc, setDest, clearDest, toast,
       });
     }
+    if (window.ConvoyInstall) window.ConvoyInstall.init();
     $('sheet').classList.add('hidden');
     $('btnRecenter').classList.add('hidden');
     renderDest();
@@ -1230,12 +1232,20 @@
     const hash = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
     let savedRoom = '';
     let savedName = '';
+    let invited = '';
     try {
       savedRoom = localStorage.getItem(LS.room) || '';
       savedName = localStorage.getItem(LS.name) || '';
+      invited = localStorage.getItem(LS.invite) || '';
+      // An invite link is worth keeping. If they install the app from the link, the
+      // installed app opens at the app root and the link's code would be lost.
+      if (hash) {
+        invited = normRoom(hash);
+        localStorage.setItem(LS.invite, invited);
+      }
     } catch (e) { /* ignore */ }
 
-    const room = normRoom(hash || savedRoom);
+    const room = normRoom(hash || savedRoom || invited);
     $('inName').value = savedName;
     $('inRoom').value = room;
     updateGoLabel();

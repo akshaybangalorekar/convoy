@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = 'convoy-v2';
+const VERSION = 'convoy-v3';
 const TILE_CACHE = 'convoy-tiles-v1';
 const MAX_TILES = 400;          // ~6 MB, roughly one afternoon of driving
 
@@ -22,6 +22,7 @@ const SHELL = [
   './index.html',
   './app.js',
   './route.js',
+  './install.js',
   './styles.css',
   './manifest.webmanifest',
   './icon.svg',

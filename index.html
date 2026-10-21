@@ -56,6 +56,17 @@
 
 <!-- Join -->
 <div id="join" class="overlay">
+ <div class="join-stack">
+  <!-- Offered once, on a phone that has never used the app. Hidden until the
+       browser says it can be installed (or, on iOS, until we know it cannot). -->
+  <div id="installCard" class="card install-card hidden">
+    <div class="install-head">
+      <span class="install-icon" aria-hidden="true"></span>
+      <strong>Keep Convoy on your home screen</strong>
+    </div>
+    <div id="installBody"></div>
+  </div>
+
   <div class="card join-card">
     <div class="logo" aria-hidden="true"></div>
     <h1>Convoy</h1>
@@ -73,6 +84,7 @@
     <p class="fine">Anyone with the code can join, see the map and set the destination.</p>
     <button id="btnDemo" class="linkish">Just looking? Preview with demo cars</button>
   </div>
+ </div>
 </div>
 
 <!-- Destination search -->
@@ -94,6 +106,7 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="route.js"></script>
+<script src="install.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
