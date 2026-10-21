@@ -19,10 +19,18 @@
     debounceMs: 350,
     maxResults: 6,
     timeoutMs: 9000,
+    // Nominatim's usage policy is one request a second at most. An address search now
+    // goes there first, so calls are spaced out to stay inside it.
+    nominatimGapMs: 1100,
   };
 
   let API = null;
   let seq = 0;
+  let lastNominatimAt = 0;
+
+  // Same query twice in a row should not cost two requests.
+  const cache = new Map();
+  const CACHE_MAX = 40;
 
   const $ = (id) => document.getElementById(id);
 
@@ -55,6 +63,26 @@
     return out.join(', ');
   }
 
+  // Which of the area names to show. The important part is that anything more local than
+  // the city wins: given "Melbourne" in city and "Carnegie" in one of the finer fields,
+  // the answer must be Carnegie, not Melbourne. A plain order of preference gets this
+  // wrong whenever the city happens to come first in the list.
+  function pickArea(p) {
+    const city = p.city || '';
+    const candidates = [p.suburb, p.neighbourhood, p.city_district, p.district,
+                        p.locality, p.county].filter(Boolean);
+    const local = candidates.filter((c) => c !== city)[0];
+    return local || city || '';
+  }
+
+  function pickNominatimArea(a) {
+    const city = a.city || a.town || a.village || a.municipality || '';
+    const candidates = [a.suburb, a.neighbourhood, a.city_district, a.borough,
+                        a.quarter, a.hamlet].filter(Boolean);
+    const local = candidates.filter((c) => c !== city)[0];
+    return local || city || a.county || '';
+  }
+
   // Photon hands back the parts of an address separately. Put them back together the way
   // an address is written: number and street, then the suburb, then the state and
   // postcode. The country only appears when nothing else places it.
@@ -62,9 +90,8 @@
     const num = p.housenumber || '';
     const road = p.street || '';
     const line1 = (num && road) ? (num + ' ' + road) : (road || p.name || num || '');
-    const area = p.suburb || p.neighbourhood || p.locality || p.city || p.district || '';
     const region = [p.state, p.postcode].filter(Boolean).join(' ') || p.country || '';
-    return tidy([line1, area, region]);
+    return tidy([line1, pickArea(p), region]);
   }
 
   // The same, from Nominatim's address breakdown.
@@ -73,10 +100,8 @@
     const num = a.house_number || '';
     const road = a.road || '';
     const line1 = (num && road) ? (num + ' ' + road) : (road || r.name || num || '');
-    const area = a.suburb || a.neighbourhood || a.city_district || a.town ||
-                 a.village || a.city || a.municipality || '';
     const region = [a.state, a.postcode].filter(Boolean).join(' ') || a.country || '';
-    return tidy([line1, area, region]);
+    return tidy([line1, pickNominatimArea(a), region]);
   }
 
   async function viaPhoton(q) {
@@ -101,8 +126,14 @@
   }
 
   async function viaNominatim(q) {
+    // Stay inside their one-request-a-second policy, however fast the typing is.
+    const wait = Math.max(0, CFG.nominatimGapMs - (Date.now() - lastNominatimAt));
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    lastNominatimAt = Date.now();
+
     let url = CFG.nominatim + '?q=' + encodeURIComponent(q) +
-              '&format=jsonv2&limit=' + CFG.maxResults + '&addressdetails=1';
+              '&format=jsonv2&limit=' + CFG.maxResults +
+              '&addressdetails=1&accept-language=en';
     if (CFG.country) url += '&countrycodes=' + CFG.country;
 
     const j = await getJson(url, CFG.timeoutMs);
@@ -115,13 +146,28 @@
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
 
+  // "92 mimosa road" is an address; "mimosa road" or "carnegie" is a place.
+  const looksLikeAddress = (q) => /^\s*\d+[\s,]/.test(q);
+
   async function search(q) {
     const query = String(q || '').trim();
     if (query.length < CFG.minChars) return [];
-    const a = await viaPhoton(query);
-    if (a && a.length) return a;
-    const b = await viaNominatim(query);
-    return b || a || [];
+    if (cache.has(query)) return cache.get(query);
+
+    let out;
+    if (looksLikeAddress(query)) {
+      // An address goes to Nominatim first: it keeps the suburb and postcode that
+      // Photon often leaves out, which is exactly what an address search is for.
+      out = (await viaNominatim(query)) || (await viaPhoton(query)) || [];
+    } else {
+      out = (await viaPhoton(query)) || (await viaNominatim(query)) || [];
+    }
+
+    if (out.length) {
+      if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+      cache.set(query, out);
+    }
+    return out;
   }
 
   // The drive from one point to another: how far, how long, and the line to draw.
@@ -210,6 +256,7 @@
 
   window.ConvoyRoute = {
     init, openSearch, closeSearch, search, drive,
-    _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim },
+    _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
+                  pickArea, pickNominatimArea, looksLikeAddress, cache },
   };
 })();

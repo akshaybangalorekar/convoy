@@ -64,6 +64,36 @@ const nominatimAddress = (url) => {
   return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
 };
 
+// Photon knows the suburb but files it under a finer field than the city.
+const photonCarnegie = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [145.05, -37.89] },
+        properties: {
+          name: 'Mimosa Road', street: 'Mimosa Road', housenumber: '92',
+          city: 'Melbourne', locality: 'Carnegie', state: 'Victoria',
+          postcode: '3163', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
+// Nominatim, which is built for addresses and keeps the suburb properly.
+const nominatimCarnegie = (url) => {
+  if (url.indexOf('nominatim.openstreetmap.org') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ([{
+      lat: '-37.89', lon: '145.05', name: '92',
+      display_name: '92, Mimosa Road, Carnegie, Melbourne, Victoria, 3163, Australia',
+      address: { house_number: '92', road: 'Mimosa Road', suburb: 'Carnegie',
+                 city: 'Melbourne', state: 'Victoria', postcode: '3163', country: 'Australia' },
+    }]) });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
 const driveOk = (url) => {
   if (url.indexOf('routing.openstreetmap.de') >= 0) {
     return Promise.resolve({ ok: true, status: 200, json: async () => ({
@@ -144,6 +174,65 @@ async function testFallbackAddressLabel() {
   const url = api.netCalls.map((c) => c.url)
     .find((u) => u.indexOf('nominatim') >= 0) || '';
   check('the fallback is asked for the address breakdown', /addressdetails=1/.test(url), url);
+}
+
+async function testSuburbBeatsTheCity() {
+  const api = boot({ fetch: photonCarnegie });
+  const hits = await api.window.ConvoyRoute.search('mimosa road');
+  const label = (hits[0] && hits[0].label) || '';
+
+  check('the suburb wins over the city', /Carnegie/.test(label), label);
+  check('the city does not crowd it out', !/Melbourne/.test(label), label);
+  check('and the postcode comes with it', /3163/.test(label), label);
+  check('the whole address reads right',
+        label === '92 Mimosa Road, Carnegie, Victoria 3163', label);
+}
+
+async function testAddressGoesToNominatimFirst() {
+  const api = boot({ fetch: nominatimCarnegie });
+  const hits = await api.window.ConvoyRoute.search('92 mimosa road');
+  const label = (hits[0] && hits[0].label) || '';
+
+  check('an address is looked up by the service built for addresses',
+        /Carnegie/.test(label), label);
+  check('with the suburb', /Carnegie/.test(label), label);
+  check('and the postcode', /3163/.test(label), label);
+  check('and not just the country', !/Australia/.test(label), label);
+
+  const urls = api.netCalls.map((c) => c.url);
+  check('the address service is asked first',
+        !!urls[0] && urls[0].indexOf('nominatim') >= 0, urls[0]);
+  check('it is asked for the address breakdown', /addressdetails=1/.test(urls[0] || ''), urls[0]);
+}
+
+async function testPlaceStillGoesToPhotonFirst() {
+  const api = boot({ fetch: photonCarnegie });
+  await api.window.ConvoyRoute.search('carnegie');
+  const urls = api.netCalls.map((c) => c.url);
+  check('a place name still goes to the type-ahead service first',
+        !!urls[0] && urls[0].indexOf('photon') >= 0, urls[0]);
+}
+
+async function testAddressServiceIsNotHammered() {
+  const api = boot({ fetch: nominatimCarnegie });
+  const R = api.window.ConvoyRoute;
+  R._internals.CFG.nominatimGapMs = 90;      // stand-in for the real 1100ms
+
+  await R.search('92 mimosa road');
+  const started = Date.now();
+  await R.search('94 mimosa road');
+  const gap = Date.now() - started;
+  check('address lookups are spaced out to respect the service', gap >= 70, String(gap));
+}
+
+async function testRepeatsAreCached() {
+  const api = boot({ fetch: nominatimCarnegie });
+  const R = api.window.ConvoyRoute;
+  await R.search('92 mimosa road');
+  const after = api.netCalls.length;
+  await R.search('92 mimosa road');
+  check('asking the same thing twice costs nothing the second time',
+        api.netCalls.length === after, String(api.netCalls.length - after));
 }
 
 async function testSearchBiasedToYou() {
@@ -234,6 +323,11 @@ async function testSearchSheet() {
     await testSearchFallback();
     await testStreetAddressLabel();
     await testFallbackAddressLabel();
+    await testSuburbBeatsTheCity();
+    await testAddressGoesToNominatimFirst();
+    await testPlaceStillGoesToPhotonFirst();
+    await testAddressServiceIsNotHammered();
+    await testRepeatsAreCached();
     await testSearchBiasedToYou();
     await testDrive();
     await testSearchSheet();
