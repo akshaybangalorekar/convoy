@@ -50,7 +50,20 @@
     <span id="peopleCount">0 people</span>
     <span class="sheet-chev" aria-hidden="true">›</span>
   </button>
+  <div class="sheet-room">
+    <input id="inRoomName" maxlength="32" placeholder="Name this room (optional)"
+           aria-label="Room name" />
+  </div>
+
   <ul id="people"></ul>
+
+  <div class="sheet-controls">
+    <button id="btnPause" class="ctl" aria-pressed="false">Pause sharing</button>
+    <button id="btnSaver" class="ctl" aria-pressed="false">Battery saver</button>
+    <button id="btnSound" class="ctl" aria-pressed="false">Sound</button>
+    <button id="btnHere" class="ctl" aria-pressed="false">I&#39;m here</button>
+  </div>
+
   <p id="roomNote" class="room-note"></p>
 </section>
 

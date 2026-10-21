@@ -32,6 +32,10 @@
     // A room stays open this long after anyone last used it. Nobody is ever dropped
     // from the room while it is open — a quiet phone just sits there as out of contact.
     roomDays: 7,
+    saverPublishMs: 30000,    // battery saver: share our position this often instead
+    saverEtaMs: 300000,
+    arrivedM: 150,            // within this much of the destination counts as arrived
+    behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,             // publish early if we moved this far
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
@@ -45,7 +49,17 @@
                    '#5ac8fa', '#ffcc00', '#ff2d55', '#30d158', '#5856d6'];
 
   const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me',
-               invite: 'convoy.invite' };
+               invite: 'convoy.invite', saver: 'convoy.saver', sound: 'convoy.sound' };
+
+  function readPref(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? fallback : v;
+    } catch (e) { return fallback; }
+  }
+  function writePref(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+  }
 
   const state = {
     me: null,
@@ -63,6 +77,12 @@
     destTs: 0,            // when the destination was last set or cleared; newest wins
     away: false,          // true while our own app is in the background
     roomExpires: 0,       // when this room lapses, for the note in the sheet
+    paused: false,        // deliberately not sharing our position
+    saver: false,         // battery saver: share less often
+    sound: true,          // ping on a notification
+    roomName: '',         // a human name for the room, shared with everyone in it
+    roomNameTs: 0,        // when it was last named; newest wins, like the destination
+    arrived: false,       // we have reached the destination (or said we have)
   };
 
   let map = null;
@@ -71,6 +91,42 @@
   let publishTimer = null;
   let renderTimer = null;
   let etaTimer = null;
+  let audio = null;                 // lazily built on the first tap; browsers block it before
+
+  // How often we share, given the battery saver switch.
+  const publishInterval = () => (state.saver ? CFG.saverPublishMs : CFG.publishMs);
+  const etaInterval = () => (state.saver ? CFG.saverEtaMs : CFG.etaMs);
+
+  /* Sound, so a notification is noticed while driving. iOS has no vibration at all, and
+     every browser refuses to make a sound until the user has touched the page — so the
+     audio context is built on the first tap and reused from then on. */
+  function unlockAudio() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audio) audio = new Ctx();
+      if (audio.state === 'suspended' && audio.resume) audio.resume();
+    } catch (e) { audio = null; }
+  }
+
+  function ping() {
+    if (!state.sound || !audio) return;
+    try {
+      const now = audio.currentTime;
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(1320, now + 0.09);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+      osc.connect(gain);
+      gain.connect(audio.destination);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } catch (e) { /* a failed sound is not worth reporting */ }
+  }
   let reconnectTimer = null;
   let myLine = null;
   let destMarker = null;
@@ -165,11 +221,134 @@
 
   const isStale = (p) => Date.now() - p.ts > CFG.staleMs;
 
+  /* ---------------------------------------------------------------- *
+   * Arrivals
+   * ---------------------------------------------------------------- */
+  function distToDest(p) {
+    if (!state.dest || !p || p.lat == null) return null;
+    return haversine(p, state.dest);
+  }
+
+  // A new destination means nobody has arrived yet.
+  function resetArrivals() {
+    state.arrived = false;
+    state.peers.forEach((p) => { p.arrived = false; });
+  }
+
+  // Called on the sweep and on every fix. Whoever is within reach of the destination has
+  // arrived, and the room is told once.
+  function checkArrivals() {
+    if (!state.dest) return;
+    const mine = distToDest(state.me);
+    if (mine != null && mine <= CFG.arrivedM && !state.arrived) {
+      state.arrived = true;
+      send({ t: 'arrived', on: true });
+      notify('You have arrived', state.dest.label);
+      renderControls();
+    }
+    state.peers.forEach((p) => {
+      const d = distToDest(p);
+      if (d == null || p.arrived || d > CFG.arrivedM) return;
+      p.arrived = true;
+      notify(p.name + ' has arrived', state.dest.label);
+    });
+  }
+
+  function onArrived(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    const on = msg.on !== false;
+    if (on && !p.arrived) {
+      notify(p.name + ' has arrived', state.dest ? state.dest.label : '');
+    }
+    p.arrived = on;
+    renderPeople();
+  }
+
+  // The button in the sheet, for when the app's own guess is wrong or early.
+  function markArrived() {
+    if (!state.dest) { banner('Set a destination first'); return; }
+    state.arrived = !state.arrived;
+    send({ t: 'arrived', on: state.arrived });
+    banner(state.arrived ? 'Marked as arrived' : 'Not there yet');
+    renderControls();
+    renderPeople();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Not sharing my position
+   * ---------------------------------------------------------------- */
+  function setSaver(on) {
+    state.saver = !!on;
+    writePref(LS.saver, state.saver ? '1' : '0');
+    restartTimers();
+    banner(state.saver
+      ? 'Battery saver on — sharing every 30 seconds'
+      : 'Battery saver off — sharing every 5 seconds');
+    renderControls();
+  }
+
+  function setSound(on) {
+    state.sound = !!on;
+    writePref(LS.sound, state.sound ? '1' : '0');
+    if (state.sound) { unlockAudio(); ping(); }     // so they hear what they just turned on
+    renderControls();
+  }
+
+  function setPaused(on) {
+    state.paused = !!on;
+    send({ t: state.paused ? 'paused' : 'sharing' });
+    if (!state.paused) publishNow(true);
+    banner(state.paused ? 'Not sharing your location' : 'Sharing your location again');
+    renderControls();
+    renderPeople();
+  }
+
+  function onPaused(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    p.paused = true;
+    renderPeople();
+  }
+
+  function onSharing(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    p.paused = false;
+    renderPeople();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Naming the room
+   * ---------------------------------------------------------------- */
+  function setRoomName(name) {
+    const clean = String(name || '').trim().slice(0, 32);
+    state.roomName = clean;
+    state.roomNameTs = Date.now();
+    saveRoom({ name: clean, nameTs: state.roomNameTs });
+    send({ t: 'room-name', name: clean, ts: state.roomNameTs });
+    renderTop();
+    renderControls();
+  }
+
+  // Same rule as the destination: the newest decision wins, so a phone coming back cannot
+  // put an old name over a newer one.
+  function onRoomName(msg) {
+    const ts = typeof msg.ts === 'number' ? msg.ts : Date.now();
+    if (ts < state.roomNameTs) return;
+    state.roomNameTs = ts;
+    state.roomName = String(msg.name || '').slice(0, 32);
+    saveRoom({ name: state.roomName, nameTs: ts });
+    renderTop();
+  }
+
   // Where each person stands. "away" is something they told us; "lost" is what we
   // infer when the messages simply stop. A force-kill cannot announce itself — that
   // is the one thing a killed app cannot do — so it lands here as lost contact.
   function presenceOf(p) {
     if (p.isMe) return 'me';
+    // They told us they are not sharing, so say that rather than guessing from silence.
+    if (p.paused) return 'paused';
     // Someone brought back from the room's roster has no position yet, so we have not
     // actually heard from them this session — out of contact until they say something.
     if (p.lat == null) return 'lost';
@@ -321,7 +500,29 @@
     map.on('dragstart zoomstart', () => {
       if (Date.now() - lastAutoView > 700) { state.autoFit = false; }
     });
+    // A long press on a touch screen, or a right-click with a mouse — Leaflet reports both
+    // as a contextmenu event, so one handler covers the whole lot.
+    map.on('contextmenu', onMapLongPress);
     wireTapZoom(map.getContainer());
+  }
+
+  // Set the destination wherever a finger is held down. Then look up what is there, so the
+  // row reads as an address rather than a pair of numbers — and if that fails, say so
+  // honestly and keep the pin.
+  function onMapLongPress(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    banner('Setting the destination\u2026');
+    const apply = (label) => {
+      setDest(lat, lng, label || 'Pinned location');
+      banner('Destination set');
+    };
+    const R = window.ConvoyRoute;
+    if (R && R.reverse) {
+      R.reverse(lat, lng).then(apply).catch(() => apply(''));
+    } else {
+      apply('');
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -483,9 +684,10 @@
   function publishNow(force) {
     const me = state.me;
     if (!me || me.lat == null) return;
+    if (state.paused) return;          // deliberately not sharing
     const last = state.lastSentFix;
     if (!force && last && haversine(last, me) < CFG.minMoveM &&
-        Date.now() - state.lastPublish < CFG.publishMs) return;
+        Date.now() - state.lastPublish < publishInterval()) return;
     state.lastSentFix = { lat: me.lat, lng: me.lng };
     send({ t: 'pos', lat: me.lat, lng: me.lng, spd: me.spd, hdg: me.hdg, acc: me.acc });
   }
@@ -505,12 +707,19 @@
       send({ t: 'dest-clear', ts: state.destTs });
     }
     if (state.myEta) send({ t: 'eta', dur: state.myEta.dur, dist: state.myEta.dist });
+    if (state.roomName) send({ t: 'room-name', name: state.roomName, ts: state.roomNameTs });
+    if (state.paused) send({ t: 'paused' });
+    if (state.arrived) send({ t: 'arrived', on: true });
   }
 
   function onMessage(topic, payload) {
     let msg;
     try { msg = JSON.parse(payload.toString()); } catch (e) { return; }
     if (!msg || !msg.id || (state.me && msg.id === state.me.id)) return;
+
+    // Any word at all from someone is proof they were still there just now.
+    const who = state.peers.get(msg.id);
+    if (who) who.lastSeen = Date.now();
 
     switch (msg.t) {
       case 'hello':      onHello(msg); return;
@@ -521,6 +730,10 @@
       case 'away':       onAway(msg); return;
       case 'back':       onBack(msg); return;
       case 'pos':        onPos(msg); return;
+      case 'paused':     onPaused(msg); return;
+      case 'sharing':    onSharing(msg); return;
+      case 'arrived':    onArrived(msg); return;
+      case 'room-name':  onRoomName(msg); return;
       default: return;
     }
   }
@@ -580,6 +793,7 @@
         spd: msg.spd, hdg: msg.hdg, acc: msg.acc, ts: msg.ts || Date.now(),
         eta: null, isMe: false, demo: false,
         away: false, awayAt: 0, presence: 'live',
+        lastSeen: Date.now(), paused: false, arrived: false,
       };
       state.peers.set(msg.id, p);
       refreshColors();
@@ -627,6 +841,7 @@
     state.destTs = ts;
     state.dest = next;
     state.myEta = null;
+    resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
     drawDest();
     refreshRoute();
@@ -682,6 +897,7 @@
 
   function notify(title, body) {
     banner(body ? title + ' — ' + body : title);
+    ping();
     try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) { /* ignore */ }
     try {
       if (typeof Notification === 'function' && Notification.permission === 'granted') {
@@ -835,25 +1051,54 @@
            esc(fmtDist(eta.dist)) + '</span>';
   }
 
+  // "3.2 km behind you" is more use than a bearing: what matters in a convoy is who is
+  // ahead and who has fallen back.
+  function behindAhead(me, p) {
+    if (!state.dest || !me || me.lat == null || p.lat == null) return '';
+    const diff = haversine(p, state.dest) - haversine(me, state.dest);
+    if (Math.abs(diff) < CFG.behindM) return 'alongside you';
+    return fmtDist(Math.abs(diff)) + (diff > 0 ? ' behind you' : ' ahead of you');
+  }
+
+  // When we last heard from someone: this session if we have, otherwise what the room's
+  // roster remembered from last time. "Out of contact" on its own is too vague to act on.
+  function lastSeenOf(p) {
+    if (p.lastSeen) return p.lastSeen;
+    if (p.lat != null && p.ts) return p.ts;
+    const rec = loadRoom(state.room);
+    const m = rec && rec.members && rec.members[p.id];
+    return (m && m.lastSeen) || p.ts || 0;
+  }
+
   function rowFor(p, me) {
     const kind = presenceOf(p);
     let meta = '';
+    let tag = '';
     if (p.isMe) {
       meta = state.away ? 'app in the background' : 'you';
+      if (state.arrived) tag = 'arrived';
+    } else if (kind === 'paused') {
+      meta = 'not sharing';
+      tag = 'paused';
     } else if (p.lat == null) {
-      meta = 'out of contact';
+      const seen = lastSeenOf(p);
+      meta = seen ? 'out of contact · last seen ' + fmtAgo(seen) : 'out of contact';
     } else if (kind === 'away') {
       meta = 'app in the background';
     } else if (kind === 'lost') {
-      meta = 'out of contact · ' + fmtAgo(p.ts);
-    } else if (me && me.lat != null) {
-      meta = fmtDist(haversine(me, p)) + ' ' + compass(bearing(me, p));
+      meta = 'out of contact · last seen ' + fmtAgo(lastSeenOf(p));
+    } else {
+      meta = behindAhead(me, p) ||
+        (me && me.lat != null ? fmtDist(haversine(me, p)) + ' ' + compass(bearing(me, p)) : '');
     }
+    if (p.arrived && !p.isMe) tag = 'arrived';
     return '<li data-id="' + esc(p.id) + '" class="' +
-      (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') + '">' +
+      (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') +
+      (kind === 'paused' ? 'paused ' : '') + '">' +
       '<span class="pdot" style="background:' + p.color + '"></span>' +
       '<span class="pname">' + esc(p.name) +
         (meta ? '<span class="tag">' + esc(meta) + '</span>' : '') + '</span>' +
+      (tag ? '<span class="ptag">' + esc(tag) + '</span>' : '') +
       etaCell(p) +
     '</li>';
   }
@@ -872,7 +1117,40 @@
   }
 
   function renderTop() {
-    $('roomChip').textContent = state.room || '—';
+    $('roomChip').textContent = state.roomName || state.room || '—';
+    if ($('inRoomName')) $('inRoomName').value = state.roomName || '';
+  }
+
+  // The switches in the sheet.
+  function renderControls() {
+    const set = (id, on, label) => {
+      const el = $(id);
+      if (!el) return;
+      el.classList.toggle('on', !!on);
+      el.textContent = label;
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    };
+    set('btnPause', state.paused, state.paused ? 'Sharing paused' : 'Pause sharing');
+    set('btnSaver', state.saver, 'Battery saver');
+    set('btnSound', state.sound, 'Sound');
+    set('btnHere', state.arrived, state.arrived ? 'Arrived' : "I'm here");
+  }
+
+  // Tapping a person brings the map to them. It also stops the view chasing everybody.
+  function focusPeer(id) {
+    const p = state.peers.get(id);
+    if (!p || p.lat == null) return;
+    state.autoFit = false;
+    map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15), { animate: true });
+    banner('Showing ' + p.name);
+  }
+
+  // Pasting a whole invite link into the code box should just work.
+  function extractRoomCode(text) {
+    const m = String(text || '').match(/[#?&]r=([^&\s]+)/i);
+    if (!m) return '';
+    try { return normRoom(decodeURIComponent(m[1])); }
+    catch (e) { return normRoom(m[1]); }
   }
 
   function toast(msg) { banner(msg); }
@@ -890,6 +1168,7 @@
     state.destTs = Date.now();
     state.dest = { lat, lng, label: label || 'Destination', by: state.me ? state.me.name : '' };
     state.myEta = null;
+    resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
     drawDest();
     refreshRoute();
@@ -945,7 +1224,7 @@
    * ---------------------------------------------------------------- */
   function startTimers() {
     stopTimers();
-    publishTimer = setInterval(publishNow, CFG.publishMs);
+    publishTimer = setInterval(publishNow, publishInterval());
     renderTimer = setInterval(() => {
       // Nobody is dropped from the room while it is open. A phone that goes quiet stays
       // on the list as out of contact; only the room itself lapsing clears the roster,
@@ -954,10 +1233,19 @@
         if (Date.now() - p.ts > roomLifeMs()) { removePeer(id); state.seen.delete(id); }
       });
       sweepPresence();
+      checkArrivals();
       renderPeople();
       maybeAutoView();
     }, CFG.renderMs);
-    etaTimer = setInterval(refreshRoute, CFG.etaMs);
+    etaTimer = setInterval(refreshRoute, etaInterval());
+  }
+
+  // The battery saver changes how often we share, so the timers are rebuilt when it flips.
+  function restartTimers() {
+    if (publishTimer) clearInterval(publishTimer);
+    if (etaTimer) clearInterval(etaTimer);
+    publishTimer = setInterval(publishNow, publishInterval());
+    etaTimer = setInterval(refreshRoute, etaInterval());
   }
 
   function stopTimers() {
@@ -988,6 +1276,10 @@
     state.seen = new Set();
     state.away = false;
 
+    // Preferences that survive closing the app.
+    state.saver = readPref(LS.saver, '0') === '1';
+    state.sound = readPref(LS.sound, '1') !== '0';
+
     // Restore the destination this phone last knew for this room, so a returning phone
     // can put it straight back on the air without asking anybody.
     const saved = loadDest(room);
@@ -1000,6 +1292,11 @@
     // vanishes just because they were quiet.
     const rec = loadRoom(room);
     state.roomExpires = rec ? rec.expiresAt : 0;
+    // A name the room was given last time, and nobody has arrived yet.
+    state.roomName = (rec && rec.name) || '';
+    state.roomNameTs = (rec && rec.nameTs) || 0;
+    state.arrived = false;
+    if ($('inRoomName')) $('inRoomName').value = state.roomName;
     if (rec && rec.members) {
       Object.keys(rec.members).forEach((id) => {
         if (id === state.me.id || state.peers.has(id)) return;
@@ -1026,6 +1323,7 @@
     try { history.replaceState(null, '', location.pathname + '#r=' + encodeURIComponent(room)); } catch (e) {}
 
     renderTop();
+    renderControls();
     renderDest();
     drawDest();
     renderPeople();
@@ -1232,6 +1530,31 @@
 
     $('btnInvite').addEventListener('click', share);
     $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
+
+    // The switches in the sheet.
+    $('btnPause').addEventListener('click', () => setPaused(!state.paused));
+    $('btnSaver').addEventListener('click', () => setSaver(!state.saver));
+    $('btnSound').addEventListener('click', () => setSound(!state.sound));
+    $('btnHere').addEventListener('click', markArrived);
+    $('inRoomName').addEventListener('change', () => setRoomName($('inRoomName').value));
+
+    // Tapping someone brings the map to them.
+    $('people').addEventListener('click', (e) => {
+      const li = e.target && e.target.closest ? e.target.closest('li[data-id]') : null;
+      if (li) focusPeer(li.getAttribute('data-id'));
+    });
+
+    // Pasting the whole invite link into the code box should just work.
+    $('inRoom').addEventListener('input', () => {
+      const code = extractRoomCode($('inRoom').value);
+      if (code) { $('inRoom').value = code; updateGoLabel(); }
+    });
+
+    // Every browser refuses to make a sound until the page has been touched, so the audio
+    // context is built on the first touch of any kind.
+    ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
+      window.addEventListener(ev, unlockAudio, { once: true, passive: true });
+    });
     $('btnLeave').addEventListener('click', () => { stopDemo(); leave(); });
     $('btnRecenter').addEventListener('click', () => {
       state.autoFit = true;
@@ -1253,6 +1576,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
+      unlockAudio();          // iOS suspends the audio context when the app is put away
       if (state.away) {
         // Back on screen: say so and push our state again.
         state.away = false;
@@ -1326,7 +1650,13 @@
                   presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest,
                   handleTap, wireTapZoom, tap,
                   loadRoom, saveRoom, rememberMember, forgetMember, roomNoteText,
-                  roomLifeMs }, 
+                  roomLifeMs,
+                  // The switches, the arrival logic, and the small helpers behind them.
+                  setPaused, setSaver, setSound, markArrived, checkArrivals, resetArrivals,
+                  distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
+                  setRoomName, renderControls, renderTop, renderPeople,
+                  unlockAudio, ping, publishInterval, etaInterval, restartTimers,
+                  onMapLongPress, rowFor, readPref, writePref, publishNow, send },
   };
 
   boot();

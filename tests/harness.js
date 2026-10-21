@@ -125,6 +125,27 @@ function boot(opts = {}) {
   def(window.navigator, 'clipboard', { writeText: async () => {} });
   window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
 
+  // jsdom has no Web Audio. This is just enough to prove a ping was attempted, and to
+  // check that nothing is played before the user has touched the page.
+  const pings = [];
+  window.AudioContext = function FakeAudioContext() {
+    this.state = 'running';
+    this.currentTime = 0;
+    this.destination = {};
+    this.resume = () => { this.state = 'running'; };
+    this.createOscillator = () => ({
+      type: '',
+      frequency: { setValueAtTime() {} },
+      connect() {},
+      start() { pings.push('start'); },
+      stop() {},
+    });
+    this.createGain = () => ({
+      gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+      connect() {},
+    });
+  };
+
   window.eval(fs.readFileSync(path.join(DIR, 'route.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(DIR, 'install.js'), 'utf8'));
   if (opts.setup) opts.setup(window);
@@ -178,6 +199,12 @@ function boot(opts = {}) {
 
     /** Report a geolocation failure, as the browser would. */
     geoError(code) { if (geo.err) geo.err({ code: code || 1 }); },
+
+    /** How many notification sounds have been played. */
+    pings,
+
+    /** A tap anywhere, which is what unlocks audio in a real browser. */
+    touch() { window.dispatchEvent(new window.Event('pointerdown')); },
 
     /** Feed a message into the room, as if another phone sent it. */
     recv(msg) {

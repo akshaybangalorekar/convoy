@@ -11,6 +11,7 @@
   const CFG = {
     photon: 'https://photon.komoot.io/api/',
     nominatim: 'https://nominatim.openstreetmap.org/search',
+    nominatimReverse: 'https://nominatim.openstreetmap.org/reverse',
     osrm: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
     // Restrict the search to one country: 'au' Australia, 'in' India, '' anywhere.
     country: 'au',
@@ -160,6 +161,22 @@
 
   // "92 mimosa road" is an address; "mimosa road" or "carnegie" is a place.
   const looksLikeAddress = (q) => /^\s*\d+[\s,]/.test(q);
+
+  // What is at a point on the map — for a pin dropped by a long press. Same service and
+  // the same rate limit as the search, because it is the same policy.
+  async function reverse(lat, lng) {
+    const la = Number(lat), ln = Number(lng);
+    if (!isFinite(la) || !isFinite(ln)) return '';
+    const wait = Math.max(0, CFG.nominatimGapMs - (Date.now() - lastNominatimAt));
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    lastNominatimAt = Date.now();
+
+    const url = CFG.nominatimReverse + '?lat=' + la + '&lon=' + ln +
+                '&format=jsonv2&zoom=18&addressdetails=1&accept-language=en';
+    const j = await getJson(url, CFG.timeoutMs);
+    if (!j || typeof j !== 'object') return '';
+    return addressFromNominatim(j) || j.display_name || '';
+  }
 
   // Do not wait on a service forever. Used for the second opinion below.
   function withDeadline(promise, ms) {
@@ -428,10 +445,10 @@
   }
 
   window.ConvoyRoute = {
-    init, openSearch, closeSearch, search, drive,
+    init, openSearch, closeSearch, search, drive, reverse,
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
-                  shownList: () => shown },
+                  shownList: () => shown, reverse },
   };
 })();

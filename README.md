@@ -44,10 +44,32 @@ To see it work on one phone, tap **Just looking? Preview with demo cars** on the
 On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
 instead, and a finger that moves was panning, not tapping.
 
+**Hold a finger on the map** to set the destination right there. It looks up what is at that
+point, so the row reads as an address rather than a pair of numbers.
+
 Searching for a destination keeps your **last five places** at the top of the search sheet,
 ready to tap again. That history is kept on your phone and nowhere else — it is never sent to
 the room, so it is yours alone rather than the group's. Picking somewhere you have been before
 moves it back to the top instead of listing it twice.
+
+The sheet under the map holds four switches:
+
+- **Pause sharing** stops sending your position without leaving the room, and *tells* the group
+  you have paused rather than going quiet — so nobody thinks you have been lost.
+- **Battery saver** drops from sharing every five seconds to every thirty. On a long drive that
+  is the difference between arriving with a phone and arriving with a dead one.
+- **Sound** — a short ping on a notification, which matters most on an iPhone, where there is
+  no vibration at all.
+- **I'm here** marks you arrived when the app's own guess is early or wrong.
+
+Tapping a name brings the map to that person and stops the view chasing everyone else. Each row
+says how long ago you last heard from them, and — once a destination is set — who is ahead of
+you and who has fallen behind: *"3.2 km behind you"*. When someone reaches the destination the
+room is told, *"Priya has arrived."*
+
+You can also **name the room** — "Sunday drive" instead of `goa-trip` — and the name travels
+round the group the same way the destination does. And if someone pastes the whole invite link
+into the code box, the app pulls the code out of it for them.
 
 ## Put it on your phone
 
@@ -74,7 +96,8 @@ than ours:
 - **Notifications on an iPhone need the app installed.** In a plain Safari tab iOS gives a page
   no way to notify you at all. Once Convoy is on the home screen it can ask, and then it behaves
   like Android. On Android it works in the tab as well. Vibration is Android only, because
-  `navigator.vibrate` does not exist in Safari.
+  `navigator.vibrate` does not exist in Safari — which is exactly why there is a sound, and why
+  it needs one touch before the browser will let it play anything.
 
 Everything else behaves identically: the live map, the destination anyone can set, everyone's
 arrival time, the notifications that do arrive, unique car colours, the view that keeps everyone
@@ -230,8 +253,8 @@ proper night map.
 
 ## Testing
 
-Seven headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 401 checks:
+Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
+stubbed Leaflet, MQTT, geolocation, notifications and network — 488 checks:
 
 ```bash
 npm install
@@ -253,6 +276,9 @@ npm test
   prompt being fired from our button, dismissing it being remembered, the iOS instructions
   where there is no prompt to fire, an invite code surviving the install, and a link opened
   inside a chat app being spotted and answered with the right advice for each phone.
+- `tests/features-test.js` — last-seen times, arrival announcements and their reset, the
+  pause and battery-saver and sound switches, a long press setting the destination, pasting an
+  invite link into the code box, naming the room, tapping a person, and who is behind whom.
 - `tests/route-test.js` — place search, the suburb beating the city, the postcode, a fuller
   answer arriving after the quick one, a service answering with an empty list not hiding one
   that has an answer, a broken service not emptying the search, the country restriction never

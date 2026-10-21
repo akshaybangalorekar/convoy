@@ -86,6 +86,31 @@ try {
         /touch-action: none/.test(css));
   check('overlays scroll, so the keyboard does not push the card off screen',
         /overflow-y: auto/.test(css) && /margin: auto/.test(css));
+
+  /* ---------- The later features ---------- */
+  check('the switches are in the sheet',
+        /id="btnPause"/.test(html) && /id="btnSaver"/.test(html) &&
+        /id="btnSound"/.test(html) && /id="btnHere"/.test(html));
+  check('the room can be named', /id="inRoomName"/.test(html) && /function setRoomName/.test(app));
+  check('the name is shared with the room', /t: 'room-name'/.test(app));
+  check('a long press on the map sets the destination',
+        /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
+  check('and looks up what is there', /function reverse/.test(read('route.js')) &&
+        /nominatimReverse/.test(read('route.js')));
+  check('arrivals are announced', /has arrived/.test(app) && /function checkArrivals/.test(app));
+  check('out-of-contact people say when they were last heard from',
+        /last seen /.test(app) && /function lastSeenOf/.test(app));
+  check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
+  check('pausing is announced rather than looking like silence',
+        /state\.paused \? 'paused' : 'sharing'/.test(app));
+  check('battery saver slows the sharing down', /saverPublishMs/.test(app));
+  check('a notification makes a sound', /function ping/.test(app) && /AudioContext/.test(app));
+  check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
+  check('pasting the invite link into the code box works', /function extractRoomCode/.test(app));
+  check('tapping a person brings the map to them', /function focusPeer/.test(app));
+  check('the new messages are all handled',
+        /case 'paused'/.test(app) && /case 'sharing'/.test(app) &&
+        /case 'arrived'/.test(app) && /case 'room-name'/.test(app));
   check('a room lasts a week by default', /roomDays: 7/.test(app));
   check('nobody is dropped from the room while it is open', /roomLifeMs/.test(app));
   check('closing the app is not treated as leaving', !/beforeunload/.test(app));
@@ -132,7 +157,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v8/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v9/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 
