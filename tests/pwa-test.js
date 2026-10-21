@@ -51,7 +51,11 @@ try {
   check('the app says when it goes to the background', /t: 'away'/.test(app));
   check('and when it comes back', /t: 'back'/.test(app));
   check('a phone pushes its whole state on reconnecting', /function sendState/.test(app));
-  check('the destination is remembered on the phone', /convoy\.dest\./.test(app));
+  check('the room, and the destination in it, are remembered on the phone',
+        /convoy\.room\./.test(app));
+  check('a room lasts a week by default', /roomDays: 7/.test(app));
+  check('nobody is dropped from the room while it is open', /roomLifeMs/.test(app));
+  check('closing the app is not treated as leaving', !/beforeunload/.test(app));
   check('silence is reported honestly, not as a kill',
         /out of contact/.test(app) && !/was killed/.test(app));
   check('a notification goes out on a destination change',

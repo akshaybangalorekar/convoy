@@ -29,7 +29,9 @@
     etaMs: 60000,             // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
     awayMs: 180000,           // backgrounded this long counts as out of contact too
-    dropMs: 30 * 60 * 1000,   // but never drop them off the map before 30 min
+    // A room stays open this long after anyone last used it. Nobody is ever dropped
+    // from the room while it is open — a quiet phone just sits there as out of contact.
+    roomDays: 7,
     minMoveM: 12,             // publish early if we moved this far
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
@@ -42,7 +44,7 @@
   const PALETTE = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de',
                    '#5ac8fa', '#ffcc00', '#ff2d55', '#30d158', '#5856d6'];
 
-  const LS = { name: 'convoy.name', room: 'convoy.room' };
+  const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me' };
 
   const state = {
     me: null,
@@ -59,6 +61,7 @@
     lastSentFix: null,
     destTs: 0,            // when the destination was last set or cleared; newest wins
     away: false,          // true while our own app is in the background
+    roomExpires: 0,       // when this room lapses, for the note in the sheet
   };
 
   let map = null;
@@ -90,6 +93,16 @@
     const a = new Uint8Array(n);
     (crypto || window.msCrypto).getRandomValues(a);
     return Array.from(a, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, n);
+  }
+
+  // One identity per device, kept across sessions. Without this, closing and reopening
+  // the app would look like a brand new person to everyone else.
+  function myId() {
+    try {
+      let id = localStorage.getItem(LS.id);
+      if (!id) { id = 'c-' + rand(8); localStorage.setItem(LS.id, id); }
+      return id;
+    } catch (e) { return 'c-' + rand(8); }
   }
 
   function normRoom(s) {
@@ -146,6 +159,9 @@
   // is the one thing a killed app cannot do — so it lands here as lost contact.
   function presenceOf(p) {
     if (p.isMe) return 'me';
+    // Someone brought back from the room's roster has no position yet, so we have not
+    // actually heard from them this session — out of contact until they say something.
+    if (p.lat == null) return 'lost';
     if (p.away) return (Date.now() - (p.awayAt || 0) > CFG.awayMs) ? 'lost' : 'away';
     return isStale(p) ? 'lost' : 'live';
   }
@@ -154,31 +170,84 @@
      state worth keeping on the phone: a phone that comes back restores it and announces
      it, and no server has to hold it. Positions are deliberately not kept — a stale
      position is worse than none. */
-  const destKey = (room) => 'convoy.dest.' + room;
+  /* The room itself is kept on the phone: the code, when it opened, when it lapses, the
+     destination, and everyone who has been in it. That is what stops a room closing or
+     anyone being quietly dropped — a phone that goes quiet stays on the list, and the
+     room is still there a week later. */
+  const roomKey = (room) => 'convoy.room.' + room;
+  const roomLifeMs = () => CFG.roomDays * 86400000;
+
+  function loadRoom(room) {
+    try {
+      const raw = localStorage.getItem(roomKey(room));
+      if (!raw) return null;
+      const j = JSON.parse(raw);
+      if (!j || typeof j.expiresAt !== 'number') return null;
+      if (Date.now() > j.expiresAt) {           // a week of nobody using it: it lapses
+        localStorage.removeItem(roomKey(room));
+        return null;
+      }
+      return j;
+    } catch (e) { return null; }
+  }
+
+  // Every write pushes the room's life forward, so it lapses a week after the last time
+  // anyone used it rather than a week after it was made. A room in use never closes.
+  function saveRoom(patch) {
+    if (!state.room || state.room === 'demo') return null;
+    try {
+      const now = Date.now();
+      const cur = loadRoom(state.room) || { code: state.room, startedAt: now, members: {} };
+      const next = Object.assign({}, cur, patch || {});
+      next.expiresAt = now + roomLifeMs();
+      next.updatedAt = now;
+      localStorage.setItem(roomKey(state.room), JSON.stringify(next));
+      state.roomExpires = next.expiresAt;
+      return next;
+    } catch (e) { return null; }
+  }
 
   function saveDest() {
-    if (!state.room) return;
-    try {
-      if (state.dest) {
-        localStorage.setItem(destKey(state.room),
-          JSON.stringify({ dest: state.dest, ts: state.destTs }));
-      } else if (state.destTs) {
-        localStorage.setItem(destKey(state.room),
-          JSON.stringify({ dest: null, ts: state.destTs }));
-      } else {
-        localStorage.removeItem(destKey(state.room));
-      }
-    } catch (e) { /* ignore */ }
+    saveRoom({ dest: state.dest, destTs: state.destTs });
   }
 
   function loadDest(room) {
-    try {
-      const raw = localStorage.getItem(destKey(room));
-      if (!raw) return null;
-      const j = JSON.parse(raw);
-      if (!j || typeof j.ts !== 'number') return null;
-      return { dest: j.dest || null, ts: j.ts };
-    } catch (e) { return null; }
+    const r = loadRoom(room);
+    if (!r) return null;
+    return { dest: r.dest || null, ts: typeof r.destTs === 'number' ? r.destTs : 0 };
+  }
+
+  // Who has been in this room. Written when someone first appears, and refreshed now and
+  // then — not on every position, which would hammer the phone's storage.
+  function rememberMember(id, name, seenAt) {
+    if (!state.room || !id) return;
+    const r = loadRoom(state.room);
+    const members = Object.assign({}, (r && r.members) || {});
+    const prev = members[id] || {};
+    members[id] = { name: name || prev.name || 'Someone', lastSeen: seenAt || Date.now() };
+    saveRoom({ members });
+  }
+
+  // Pressing Leave is the one thing that takes someone off the roster.
+  function forgetMember(id) {
+    if (!state.room || !id) return;
+    const r = loadRoom(state.room);
+    if (!r || !r.members || !r.members[id]) return;
+    const members = Object.assign({}, r.members);
+    delete members[id];
+    saveRoom({ members });
+  }
+
+  function roomNoteText(ms) {
+    if (!ms || ms <= 0) return '';
+    const days = ms / 86400000;
+    if (days > 6.5) return 'Room open for another week';
+    if (days >= 1) {
+      const d = Math.ceil(days);
+      return 'Room closes in ' + d + (d === 1 ? ' day' : ' days');
+    }
+    const h = Math.max(1, Math.ceil(ms / 3600000));
+    return 'Room closes in ' + h + (h === 1 ? ' hour' : ' hours');
   }
 
   /* ---------------------------------------------------------------- *
@@ -448,6 +517,10 @@
   function announceJoin(id, name) {
     if (state.seen.has(id)) return false;
     state.seen.add(id);
+    // Someone already on the room's roster is coming back, not joining for the first
+    // time, so they get a quiet return rather than a "joined" ping.
+    const rec = loadRoom(state.room);
+    if (rec && rec.members && rec.members[id]) return false;
     notify(name + ' joined', 'They can see the map and set the destination.');
     return true;
   }
@@ -481,6 +554,7 @@
     const name = (p && p.name) || msg.name || 'Someone';
     removePeer(msg.id);
     state.seen.delete(msg.id);
+    forgetMember(msg.id);      // pressing Leave is the one way off the roster
     renderPeople();
     notify(name + ' left', '');
   }
@@ -500,11 +574,18 @@
       refreshColors();
       // A position from someone new is also a join, for clients that skip hello.
       announceJoin(msg.id, p.name);
+      rememberMember(msg.id, p.name, p.ts);
+      p.savedAt = Date.now();
     } else {
       p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
       p.acc = msg.acc; p.ts = msg.ts || Date.now();
       p.away = false; p.awayAt = 0;
       if (msg.name) p.name = msg.name.slice(0, 24);
+      // Keep the roster's last-seen roughly current without writing on every fix.
+      if (!p.savedAt || Date.now() - p.savedAt > 300000) {
+        p.savedAt = Date.now();
+        rememberMember(msg.id, p.name, p.ts);
+      }
     }
     updateMarker(p);
     renderPeople();
@@ -721,6 +802,13 @@
     if (sheet) {
       document.documentElement.style.setProperty('--sheet-h', sheet.offsetHeight + 'px');
     }
+    renderRoomNote();
+  }
+
+  function renderRoomNote() {
+    const el = $('roomNote');
+    if (!el) return;
+    el.textContent = state.joined ? roomNoteText(state.roomExpires - Date.now()) : '';
   }
 
   function etaCell(p) {
@@ -737,6 +825,8 @@
     let meta = '';
     if (p.isMe) {
       meta = state.away ? 'app in the background' : 'you';
+    } else if (p.lat == null) {
+      meta = 'out of contact';
     } else if (kind === 'away') {
       meta = 'app in the background';
     } else if (kind === 'lost') {
@@ -837,10 +927,11 @@
     stopTimers();
     publishTimer = setInterval(publishNow, CFG.publishMs);
     renderTimer = setInterval(() => {
-      // Anyone silent for a very long time comes off the map — quietly, because we do
-      // not know whether they left or simply lost signal.
+      // Nobody is dropped from the room while it is open. A phone that goes quiet stays
+      // on the list as out of contact; only the room itself lapsing clears the roster,
+      // and that takes a week of nobody using it.
       state.peers.forEach((p, id) => {
-        if (Date.now() - p.ts > CFG.dropMs) { removePeer(id); state.seen.delete(id); }
+        if (Date.now() - p.ts > roomLifeMs()) { removePeer(id); state.seen.delete(id); }
       });
       sweepPresence();
       renderPeople();
@@ -867,7 +958,7 @@
 
   function join(name, room) {
     state.me = {
-      id: 'c-' + rand(8), name, color: PALETTE[0],
+      id: myId(), name, color: PALETTE[0],
       lat: null, lng: null, spd: null, hdg: null, acc: null,
       ts: Date.now(), isMe: true, _first: true,
     };
@@ -883,6 +974,29 @@
     state.destTs = saved ? saved.ts : 0;
     state.dest = saved ? saved.dest : null;
     state.myEta = null;
+
+    // And bring back everyone who has been in this room. They have no position yet, so
+    // they sit on the list as out of contact until they publish one — nobody silently
+    // vanishes just because they were quiet.
+    const rec = loadRoom(room);
+    state.roomExpires = rec ? rec.expiresAt : 0;
+    if (rec && rec.members) {
+      Object.keys(rec.members).forEach((id) => {
+        if (id === state.me.id || state.peers.has(id)) return;
+        const m = rec.members[id] || {};
+        state.peers.set(id, {
+          id, name: (m.name || 'Someone').slice(0, 24), color: colorFor(id),
+          lat: null, lng: null, spd: null, hdg: null, acc: null,
+          ts: m.lastSeen || Date.now(), eta: null, isMe: false, demo: false,
+          away: false, awayAt: 0,
+          presence: 'lost',      // already known, so opening the app does not ping
+          restored: true,
+        });
+        state.seen.add(id);      // known, so their next position is a return, not a join
+      });
+      refreshColors();
+    }
+    rememberMember(state.me.id, name);
 
     try {
       localStorage.setItem(LS.name, name);
@@ -920,6 +1034,7 @@
     state.dest = null;
     state.destTs = 0;
     state.myEta = null;
+    state.roomExpires = 0;      // the room itself is left alone; this is just our session
     if (myLine) { map.removeLayer(myLine); myLine = null; }
     if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
     state.autoFit = true;
@@ -1070,9 +1185,10 @@
       setTimeout(renderPeople, 240);
     });
 
-    window.addEventListener('beforeunload', () => {
-      if (state.joined && client && client.connected && !demoTimer) send({ t: 'bye' });
-    });
+    // Closing the app is NOT leaving the room. It sends the same "away" note as
+    // backgrounding does, so the group sees a phone that has gone quiet rather than
+    // someone who walked out — and nobody comes off the roster for it.
+    // (pagehide above handles that. Only the Leave button sends a real "bye".)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
@@ -1138,7 +1254,9 @@
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
                   presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest,
-                  handleTap, wireTapZoom, tap }, 
+                  handleTap, wireTapZoom, tap,
+                  loadRoom, saveRoom, rememberMember, forgetMember, roomNoteText,
+                  roomLifeMs }, 
   };
 
   boot();

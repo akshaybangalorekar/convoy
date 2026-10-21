@@ -172,9 +172,11 @@ async function testDestinationSurvivesRestart() {
   api.window.Convoy.setDest(-33.90, 151.30, 'Bondi');
   await sleep(20);
 
-  const raw = api.window.localStorage.getItem('convoy.dest.goa-trip');
+  const raw = api.window.localStorage.getItem('convoy.room.goa-trip');
   check('the destination is kept on the phone', !!raw, String(raw));
   check('with the place in it', /Bondi/.test(raw || ''), String(raw));
+  check('inside the room record, so it lapses with the room',
+        /expiresAt/.test(raw || ''), String(raw));
 
   api.window.Convoy.leave();
   await sleep(20);

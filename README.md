@@ -73,6 +73,28 @@ In practice a force-kill often *does* leave a trace, because iOS and Android bac
 app before killing it — so the "away" note frequently gets out, and the group sees "app in
 the background" rather than silence. But that is a happy accident, not a guarantee.
 
+Someone brought back from the room's roster shows as **out of contact** until they send
+something. The app does not pretend they are live just because they were here yesterday.
+
+## The room stays open
+
+A room is not something the app can close, because there is no server holding it — so
+instead it makes sure it never closes one by accident:
+
+- **Nobody is dropped.** A phone that goes quiet stays on the list as out of contact for as
+  long as the room is open. There is no timer quietly removing people.
+- **Closing the app is not leaving.** Shutting the tab or force-quitting sends the same
+  "away" note as backgrounding does, so you look like a phone that went quiet rather than
+  someone who walked out. Only the **Leave** button takes you off the room's roster.
+- **The room is remembered for a week.** Each phone keeps the room — its code, its
+  destination, and everyone who has been in it — and it lapses a week after anyone last used
+  it, so a room in use never closes. Reopen the app inside that week and the whole group is
+  back on the list, marked out of contact until they reappear.
+- The foot of the sheet says where you stand: "Room open for another week", or a countdown
+  once it has been quiet for a while.
+
+The week is `CFG.roomDays` in `app.js`.
+
 ## Where the state lives: on the phones
 
 The room has no server, so the shared state lives on the phones and is rebuilt by everyone
@@ -150,6 +172,7 @@ publishMs: 5000,        // how often a phone shares its position
 etaMs: 60000,           // how often it recomputes its arrival time
 staleMs: 90000,         // silence before someone counts as out of contact
 awayMs: 180000,         // backgrounded this long counts as out of contact too
+roomDays: 7,            // a room lapses this long after anyone last used it
 tapZoom: { delayMs: 260, moveTolerancePx: 12 },   // one tap out, two taps in
 fallbackCenter: { lat: -33.8688, lng: 151.2093 },   // shown before GPS arrives
 ```
@@ -163,8 +186,8 @@ proper night map.
 
 ## Testing
 
-Five headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
-MQTT, geolocation, notifications and network — 239 checks:
+Six headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
+MQTT, geolocation, notifications and network — 278 checks:
 
 ```bash
 npm install
@@ -178,6 +201,9 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
+- `tests/room-test.js` — the room's life: that it lasts a week, that using it pushes the
+  week out, that a phone quiet for an hour is still in the room, that closing the app is not
+  treated as leaving, that Leave is, and that the whole group comes back with the room.
 - `tests/route-test.js` — place search, the fallback when Photon is down, how an address is
   reassembled from its parts, the bias towards where the phone is, the car route, and the
   search sheet end to end.
@@ -197,6 +223,9 @@ npm test
   signal, that person shows a dash until it recovers.
 - **The relay is public.** Anyone who guesses the room code can watch the room. Use a code
   that is hard to guess and do not post it publicly.
+- **The roster lives on each phone.** A phone that has never had the room does not know who
+  was in it, so the group reappears only on phones that were there — which is every phone
+  that had the room, since each one keeps its own copy.
 - **Colours repeat past ten cars.** There are ten in the palette.
 - **Ten cars or so is the comfortable ceiling** for a room.
 
