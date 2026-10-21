@@ -881,7 +881,12 @@
    * Destination
    * ---------------------------------------------------------------- */
   function setDest(lat, lng, label) {
-    if (typeof lat !== 'number' || typeof lng !== 'number') return;
+    // Accept anything numeric. A service that hands back its coordinates as text must not
+    // silently lose the destination — that is a very quiet way for a tap to do nothing.
+    const la = typeof lat === 'number' ? lat : parseFloat(lat);
+    const ln = typeof lng === 'number' ? lng : parseFloat(lng);
+    if (!isFinite(la) || !isFinite(ln)) return;
+    lat = la; lng = ln;
     state.destTs = Date.now();
     state.dest = { lat, lng, label: label || 'Destination', by: state.me ? state.me.name : '' };
     state.myEta = null;

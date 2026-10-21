@@ -357,6 +357,85 @@ async function testTheMessageSaysWhatWentWrong() {
         down.window.ConvoyRoute._internals.diag.note);
 }
 
+/* ---------- Tapping a result must actually set it ---------- */
+// The quick answer arrives at once; the fuller one a beat later. That gap is the whole
+// problem: if the list is replaced while a finger is on it, iOS never delivers the tap.
+const photonThinNominatimSlow = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [145.05, -37.89] },
+        properties: {
+          name: 'Mimosa Road', street: 'Mimosa Road', housenumber: '92',
+          city: 'Melbourne', locality: 'Carnegie', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return new Promise((resolve) => setTimeout(() => resolve({
+    ok: true, status: 200, json: async () => ([{
+      lat: '-37.89', lon: '145.05', name: '92',
+      address: { house_number: '92', road: 'Mimosa Road', suburb: 'Carnegie',
+                 city: 'Melbourne', state: 'Victoria', postcode: '3163', country: 'Australia' },
+    }]),
+  }), 700));
+};
+
+async function openAndType(api, text, waitMs) {
+  const d = api.document;
+  d.getElementById('destRow').click();
+  await sleep(20);
+  d.getElementById('inSearch').value = text;
+  d.getElementById('inSearch').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  await sleep(waitMs);
+  return d;
+}
+
+async function testTappingAnAddressResultSelectsIt() {
+  const api = boot({ fetch: photonThinNominatimRich });
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const d = await openAndType(api, '92 mimosa road', 480);
+
+  const row = d.querySelector('#results li[data-i]');
+  check('the address is listed', !!row, d.getElementById('results').textContent);
+  row.click();
+  await sleep(30);
+
+  const dest = api.window.Convoy.state.dest;
+  check('tapping it sets the destination', !!dest, JSON.stringify(dest));
+  check('with the place in it', !!dest && /Mimosa/.test(dest.label), dest && dest.label);
+  check('and real numbers for coordinates, not text',
+        !!dest && typeof dest.lat === 'number' && typeof dest.lng === 'number',
+        dest && (typeof dest.lat + '/' + typeof dest.lng));
+  check('and the sheet gets out of the way',
+        d.getElementById('search').classList.contains('hidden'));
+}
+
+async function testTheRowSurvivesTheFullerAnswerArriving() {
+  const api = boot({ fetch: photonThinNominatimSlow });
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const d = await openAndType(api, '92 mimosa road', 500);
+
+  const row = d.querySelector('#results li[data-i]');
+  check('the quick answer is on screen', !!row && /Mimosa/.test(row.textContent),
+        row && row.textContent);
+
+  await sleep(900);                      // the fuller answer lands in the meantime
+  const after = d.querySelector('#results li[data-i]');
+  check('the row is the same element, not a replacement', after === row,
+        after === row ? 'same' : 'replaced');
+  check('and it now shows the fuller address', /3163/.test(after.textContent),
+        after.textContent);
+
+  after.click();
+  await sleep(30);
+  const dest = api.window.Convoy.state.dest;
+  check('so the tap still lands and sets the destination', !!dest, JSON.stringify(dest));
+  check('with the fuller address', !!dest && /3163/.test(dest.label), dest && dest.label);
+}
+
 async function testAPlaceIsNotLookedUpTwice() {
   const api = boot({ fetch: photonCarnegie });
   await api.window.ConvoyRoute.search('carnegie');
@@ -634,6 +713,8 @@ async function testHistoryIsPerPhone() {
     await testAFullerAnswerArrivesAfterTheFirst();
     await testTheCountryFilterCannotHideAnAnswer();
     await testTheMessageSaysWhatWentWrong();
+    await testTappingAnAddressResultSelectsIt();
+    await testTheRowSurvivesTheFullerAnswerArriving();
     await testAPlaceIsNotLookedUpTwice();
     await testPlaceStillGoesToPhotonFirst();
     await testAddressServiceIsNotHammered();

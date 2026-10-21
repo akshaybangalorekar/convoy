@@ -349,20 +349,39 @@
     closeSearch();
   }
 
+  // What the list currently shows. The rows read from this at tap time rather than
+  // closing over one particular array, so a row can be updated without being replaced.
+  let shown = [];
+
   function renderResults(list) {
     const ul = $('results');
-    if (!list.length) { showHint('Nothing found. Try a different name.'); return; }
+    if (!list.length) { showHint(diag.note || 'Nothing found. Try a different name.'); return; }
+
+    // If the same number of rows is already on screen, update them in place. Replacing
+    // the list takes the row out from under a finger that is already on it, and iOS then
+    // never delivers the tap at all — which is exactly what happened when the fuller
+    // address arrived a second after the quick one.
+    const rows = ul.querySelectorAll('li[data-i]');
+    if (rows.length === list.length && !ul.querySelector('li.head')) {
+      list.forEach((r, i) => {
+        if (rows[i].textContent !== r.label) rows[i].textContent = r.label;
+      });
+      shown = list;
+      return;
+    }
+
     ul.innerHTML = list.map((r, i) =>
       '<li data-i="' + i + '">' + API.esc(r.label) + '</li>').join('');
     ul.querySelectorAll('li[data-i]').forEach((li) => {
       li.addEventListener('click', () => {
-        const r = list[parseInt(li.getAttribute('data-i'), 10)];
+        const r = shown[parseInt(li.getAttribute('data-i'), 10)];
         if (!r) return;
         API.setDest(r.lat, r.lng, r.label);
         rememberPlace(r);
         closeSearch();
       });
     });
+    shown = list;
   }
 
   async function runSearch() {
@@ -412,6 +431,7 @@
     init, openSearch, closeSearch, search, drive,
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
-                  diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX },
+                  diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
+                  shownList: () => shown },
   };
 })();

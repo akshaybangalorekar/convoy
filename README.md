@@ -257,8 +257,9 @@ npm test
   answer arriving after the quick one, a service answering with an empty list not hiding one
   that has an answer, a broken service not emptying the search, the country restriction never
   being the reason for nothing, the message saying which of the two kinds of failure it was,
-  the bias towards where the phone is, the rate gap and the cache, the recent-places history
-  and its five-item cap, the car route, and the search sheet.
+  the bias towards where the phone is, the rate gap and the cache, tapping a result actually
+  setting it, the row surviving the fuller answer arriving underneath a finger, the
+  recent-places history and its five-item cap, the car route, and the search sheet.
 - `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
   everyone in frame, and the one-tap-out / two-taps-in gestures.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are
