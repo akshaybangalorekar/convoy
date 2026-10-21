@@ -30,8 +30,11 @@ so it opens full-screen from then on rather than in a browser tab. On Android th
 the browser hands the app its own install prompt and the app fires it from its own button.
 **On iOS Safari there is no such thing**: Apple does not let a page trigger the install, so the
 app shows where the Share button is and the user does it in two taps. That is a platform limit,
-not something we chose. The offer appears once, only on a phone that has never used the app,
-never inside an app that is already installed, and "Not now" is remembered.
+not something we chose.
+
+**Neither phone shows a system pop-up of its own** — what you get is this app's own card. It
+appears whenever the app is not already installed on that phone, which includes after someone
+deletes it, and never inside an app that is already on the home screen. "Not now" is remembered.
 
 If someone installs from an invite link, the code they were invited with is kept, so the
 installed app still offers them the right room rather than starting a new one.
@@ -65,7 +68,9 @@ than ours:
   the link works, but the recipient should open it in Safari or Chrome for the full app.
 - **Installing is one tap on Android and two on an iPhone.** Android hands the app its own
   install prompt, which it fires from its own button. Safari has no such thing — Apple does not
-  let a page trigger it — so the card points at the Share button instead.
+  let a page trigger it — so the card points at the Share button instead. Note that on iOS the
+  home-screen app keeps its own storage, separate from Safari, so it starts fresh: after
+  installing, that person needs the room code again (or the link).
 - **Notifications on an iPhone need the app installed.** In a plain Safari tab iOS gives a page
   no way to notify you at all. Once Convoy is on the home screen it can ask, and then it behaves
   like Android. On Android it works in the tab as well. Vibration is Android only, because

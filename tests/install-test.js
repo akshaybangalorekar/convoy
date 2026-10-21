@@ -11,15 +11,20 @@ const body = (api) => api.document.getElementById('installBody').textContent;
 const shown = (api) => !card(api).classList.contains('hidden');
 
 /* ---------- Who gets offered it ---------- */
-async function testNotOfferedToAReturningPhone() {
+async function testTheOfferComesBackIfTheAppIsDeleted() {
+  // A phone that has used Convoy before but is not running it from the home screen:
+  // either the app was deleted, or it was never installed. The browser only fires the
+  // install event when the app is not installed, so the event is the signal — which is
+  // why this no longer depends on remembering whether the phone is new.
   const api = boot({ setup: (w) => {
     w.localStorage.setItem('convoy.name', 'Akshay');
     w.localStorage.setItem('convoy.room', 'goa-trip');
   } });
+  await sleep(20);
+  check('nothing is offered before the browser says it can be installed', !shown(api));
   api.installPrompt();
-  await sleep(30);
-  check('a phone that has used the app is not offered the install', !shown(api),
-        body(api));
+  await sleep(20);
+  check('deleting the app and opening the link again offers it again', shown(api), body(api));
 }
 
 async function testOfferedOnAndroid() {
@@ -60,13 +65,15 @@ async function testDismissingIsRemembered() {
   check('and it does not come back', !shown(api));
 }
 
-async function testNotOfferedWhenAlreadyInstalled() {
+async function testNotOfferedInsideTheInstalledApp() {
   const api = boot({ setup: (w) => {
     Object.defineProperty(w.navigator, 'standalone', { configurable: true, value: true });
   } });
   api.installPrompt();
   await sleep(30);
   check('an app already on the home screen is not asked again', !shown(api));
+  check('and no install event is even expected there',
+        api.window.ConvoyInstall.isStandalone() === true);
 }
 
 /* ---------- iOS, where the browser will not let us ---------- */
@@ -196,10 +203,10 @@ async function testARefusedLocationSaysWhy() {
 /* ---------- Run ---------- */
 (async () => {
   try {
-    await testNotOfferedToAReturningPhone();
+    await testTheOfferComesBackIfTheAppIsDeleted();
     await testOfferedOnAndroid();
     await testDismissingIsRemembered();
-    await testNotOfferedWhenAlreadyInstalled();
+    await testNotOfferedInsideTheInstalledApp();
     await testIOSGetsInstructions();
     await testInviteIsRemembered();
     await testInviteSurvivesInstalling();

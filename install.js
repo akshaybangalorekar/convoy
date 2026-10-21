@@ -149,12 +149,17 @@
     // the app is genuinely limited here, so it is a compatibility note, not a sales pitch.
     if (appBrowser()) { offered = true; render(); return; }
 
-    if (isStandalone() || read(LS.dismissed) || !isFirstTime()) return;
-    // Nothing to offer yet on Android until the browser says it can be installed.
-    if (!deferred && !isIOS()) return;
+    if (isStandalone() || read(LS.dismissed)) return;
 
-    offered = true;
-    render();
+    // On Android the browser fires the install event only when the app is NOT already
+    // installed, so the event itself is the signal. That is better than asking whether
+    // this phone has used Convoy before, because it means deleting the app and opening
+    // the link again offers it again.
+    if (deferred) { offered = true; render(); return; }
+
+    // iOS fires no such event, so fall back to asking whether this phone has used it.
+    // Deleting a home-screen app on iOS clears its storage, so that comes back too.
+    if (isIOS() && isFirstTime()) { offered = true; render(); return; }
   }
 
   // Location was refused. If we are inside another app's browser, that is usually why —
