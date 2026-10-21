@@ -1,10 +1,10 @@
 {
   "name": "convoy",
-  "version": "1.11.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Live group map with routing, saved rooms (shared via an optional GitHub repo), a push-to-talk mic toggle and a map that keeps every car in frame — see everyone in your group on one map, talk to them, navigate there together, and keep navigating with no signal. No backend.",
+  "description": "Everyone on one map: invite by link, anyone can set the destination, and each person's arrival time is shown. A notification when the destination changes or someone joins or leaves. No backend, no account.",
   "scripts": {
-    "test": "node --no-experimental-fetch tests/map-test.js && node --no-experimental-fetch tests/sync-test.js && node --no-experimental-fetch tests/rooms-voice-test.js && node --no-experimental-fetch tests/route-test.js && node --no-experimental-fetch tests/pwa-test.js && node tests/app-test.js",
+    "test": "node --no-experimental-fetch tests/app-test.js && node --no-experimental-fetch tests/route-test.js && node --no-experimental-fetch tests/map-test.js && node --no-experimental-fetch tests/pwa-test.js",
     "serve": "python3 -m http.server 8080"
   },
   "devDependencies": {

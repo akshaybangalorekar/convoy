@@ -1,167 +1,273 @@
-/* Headless logic test for Convoy's app.js using jsdom + stubbed L / mqtt.
- * Verifies the join -> live-message -> render -> leave path and demo mode. */
-const fs = require('fs');
-const path = require('path');
-const { JSDOM } = require('jsdom');
+/* The session: starting a group, joining by link, seeing people, arrival times,
+ * and the notifications. */
+'use strict';
 
-const DIR = path.join(__dirname, '..');
-const results = [];
-const check = (name, cond, extra = '') =>
-  results.push({ name, ok: !!cond, extra });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const { boot, check, sleep, pos, finish, crash } = require('./harness');
 
-function makeStubs(window) {
-  const layer = () => {
-    const o = {};
-    ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds',
-     'removeLayer', 'on', 'off', 'getZoom', 'setZIndex', 'setIcon'].forEach((m) => { o[m] = () => o; });
-    o.getZoom = () => 13;
-    o.getPane = () => ({ style: {} });
-    o.getContainer = () => ({ addEventListener: () => {} });
-    o.getElement = () => ({
-      classList: { toggle() {}, add() {}, remove() {} },
-      querySelector: () => null,
-    });
-    return o;
-  };
-  window.L = {
-    map: layer, tileLayer: layer, marker: layer, polyline: layer,
-    latLngBounds: layer, control: { zoom: () => ({ addTo: () => {} }) },
-    divIcon: (o) => o,
-  };
-
-  const clients = [];
-  window.mqtt = {
-    connect(url, opts) {
-      const handlers = {};
-      const c = {
-        url, opts, connected: false, published: [], subscribed: null,
-        on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); return c; },
-        subscribe(t, o, cb) { c.subscribed = t; cb && cb(null); return c; },
-        publish(t, m) { c.published.push(m); return c; },
-        end() { c.ended = true; return c; },
-        _emit(ev, ...a) { (handlers[ev] || []).forEach((f) => f(...a)); },
-      };
-      clients.push(c);
-      return c;
-    },
-  };
-  return { clients };
-}
-
-function boot(html, url = 'https://convoy.test/') {
-  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url });
-  const { window } = dom;
-  const stubs = makeStubs(window);
-  window.crypto = window.crypto || {};
-  if (!window.crypto.getRandomValues) {
-    window.crypto.getRandomValues = (a) => { for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 256) | 0; return a; };
+const routeFetch = (url) => {
+  if (url.indexOf('routing.openstreetmap.de') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      routes: [{
+        distance: 12000, duration: 1200,
+        geometry: { coordinates: [[73.8, 15.5], [73.85, 15.55], [73.9, 15.6]] },
+      }],
+    }) });
   }
-  window.navigator.geolocation = {
-    watchPosition: (ok) => { window.__fix = ok; return 1; },
-    clearWatch() {},
-  };
-  window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
-  return { window, stubs };
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
+const text = (api, id) => api.document.getElementById(id).textContent;
+
+/* ---------- Starting and joining ---------- */
+async function testStartAGroup() {
+  const api = boot();
+  const d = api.document;
+
+  check('the join card is the first thing you see', !d.getElementById('join').classList.contains('hidden'));
+  check('the people sheet is hidden until you are in a room',
+        d.getElementById('sheet').classList.contains('hidden'));
+  check('the button offers to start a group', text(api, 'btnGo') === 'Start a new group',
+        text(api, 'btnGo'));
+
+  const c = api.join('Akshay', '');
+  await sleep(20);
+
+  check('starting a group puts you on the map',
+        d.getElementById('join').classList.contains('hidden'));
+  check('a room code was generated', /^trip-/.test(api.window.Convoy.state.room),
+        api.window.Convoy.state.room);
+  check('the room code is shown at the top',
+        text(api, 'roomChip') === api.window.Convoy.state.room, text(api, 'roomChip'));
+  check('a connection was opened', !!c, String(api.clients.length));
+  check('and it subscribes to the room', c.subscribed === 'sarvam-convoy/v1/' +
+        api.window.Convoy.state.room + '/bus', c.subscribed);
+  check('the phone announces itself', !!api.sent('hello'));
+  check('the people sheet appears', !d.getElementById('sheet').classList.contains('hidden'));
+  check('you are on your own in the list', text(api, 'peopleCount') === '1 person',
+        text(api, 'peopleCount'));
+  check('the recenter button appears',
+        !d.getElementById('btnRecenter').classList.contains('hidden'));
 }
 
-const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+async function testJoinWithACode() {
+  const api = boot();
+  const d = api.document;
 
-/* ---------- Test 1: join flow + inbound live position ---------- */
-function testJoin() {
-  const { window, stubs } = boot(html);
-  const d = window.document;
+  d.getElementById('inRoom').value = 'goa-trip';
+  d.getElementById('inRoom').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  check('typing a code turns the button into a join', text(api, 'btnGo') === 'Join group',
+        text(api, 'btnGo'));
 
-  check('join overlay visible on load', !d.getElementById('join').classList.contains('hidden'));
+  const c = api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  check('you join that room', api.window.Convoy.state.room === 'goa-trip');
+  check('and subscribe to it',
+        c.subscribed === 'sarvam-convoy/v1/goa-trip/bus', c.subscribed);
+}
 
-  d.getElementById('inName').value = 'Akshay';
-  d.getElementById('inRoom').value = 'Goa Trip!!';
-  d.getElementById('btnJoin').click();
+async function testInviteLink() {
+  const api = boot({ setup: (w) => { w.history.replaceState(null, '', '/#r=ride-7f3k9'); } });
+  const d = api.document;
+  await sleep(10);
+  check('a link pre-fills the code', d.getElementById('inRoom').value === 'ride-7f3k9',
+        d.getElementById('inRoom').value);
+  check('and the button offers to join', text(api, 'btnGo') === 'Join group', text(api, 'btnGo'));
 
-  check('room normalised', d.getElementById('roomLabel').textContent === 'goa-trip',
-        d.getElementById('roomLabel').textContent);
-  check('panel shown after join', d.getElementById('panel').classList.contains('show'));
-  check('join overlay hidden', d.getElementById('join').classList.contains('hidden'));
-  check('hash carries room', window.location.hash.includes('r=goa-trip'), window.location.hash);
+  const c = api.join('Akshay', d.getElementById('inRoom').value);
+  await sleep(20);
+  check('joining by link works', api.window.Convoy.state.room === 'ride-7f3k9');
+  check('the invite carries the room',
+        c.subscribed === 'sarvam-convoy/v1/ride-7f3k9/bus');
+}
 
-  const client = stubs.clients[0];
-  check('mqtt client created', !!client);
+async function testInviteLinkCopy() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  let copied = '';
+  Object.defineProperty(api.window.navigator, 'clipboard', {
+    configurable: true, value: { writeText: async (t) => { copied = t; } },
+  });
+  await api.window.Convoy.share();
+  await sleep(10);
+  check('sharing copies an invite link', /#r=goa-trip$/.test(copied), copied);
+}
 
-  client.connected = true;
-  client._emit('connect');                 // broker handshake
-  check('subscribes to room topic',
-        client.subscribed === 'sarvam-convoy/v1/goa-trip/bus', client.subscribed);
-  check('status goes online', d.getElementById('status').className.includes('online'),
-        d.getElementById('status').className);
-  check('hello published on connect',
-        client.published.some((m) => m.includes('"t":"hello"')), client.published.join('|'));
+/* ---------- Seeing people ---------- */
+async function testPeopleAppear() {
+  const api = boot();
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  api.fix(15.500, 73.800);
+  await sleep(20);
 
-  window.__fix({ coords: { latitude: 15.5, longitude: 73.8, accuracy: 8, speed: 9, heading: 120 }, timestamp: Date.now() });
-  check('publishes own position after GPS fix',
-        client.published.some((m) => m.includes('"t":"pos"')));
+  api.recv(pos('p1', 'Priya', 15.510, 73.810));
+  api.recv(pos('p2', 'Rahul', 15.520, 73.820));
+  await sleep(30);
 
-  client._emit('message', 'sarvam-convoy/v1/goa-trip/bus',
-    Buffer.from(JSON.stringify({ t: 'pos', id: 'peer-1', name: 'Priya', lat: 15.51, lng: 73.81, spd: 12, ts: Date.now() })));
-  const list = d.getElementById('people').innerHTML;
-  check('peer appears in people list', list.includes('Priya'));
-  check('peer row shows a distance', /km|m\b/.test(list));
-  check('people count updated', /2 people/.test(d.getElementById('peopleCount').textContent),
-        d.getElementById('peopleCount').textContent);
+  check('both other people are on the map', api.window.Convoy.state.peers.size === 2,
+        String(api.window.Convoy.state.peers.size));
+  check('the count adds up', text(api, 'peopleCount') === '3 people', text(api, 'peopleCount'));
+  const list = text(api, 'people');
+  check('their names are listed', /Priya/.test(list) && /Rahul/.test(list), list);
+  check('each has a colour', /background:#/.test(d.getElementById('people').innerHTML));
+  check('your own position is published', !!api.sent('pos'));
+}
 
-  client._emit('message', 'x', Buffer.from(JSON.stringify({ t: 'bye', id: 'peer-1' })));
-  check('peer removed on bye', !d.getElementById('people').innerHTML.includes('Priya'));
+/* ---------- Arrival times ---------- */
+async function testArrivalTimes() {
+  const api = boot({ fetch: routeFetch });
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  api.fix(15.500, 73.800);
+  await sleep(20);
+
+  api.recv(pos('p1', 'Priya', 15.510, 73.810));
+  await sleep(20);
+  check('with no destination there is nothing to arrive at',
+        /no destination/.test(text(api, 'people')), text(api, 'people'));
+
+  api.window.Convoy.setDest(15.600, 73.900, 'Goa');
+  await sleep(60);
+
+  check('the destination is stored', !!api.window.Convoy.state.dest);
+  check('the destination row shows it', text(api, 'destText') === 'Goa', text(api, 'destText'));
+  check('your arrival time is worked out', !!api.window.Convoy.state.myEta);
+  check('the drive distance is kept', api.window.Convoy.state.myEta.dist === 12000,
+        JSON.stringify(api.window.Convoy.state.myEta));
+
+  const eta = api.sent('eta');
+  check('your arrival time is shared with the room', !!eta, JSON.stringify(eta));
+  check('it carries the duration', eta && eta.dur === 1200, JSON.stringify(eta));
+  check('it carries the distance', eta && eta.dist === 12000, JSON.stringify(eta));
+
+  const arrive = api.window.Convoy.fmtClock(api.window.Convoy.state.myEta.ts + 1200 * 1000);
+  check('the list shows the arrival time', text(api, 'people').indexOf(arrive) >= 0,
+        text(api, 'people') + ' (wanted ' + arrive + ')');
+
+  // and someone else's, as their phone reports it
+  api.recv({ t: 'eta', id: 'p1', name: 'Priya', dur: 600, dist: 5000, ts: Date.now() });
+  await sleep(20);
+  const hers = api.window.Convoy.fmtClock(Date.now() + 600 * 1000);
+  check('their arrival time shows too',
+        text(api, 'people').indexOf(hers) >= 0 || !!api.window.Convoy.state.peers.get('p1').eta,
+        text(api, 'people'));
+  check('their distance is shown', /5\.0 km/.test(text(api, 'people')), text(api, 'people'));
+}
+
+async function testDestinationShared() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(15.5, 73.8);
+  await sleep(20);
+
+  api.window.Convoy.setDest(15.6, 73.9, 'Goa');
+  await sleep(20);
+  const d = api.sent('dest');
+  check('setting a destination tells the room', !!d, JSON.stringify(d));
+  check('it carries the place', d && d.label === 'Goa', JSON.stringify(d));
+  check('it carries who set it', d && d.by === 'Akshay', JSON.stringify(d));
+
+  // and a destination someone else set
+  api.recv({ t: 'dest', id: 'p1', name: 'Priya', by: 'Priya', lat: 15.7, lng: 74.0, label: 'Panaji' });
+  await sleep(20);
+  check('someone else can move the destination', text(api, 'destText') === 'Panaji',
+        text(api, 'destText'));
+
+  api.recv({ t: 'dest-clear', id: 'p1', name: 'Priya', by: 'Priya' });
+  await sleep(20);
+  check('and clear it', text(api, 'destText') === 'Set a destination', text(api, 'destText'));
+  check('the row goes quiet again',
+        api.document.getElementById('destText').classList.contains('empty'));
+}
+
+/* ---------- Notifications ---------- */
+async function testNotifications() {
+  const api = boot();
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const last = () => (api.notes.length ? api.notes[api.notes.length - 1] : { title: '', body: '' });
+
+  check('the phone asks for permission to notify',
+        typeof api.window.Notification === 'function');
+
+  api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
+  await sleep(20);
+  check('someone joining raises a notification', /Priya joined/.test(last().title), last().title);
+  check('and a banner on screen', /Priya joined/.test(text(api, 'banner')), text(api, 'banner'));
+
+  const before = api.notes.length;
+  api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
+  await sleep(20);
+  check('the same person joining twice notifies once', api.notes.length === before,
+        String(api.notes.length - before));
+
+  api.recv({ t: 'dest', id: 'p2', name: 'Rahul', by: 'Rahul', lat: 15.6, lng: 73.9, label: 'Goa' });
+  await sleep(20);
+  check('a destination change raises a notification',
+        /Rahul set the destination/.test(last().title), last().title);
+  check('the notification says where', /Goa/.test(last().body), last().body);
+
+  const same = api.notes.length;
+  api.recv({ t: 'dest', id: 'p2', name: 'Rahul', by: 'Rahul', lat: 15.6, lng: 73.9, label: 'Goa' });
+  await sleep(20);
+  check('the same destination does not notify twice', api.notes.length === same);
+
+  api.recv({ t: 'dest-clear', id: 'p2', name: 'Rahul', by: 'Rahul' });
+  await sleep(20);
+  check('clearing it raises a notification', /Rahul cleared/.test(last().title), last().title);
+
+  api.recv(pos('p3', 'Meera', 15.5, 73.8));
+  await sleep(20);
+  api.recv({ t: 'bye', id: 'p3', name: 'Meera' });
+  await sleep(20);
+  check('someone leaving raises a notification', /Meera left/.test(last().title), last().title);
+  check('and they drop off the list', !/Meera/.test(text(api, 'people')), text(api, 'people'));
+
+  // your own actions must not ping you
+  const meId = api.window.Convoy.state.me.id;
+  const mine = api.notes.length;
+  api.recv({ t: 'dest', id: meId, name: 'Akshay', lat: 1, lng: 1, label: 'Nope' });
+  await sleep(20);
+  check('your own destination change does not notify you', api.notes.length === mine);
+  check('and it does not move your destination',
+        api.window.Convoy.state.dest === null || api.window.Convoy.state.dest.label !== 'Nope');
+}
+
+/* ---------- Leaving ---------- */
+async function testLeave() {
+  const api = boot();
+  const d = api.document;
+  api.join('Akshay', 'goa-trip');
+  api.fix(15.5, 73.8);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', 15.51, 73.81));
+  await sleep(20);
 
   d.getElementById('btnLeave').click();
-  check('leave shows join overlay again', !d.getElementById('join').classList.contains('hidden'));
-  check('client closed on leave', client.ended === true);
-}
+  await sleep(20);
 
-/* ---------- Test 2: demo mode ---------- */
-async function testDemo() {
-  const { window } = boot(html);
-  const d = window.document;
-  d.getElementById('btnDemo').click();
-
-  check('demo hides overlay', d.getElementById('join').classList.contains('hidden'));
-  check('demo room label', d.getElementById('roomLabel').textContent === 'demo');
-  const list = d.getElementById('people').innerHTML;
-  ['Priya', 'Rahul', 'Meera', 'Arjun'].forEach((n) =>
-    check('demo car present: ' + n, list.includes(n)));
-  check('demo shows 5 people', /5 people/.test(d.getElementById('peopleCount').textContent),
-        d.getElementById('peopleCount').textContent);
-
-  await sleep(1300);                        // let the animation tick
-  check('demo animates (positions update)', d.getElementById('people').innerHTML !== list);
-
-  d.getElementById('btnLeave').click();
-  check('leaving demo clears cars', !d.getElementById('people').innerHTML.includes('Priya'));
-}
-
-/* ---------- Test 3: invite-link auto-join ---------- */
-function testInvite() {
-  const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true,
-                                url: 'https://convoy.test/#r=goa-7f3k9' });
-  const { window } = dom;
-  makeStubs(window);
-  window.crypto = window.crypto || {};
-  if (!window.crypto.getRandomValues) window.crypto.getRandomValues = (a) => a;
-  window.navigator.geolocation = { watchPosition: () => 1, clearWatch() {} };
-  window.localStorage.setItem('convoy.name', 'Meera');
-  window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
-  check('invite link prefills room', window.document.getElementById('inRoom').value === 'goa-7f3k9');
-  check('invite link auto-joins when name is known',
-        window.document.getElementById('roomLabel').textContent === 'goa-7f3k9',
-        window.document.getElementById('roomLabel').textContent);
+  check('leaving says goodbye to the room', !!api.sent('bye'));
+  check('the join card comes back', !d.getElementById('join').classList.contains('hidden'));
+  check('the sheet goes away', d.getElementById('sheet').classList.contains('hidden'));
+  check('the room is cleared', api.window.Convoy.state.room === null ||
+        api.window.Convoy.state.joined === false);
+  check('the map is cleared of people', api.window.Convoy.state.peers.size === 0);
 }
 
 /* ---------- Run ---------- */
 (async () => {
-  testJoin();
-  await testDemo();
-  testInvite();
-
-  const failed = results.filter((r) => !r.ok);
-  results.forEach((r) => console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  <-- ' + r.extra}`));
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
-  process.exit(failed.length ? 1 : 0);
+  try {
+    await testStartAGroup();
+    await testJoinWithACode();
+    await testInviteLink();
+    await testInviteLinkCopy();
+    await testPeopleAppear();
+    await testArrivalTimes();
+    await testDestinationShared();
+    await testNotifications();
+    await testLeave();
+  } catch (e) { crash(e); }
+  finish('app');
 })();

@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = 'convoy-v1';
+const VERSION = 'convoy-v2';
 const TILE_CACHE = 'convoy-tiles-v1';
 const MAX_TILES = 400;          // ~6 MB, roughly one afternoon of driving
 
@@ -22,8 +22,6 @@ const SHELL = [
   './index.html',
   './app.js',
   './route.js',
-  './voice.js',
-  './sync.js',
   './styles.css',
   './manifest.webmanifest',
   './icon.svg',
@@ -37,7 +35,6 @@ const SHELL = [
 const CDN = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js',
   'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js',
 ];
 

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Convoy — live map for your group</title>
-<meta name="description" content="A tiny web app that shows everyone in your group on one live map. No sign-up, no backend." />
-<meta name="theme-color" content="#0b1220" />
-<meta name="color-scheme" content="dark" />
+<title>Convoy — everyone on one map</title>
+<meta name="description" content="See everyone in your group on one map, with the time each person will reach the destination." />
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Convoy" />
 <meta name="format-detection" content="telephone=no" />
 <link rel="manifest" href="manifest.webmanifest" />
@@ -24,225 +24,75 @@
 
 <div id="map" aria-label="Map"></div>
 
-<!-- Top bar -->
+<!-- Top: who you are with, and where you are all heading -->
 <header id="topbar">
-  <div class="tb-left">
-    <span id="roomLabel" class="chip">not in a room</span>
-    <span id="status" class="status"><i class="dot"></i><span id="statusText">idle</span></span>
-  </div>
-</header>
-
-<!-- Controls sit in a column at the bottom-left, within reach of one thumb.
-     Route is last (nearest the thumb); Leave is furthest away so it is hardest
-     to hit by accident. -->
-<div class="rail" id="rail">
-  <button id="btnLeave" class="btn-sm danger" title="Leave room">Leave</button>
-  <button id="btnRooms" class="btn-sm" title="Saved rooms">Rooms</button>
-  <button id="btnShare" class="btn-sm" title="Copy invite link">Share</button>
-  <div class="rail-row">
-    <button id="btnTalk" class="btn-sm" title="Start a voice call">Talk</button>
-    <button id="micSwitch" class="switch" role="switch" aria-checked="false"
-            aria-label="Microphone" title="Microphone"><span class="knob"></span></button>
-  </div>
-  <button id="btnRoute" class="btn-sm" title="Plan a route">Route</button>
-</div>
-
-<!-- People panel -->
-<section id="panel">
-  <div class="panel-head">
-    <span id="peopleCount">0 people</span>
-    <div class="panel-actions">
-      <button id="btnFollow" class="btn-sm toggle" title="Keep the map centred on you">Follow me</button>
-      <button id="btnFit" class="btn-sm toggle on" title="Keep everyone in view">Fit all</button>
-      <button id="btnNames" class="btn-sm toggle" title="Show names on the map">Names</button>
+  <div class="card bar">
+    <span id="roomChip" class="chip">—</span>
+    <span id="connState" class="conn">connecting</span>
+    <div class="bar-actions">
+      <button id="btnInvite" class="pill accent">Invite</button>
+      <button id="btnLeave" class="pill">Leave</button>
     </div>
   </div>
+
+  <button id="destRow" class="card dest-row" aria-label="Destination">
+    <span class="dest-pin" aria-hidden="true"></span>
+    <span class="dest-text" id="destText">Set a destination</span>
+    <span class="dest-chev" aria-hidden="true">›</span>
+  </button>
+</header>
+
+<button id="btnRecenter" class="recenter" aria-label="Show everyone"></button>
+
+<!-- Everyone, and when they arrive -->
+<section id="sheet" class="card">
+  <button id="sheetHead" class="sheet-head">
+    <span id="peopleCount">0 people</span>
+    <span class="sheet-chev" aria-hidden="true">›</span>
+  </button>
   <ul id="people"></ul>
 </section>
 
-<!-- Navigation banner (visible only while navigating) -->
-<div id="navbanner" class="navbanner">
-  <div class="nav-ico" id="navIco">↑</div>
-  <div class="nav-txt">
-    <div class="nav-main" id="navMain">—</div>
-    <div class="nav-sub" id="navSub"></div>
-  </div>
-  <div class="nav-btns">
-    <button id="navMute" class="mini on" title="Toggle voice">Voice</button>
-    <button id="navStop" class="mini danger" title="Stop navigating">Stop</button>
-  </div>
-</div>
-
-<!-- Bottom navigation status -->
-<div id="navstatus" class="navstatus">
-  <span id="navRemain">—</span>
-  <button id="navRecalc" class="mini">Recalculate</button>
-</div>
-
-<!-- Re-route consent prompt: never switch a route without asking -->
-<div id="reroute" class="reroute">
-  <div class="reroute-txt" id="rerouteTxt">—</div>
-  <div class="reroute-btns">
-    <button id="rerouteUse" class="mini on">Use it</button>
-    <button id="rerouteKeep" class="mini">Keep current</button>
-  </div>
-</div>
-
-<!-- Route planning sheet -->
-<section id="routepanel" class="sheet">
-  <div class="sheet-head">
-    <span>Plan a route</span>
-    <button id="btnRouteClose" class="btn-sm">Close</button>
-  </div>
-  <div class="sheet-body">
-    <div class="modes" id="routeModes">
-      <button class="mode on" data-mode="car">Car</button>
-      <button class="mode" data-mode="bike">Cycle</button>
-      <button class="mode" data-mode="foot">Walk</button>
-    </div>
-
-    <label class="scope" id="scopeRow" for="scopeToggle">
-      <input type="checkbox" id="scopeToggle" checked />
-      <span id="scopeLabel">Only search my country</span>
-    </label>
-
-    <label class="fld" for="rtFrom">
-      <span>From</span>
-      <div class="fld-row">
-        <input id="rtFrom" placeholder="Start address" autocomplete="off" autocapitalize="none" spellcheck="false" />
-        <button id="rtFromHere" class="mini" title="Use my location">Here</button>
-      </div>
-      <div class="sugg" id="rtFromSugg"></div>
-    </label>
-
-    <label class="fld" for="rtTo">
-      <span>To</span>
-      <div class="fld-row">
-        <input id="rtTo" placeholder="Destination address" autocomplete="off" autocapitalize="none" spellcheck="false" />
-        <button id="rtToHere" class="mini" title="Use my location">Here</button>
-      </div>
-      <div class="sugg" id="rtToSugg"></div>
-    </label>
-
-    <button id="rtGo" class="primary">Get route</button>
-    <div id="rtSummary" class="summary"></div>
-    <ol id="rtSteps" class="steps"></ol>
-
-    <div class="offline-block">
-      <div class="offline-title">Offline</div>
-      <div class="offline-note">Save this route so turn-by-turn and spoken prompts
-        keep working when there's no signal. (Map tiles can't be pre-downloaded —
-        OpenStreetMap's tile policy doesn't allow it.)</div>
-      <div class="offline-actions">
-        <button id="offlineSave" class="mini on">Save route</button>
-        <button id="offlineCheck" class="mini">Check coverage</button>
-        <button id="offlineClear" class="mini">Clear</button>
-      </div>
-      <div class="offline-status" id="offlineStatus"></div>
-    </div>
-  </div>
-</section>
-
-<!-- Join overlay -->
+<!-- Join -->
 <div id="join" class="overlay">
-  <div class="card">
-    <div class="brand"><span class="brand-dot"></span> Convoy</div>
-    <h1>Everyone on one map</h1>
-    <p class="sub">Pick a room code, share the link with your group, and every phone that opens it shows up live on this map. Built for road trips, rides, hikes and meet-ups.</p>
-
-    <div id="savedRooms" class="saved-rooms"></div>
+  <div class="card join-card">
+    <div class="logo" aria-hidden="true"></div>
+    <h1>Convoy</h1>
+    <p class="sub">Everyone on one map, with the time each person will arrive.</p>
 
     <label for="inName">Your name</label>
-    <input id="inName" maxlength="24" placeholder="e.g. Akshay" autocomplete="name" />
+    <input id="inName" maxlength="24" placeholder="Your name" autocomplete="name" />
 
-    <label for="inRoom">Room code</label>
-    <input id="inRoom" maxlength="32" placeholder="e.g. goa-trip" autocapitalize="none" autocorrect="off" spellcheck="false" />
+    <label for="inRoom">Invite code</label>
+    <input id="inRoom" maxlength="32" placeholder="Leave empty to start a new group"
+           autocapitalize="none" autocorrect="off" spellcheck="false" />
 
-    <button id="btnJoin" class="primary">Join room</button>
-    <button id="btnDemo" class="ghost">Preview with 4 demo cars</button>
-    <button id="btnJoinCancel" class="ghost" style="display:none">Back to the map</button>
+    <button id="btnGo" class="primary">Start a new group</button>
 
-    <p class="fine">
-      Everyone with the room code can see this map, and the connection uses a public relay.
-      Use a hard-to-guess code (like <code>goa-7f3k9</code>) and don't share it publicly.
-    </p>
+    <p class="fine">Anyone with the code can join, see the map and set the destination.</p>
+    <button id="btnDemo" class="linkish">Just looking? Preview with demo cars</button>
   </div>
 </div>
 
-<!-- One-time "add to home screen" hint (iOS shows no install prompt of its own) -->
-<div id="a2hs" class="a2hs">
-  <span class="a2hs-txt" id="a2hsTxt">Install Convoy for full-screen, offline use.</span>
-  <div class="a2hs-btns">
-    <button id="a2hsGo" class="mini on">Install</button>
-    <button id="a2hsClose" class="mini">Not now</button>
+<!-- Destination search -->
+<div id="search" class="overlay hidden">
+  <div class="card search-card">
+    <div class="search-head">
+      <input id="inSearch" placeholder="Search for a place" autocomplete="off"
+             autocapitalize="none" autocorrect="off" spellcheck="false" />
+      <button id="btnSearchClose" class="pill">Cancel</button>
+    </div>
+    <ul id="results" class="results"></ul>
+    <button id="btnClearDest" class="ghost">Clear the destination</button>
   </div>
 </div>
 
-<!-- Offline prompt: save the route when the signal is at risk -->
-<div id="offlineBar" class="offline-bar">
-  <div class="offline-bar-txt" id="offlineBarTxt">—</div>
-  <div class="offline-bar-btns">
-    <button id="offlineBarYes" class="mini on">Save route</button>
-    <button id="offlineBarNo" class="mini">Not now</button>
-  </div>
-</div>
-
-<!-- Incoming voice call -->
-<div id="callIncoming" class="call-incoming">
-  <div class="call-who" id="callWho">—</div>
-  <div class="call-btns">
-    <button id="callAccept" class="mini on">Join call</button>
-    <button id="callDecline" class="mini">Decline</button>
-  </div>
-</div>
-
-<!-- In-call bar -->
-<div id="callBar" class="call-bar">
-  <span class="call-dot"></span>
-  <span id="callStatus">In a call</span>
-  <div class="call-btns">
-    <button id="callLeave" class="mini danger">Leave</button>
-  </div>
-</div>
-
-<!-- Owner settings: reachable only by a long press on the room chip -->
-<div id="settings" class="overlay hidden">
-  <div class="card">
-    <div class="brand"><span class="dot"></span> Convoy</div>
-    <h1>Owner settings</h1>
-    <p class="sub">Only this phone needs these. Everyone else just joins with the room code — reading the repo needs no token at all.</p>
-
-    <label for="inRepo">Rooms repo</label>
-    <input id="inRepo" placeholder="owner/name" autocomplete="off" spellcheck="false" />
-
-    <label for="inToken">GitHub token</label>
-    <input id="inToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" />
-
-    <p class="fine">
-      Kept only in this browser. Never in the app's source, and never sent to anyone in the room.
-      Use a fine-grained token limited to this one repo, with <b>Contents: read and write</b>, and a
-      short expiry you rotate.
-    </p>
-
-    <button id="btnSaveSync" class="primary">Save</button>
-    <button id="btnSyncNow" class="ghost">Sync now</button>
-    <button id="btnClearSync" class="ghost">Clear token</button>
-    <button id="btnSettingsClose" class="ghost">Close</button>
-    <p id="syncStatus" class="fine"></p>
-  </div>
-</div>
-
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="banner" class="banner" role="status" aria-live="polite"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<!-- Lets the map rotate so it can stay aligned with the direction of travel -->
-<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"
-        integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG" crossorigin=""></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script src="route.js"></script>
-<script src="voice.js"></script>
-<script src="sync.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

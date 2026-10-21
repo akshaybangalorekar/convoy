@@ -1,7 +1,7 @@
 {
-  "name": "Convoy — live group map",
+  "name": "Convoy — everyone on one map",
   "short_name": "Convoy",
-  "description": "See everyone in your group on one live map and navigate there together. No sign-up, no backend.",
+  "description": "See everyone in your group on one map, with the time each person will reach the destination. No sign-up, no backend.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
@@ -10,8 +10,8 @@
     "minimal-ui"
   ],
   "orientation": "any",
-  "background_color": "#0b1220",
-  "theme_color": "#0b1220",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
   "lang": "en",
   "dir": "ltr",
   "categories": [
