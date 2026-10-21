@@ -45,10 +45,17 @@ try {
   check('the destination travels to the room', /'dest-clear'/.test(app));
   check('arrival times are published', /t: 'eta'/.test(app));
   check('and shown for each person', /function etaCell/.test(app));
+  check('the app says when it goes to the background', /t: 'away'/.test(app));
+  check('and when it comes back', /t: 'back'/.test(app));
+  check('a phone pushes its whole state on reconnecting', /function sendState/.test(app));
+  check('the destination is remembered on the phone', /convoy\.dest\./.test(app));
+  check('silence is reported honestly, not as a kill',
+        /out of contact/.test(app) && !/was killed/.test(app));
   check('a notification goes out on a destination change',
         /set the destination/.test(app));
   check('on someone joining', /joined/.test(app));
   check('and on someone leaving', /left/.test(app));
+  check('and when someone goes out of contact', /out of contact/.test(app));
 
   /* ---------- The look ---------- */
   check('the UI follows the phone\'s light or dark setting',

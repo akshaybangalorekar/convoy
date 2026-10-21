@@ -43,6 +43,53 @@ and a server to send through, and this app deliberately has neither. So: leave C
 (or in the background) on the drive and the pings land; force-quit it and they will not.
 That is a real limitation, not a setting.
 
+## Who is still with you
+
+Each person on the list is in one of four states, and the app is careful about which is
+which:
+
+| | What it means | How we know |
+|---|---|---|
+| **live** | Sending positions | They are publishing |
+| **app in the background** | Their phone put the app away | They *told us* on the way out |
+| **out of contact** | Nothing has arrived for a while | We are *inferring* from silence |
+| **left** | They pressed Leave | They told us |
+
+When someone's app is put away, the phone sends one last note on the way out, so the group
+sees "app in the background" instead of guessing. When it comes back it says so, pushes its
+whole state again, and the group gets an "is back" ping.
+
+**A force-kill cannot announce itself.** That is the one thing a killed app cannot do — the
+code is gone before it can send anything. So a force-kill shows up as **out of contact**:
+nothing has arrived, and after 90 seconds of silence the group is told, once. The wording
+deliberately does not claim to know *why*. Silence in a tunnel and a force-kill look
+identical from the other phones, and the app says so rather than guessing.
+
+In practice a force-kill often *does* leave a trace, because iOS and Android background an
+app before killing it — so the "away" note frequently gets out, and the group sees "app in
+the background" rather than silence. But that is a happy accident, not a guarantee.
+
+## Where the state lives: on the phones
+
+The room has no server, so the shared state lives on the phones and is rebuilt by everyone
+re-announcing it. When a phone reconnects — after a tunnel, a background spell, or being
+reopened — it pushes everything it knows in one go: who it is, where it is, the
+destination, and its arrival time.
+
+That works because the two kinds of state are treated differently:
+
+- **The destination is a decision, so it is kept.** Each phone stores the destination and
+the moment it was decided. Reopening the app restores it and puts it back on the air, so a
+room can outlive every phone in it. Every destination carries its timestamp, so the newest
+decision wins and a phone coming back cannot overwrite it with what it remembered from
+before. Clearing counts as a decision too.
+- **Positions are measurements, so they are not kept.** A remembered position is a lie — it
+says someone is somewhere they left ten minutes ago. They are never restored, only received
+live.
+
+So the only thing that has to survive is a decision, and decisions are tiny. That is what
+makes a server unnecessary here rather than merely absent.
+
 ---
 
 ## How it works
@@ -65,9 +112,11 @@ sarvam-convoy/v1/<room-code>/bus
 { "t":"pos",        "id":"c-9f2k...", "name":"Priya", "lat":-33.86, "lng":151.20,
                     "spd":12.4, "hdg":118, "acc":7, "ts":1760000000000 }
 { "t":"dest",       "id":"c-9f2k...", "by":"Priya", "lat":-33.90, "lng":151.30,
-                    "label":"Bondi Beach" }
+                    "label":"Bondi Beach", "ts":1760000000000 }
 { "t":"eta",        "id":"c-9f2k...", "dur":1840, "dist":24300 }
-{ "t":"dest-clear", "id":"c-9f2k...", "by":"Priya" }
+{ "t":"dest-clear", "id":"c-9f2k...", "by":"Priya", "ts":1760000000000 }
+{ "t":"away",       "id":"c-9f2k...", "name":"Priya" }
+{ "t":"back",       "id":"c-9f2k...", "name":"Priya" }
 { "t":"bye",        "id":"c-9f2k...", "name":"Priya" }
 ```
 
@@ -95,6 +144,8 @@ osrm: 'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
 brokers: [ ... ],       // public relays, tried in order
 publishMs: 5000,        // how often a phone shares its position
 etaMs: 60000,           // how often it recomputes its arrival time
+staleMs: 90000,         // silence before someone counts as out of contact
+awayMs: 180000,         // backgrounded this long counts as out of contact too
 fallbackCenter: { lat: -33.8688, lng: 151.2093 },   // shown before GPS arrives
 ```
 
@@ -107,8 +158,8 @@ proper night map.
 
 ## Testing
 
-Four headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet, MQTT,
-geolocation, notifications and network — 173 checks:
+Five headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
+MQTT, geolocation, notifications and network — 216 checks:
 
 ```bash
 npm install
@@ -118,6 +169,10 @@ npm test
 - `tests/app-test.js` — starting a group, joining by code and by link, people appearing,
   arrival times computed and shared, destination changes from either side, and every
   notification.
+- `tests/presence-test.js` — announcing that our own app went to the background and back,
+  seeing the same for someone else, the out-of-contact sweep and its wording, the full
+  state push on reconnect, and the destination outliving a restart without overwriting a
+  newer decision.
 - `tests/route-test.js` — place search, the fallback when Photon is down, the car route, and
   the search sheet end to end.
 - `tests/map-test.js` — rejoining on launch, unique car colours, and the view that keeps
@@ -130,6 +185,8 @@ npm test
 ## Limits worth knowing
 
 - **Notifications need the app open** (see above). This is the big one.
+- **A force-kill cannot be told apart from no signal.** Both look like silence, so the app
+  reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
 - **The relay is public.** Anyone who guesses the room code can watch the room. Use a code

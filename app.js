@@ -27,8 +27,9 @@
     publishMs: 5000,          // broadcast our position at least this often
     renderMs: 3000,           // sweep the list and the view
     etaMs: 60000,             // recompute our arrival time this often
-    staleMs: 90000,           // a person fades after 90s of silence
-    dropMs: 10 * 60 * 1000,   // and is dropped after 10 min
+    staleMs: 90000,           // silence this long and a person counts as out of contact
+    awayMs: 180000,           // backgrounded this long counts as out of contact too
+    dropMs: 30 * 60 * 1000,   // but never drop them off the map before 30 min
     minMoveM: 12,             // publish early if we moved this far
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
@@ -52,6 +53,8 @@
     wakeLock: null,
     lastPublish: 0,
     lastSentFix: null,
+    destTs: 0,            // when the destination was last set or cleared; newest wins
+    away: false,          // true while our own app is in the background
   };
 
   let map = null;
@@ -133,6 +136,46 @@
   }
 
   const isStale = (p) => Date.now() - p.ts > CFG.staleMs;
+
+  // Where each person stands. "away" is something they told us; "lost" is what we
+  // infer when the messages simply stop. A force-kill cannot announce itself — that
+  // is the one thing a killed app cannot do — so it lands here as lost contact.
+  function presenceOf(p) {
+    if (p.isMe) return 'me';
+    if (p.away) return (Date.now() - (p.awayAt || 0) > CFG.awayMs) ? 'lost' : 'away';
+    return isStale(p) ? 'lost' : 'live';
+  }
+
+  /* The destination is a decision, not a measurement, so it is the one piece of shared
+     state worth keeping on the phone: a phone that comes back restores it and announces
+     it, and no server has to hold it. Positions are deliberately not kept — a stale
+     position is worse than none. */
+  const destKey = (room) => 'convoy.dest.' + room;
+
+  function saveDest() {
+    if (!state.room) return;
+    try {
+      if (state.dest) {
+        localStorage.setItem(destKey(state.room),
+          JSON.stringify({ dest: state.dest, ts: state.destTs }));
+      } else if (state.destTs) {
+        localStorage.setItem(destKey(state.room),
+          JSON.stringify({ dest: null, ts: state.destTs }));
+      } else {
+        localStorage.removeItem(destKey(state.room));
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadDest(room) {
+    try {
+      const raw = localStorage.getItem(destKey(room));
+      if (!raw) return null;
+      const j = JSON.parse(raw);
+      if (!j || typeof j.ts !== 'number') return null;
+      return { dest: j.dest || null, ts: j.ts };
+    } catch (e) { return null; }
+  }
 
   /* ---------------------------------------------------------------- *
    * Colours: unique per person, and the same on every phone
@@ -283,13 +326,33 @@
     state.lastPublish = Date.now();
   }
 
-  function publishNow() {
+  // `force` is for the state push: coming back from a drop, the group needs our position
+  // even if we have not moved since the last time we sent it.
+  function publishNow(force) {
     const me = state.me;
     if (!me || me.lat == null) return;
     const last = state.lastSentFix;
-    if (last && haversine(last, me) < CFG.minMoveM && Date.now() - state.lastPublish < CFG.publishMs) return;
+    if (!force && last && haversine(last, me) < CFG.minMoveM &&
+        Date.now() - state.lastPublish < CFG.publishMs) return;
     state.lastSentFix = { lat: me.lat, lng: me.lng };
     send({ t: 'pos', lat: me.lat, lng: me.lng, spd: me.spd, hdg: me.hdg, acc: me.acc });
+  }
+
+  // Announce everything this phone knows: who we are, where we are, where we are all
+  // going, and how long we will take. This is what makes a server unnecessary — every
+  // phone re-pushes its own state, so the room rebuilds itself from the people in it.
+  function sendState() {
+    send({ t: 'hello' });
+    publishNow(true);
+    if (state.dest) {
+      send({ t: 'dest', lat: state.dest.lat, lng: state.dest.lng,
+             label: state.dest.label, by: state.dest.by, ts: state.destTs });
+    } else if (state.destTs) {
+      // We know it was cleared more recently than anyone's destination, so say so —
+      // otherwise a phone that was away would put a stale destination back on the air.
+      send({ t: 'dest-clear', ts: state.destTs });
+    }
+    if (state.myEta) send({ t: 'eta', dur: state.myEta.dur, dist: state.myEta.dist });
   }
 
   function onMessage(topic, payload) {
@@ -303,6 +366,8 @@
       case 'dest':       onDest(msg); return;
       case 'dest-clear': onDestClear(msg); return;
       case 'eta':        onEta(msg); return;
+      case 'away':       onAway(msg); return;
+      case 'back':       onBack(msg); return;
       case 'pos':        onPos(msg); return;
       default: return;
     }
@@ -317,6 +382,25 @@
 
   function onHello(msg) {
     announceJoin(msg.id, msg.name || 'Someone');
+  }
+
+  // "My app is going to the background." Sent on the way out, so the group can tell a
+  // phone that is out of signal from one that has simply been put away.
+  function onAway(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    p.away = true;
+    p.awayAt = Date.now();
+    renderPeople();
+  }
+
+  function onBack(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    p.away = false;
+    p.awayAt = 0;
+    p.ts = Date.now();      // they are here; the position catches up on the next fix
+    renderPeople();
   }
 
   function onBye(msg) {
@@ -338,6 +422,7 @@
         color: colorFor(msg.id), lat: msg.lat, lng: msg.lng,
         spd: msg.spd, hdg: msg.hdg, acc: msg.acc, ts: msg.ts || Date.now(),
         eta: null, isMe: false, demo: false,
+        away: false, awayAt: 0, presence: 'live',
       };
       state.peers.set(msg.id, p);
       refreshColors();
@@ -346,6 +431,7 @@
     } else {
       p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
       p.acc = msg.acc; p.ts = msg.ts || Date.now();
+      p.away = false; p.awayAt = 0;
       if (msg.name) p.name = msg.name.slice(0, 24);
     }
     updateMarker(p);
@@ -365,26 +451,38 @@
     return Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lng - b.lng) < 1e-5;
   }
 
+  // Destinations carry the moment they were decided, so the newest decision wins and a
+  // phone coming back cannot overwrite it with what it remembered from before.
   function onDest(msg) {
     if (typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
-    const next = { lat: msg.lat, lng: msg.lng, label: msg.label || 'Destination', by: msg.by || msg.name };
-    if (sameDest(state.dest, next)) return;      // no repeat notification
+    const ts = typeof msg.ts === 'number' ? msg.ts : Date.now();
+    if (ts < state.destTs) return;               // an older announcement: ignore it
+    const next = { lat: msg.lat, lng: msg.lng, label: msg.label || 'Destination',
+                   by: msg.by || msg.name };
+    if (sameDest(state.dest, next)) { state.destTs = ts; return; }   // already have it
+    state.destTs = ts;
     state.dest = next;
+    state.myEta = null;
     renderDest();
     drawDest();
     refreshRoute();
+    saveDest();
     notify((msg.by || msg.name || 'Someone') + ' set the destination', next.label);
   }
 
   function onDestClear(msg) {
-    if (!state.dest) return;
+    const ts = typeof msg.ts === 'number' ? msg.ts : Date.now();
+    if (ts < state.destTs) return;               // an older announcement
+    const had = !!state.dest;
+    state.destTs = ts;
     state.dest = null;
     state.myEta = null;
     renderDest();
     drawDest();
     drawMyLine(null);
     renderPeople();
-    notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
+    saveDest();
+    if (had) notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
   }
 
   /* ---------------------------------------------------------------- *
@@ -465,10 +563,7 @@
       settled = true;
       setConn('live', 'live');
       client.subscribe(state.topic, { qos: 0 }, () => {});
-      send({ t: 'hello' });
-      publishNow();
-      if (state.dest) send({ t: 'dest', lat: state.dest.lat, lng: state.dest.lng,
-                             label: state.dest.label, by: state.me.name });
+      sendState();          // push everything we know, so nobody has to hold it for us
       refreshRoute();
     });
     client.on('message', onMessage);
@@ -566,17 +661,19 @@
   }
 
   function rowFor(p, me) {
-    const stale = !p.isMe && isStale(p);
+    const kind = presenceOf(p);
     let meta = '';
     if (p.isMe) {
-      meta = 'you';
+      meta = state.away ? 'app in the background' : 'you';
+    } else if (kind === 'away') {
+      meta = 'app in the background';
+    } else if (kind === 'lost') {
+      meta = 'out of contact · ' + fmtAgo(p.ts);
     } else if (me && me.lat != null) {
-      meta = fmtDist(haversine(me, p)) + ' ' + compass(bearing(me, p)) +
-             (stale ? ' · ' + fmtAgo(p.ts) : '');
-    } else {
-      meta = stale ? fmtAgo(p.ts) : '';
+      meta = fmtDist(haversine(me, p)) + ' ' + compass(bearing(me, p));
     }
-    return '<li data-id="' + esc(p.id) + '" class="' + (stale ? 'stale' : '') + '">' +
+    return '<li data-id="' + esc(p.id) + '" class="' +
+      (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') + '">' +
       '<span class="pdot" style="background:' + p.color + '"></span>' +
       '<span class="pname">' + esc(p.name) +
         (meta ? '<span class="tag">' + esc(meta) + '</span>' : '') + '</span>' +
@@ -608,12 +705,14 @@
    * ---------------------------------------------------------------- */
   function setDest(lat, lng, label) {
     if (typeof lat !== 'number' || typeof lng !== 'number') return;
+    state.destTs = Date.now();
     state.dest = { lat, lng, label: label || 'Destination', by: state.me ? state.me.name : '' };
     state.myEta = null;
     renderDest();
     drawDest();
     refreshRoute();
-    send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by });
+    saveDest();
+    send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by, ts: state.destTs });
     state.autoFit = true;
     lastFitAt = 0;
     fitAll();
@@ -621,13 +720,42 @@
 
   function clearDest() {
     if (!state.dest) return;
+    state.destTs = Date.now();
     state.dest = null;
     state.myEta = null;
     renderDest();
     drawDest();
     drawMyLine(null);
     renderPeople();
-    send({ t: 'dest-clear' });
+    saveDest();
+    send({ t: 'dest-clear', ts: state.destTs });
+  }
+
+  // Watch for people slipping out of contact, and for them coming back. This is the
+  // backstop for a force-kill: the app is gone, so nothing was sent, and all the group
+  // can honestly say is that the messages stopped.
+  function sweepPresence() {
+    let changed = false;
+    state.peers.forEach((p) => {
+      const kind = presenceOf(p);
+      if (kind === p.presence) return;
+      const was = p.presence;
+      p.presence = kind;
+      changed = true;
+      if (kind === 'lost') {
+        notify(p.name + ' — out of contact',
+               'No signal, or their app was closed. They reappear when they can.');
+      } else if (kind === 'live' && was === 'lost') {
+        notify(p.name + ' is back', '');
+      }
+    });
+    if (changed) {
+      state.peers.forEach((p) => {
+        const el = p._marker && p._marker.getElement();
+        if (el) el.classList.toggle('stale', presenceOf(p) === 'lost');
+      });
+      renderPeople();
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -637,10 +765,12 @@
     stopTimers();
     publishTimer = setInterval(publishNow, CFG.publishMs);
     renderTimer = setInterval(() => {
-      // drop anyone who has gone quiet for a long time
+      // Anyone silent for a very long time comes off the map — quietly, because we do
+      // not know whether they left or simply lost signal.
       state.peers.forEach((p, id) => {
         if (Date.now() - p.ts > CFG.dropMs) { removePeer(id); state.seen.delete(id); }
       });
+      sweepPresence();
       renderPeople();
       maybeAutoView();
     }, CFG.renderMs);
@@ -673,6 +803,14 @@
     state.topic = CFG.topicPrefix + '/' + room + '/bus';
     state.joined = true;
     state.seen = new Set();
+    state.away = false;
+
+    // Restore the destination this phone last knew for this room, so a returning phone
+    // can put it straight back on the air without asking anybody.
+    const saved = loadDest(room);
+    state.destTs = saved ? saved.ts : 0;
+    state.dest = saved ? saved.dest : null;
+    state.myEta = null;
 
     try {
       localStorage.setItem(LS.name, name);
@@ -683,6 +821,7 @@
 
     renderTop();
     renderDest();
+    drawDest();
     renderPeople();
     $('join').classList.add('hidden');
     $('sheet').classList.remove('hidden');
@@ -704,8 +843,10 @@
     state.peers.clear();
     state.seen = new Set();
     state.joined = false;
+    state.away = false;
     state.me = null;
     state.dest = null;
+    state.destTs = 0;
     state.myEta = null;
     if (myLine) { map.removeLayer(myLine); myLine = null; }
     if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
@@ -755,6 +896,7 @@
         lat: c.lat + (i - 2) * 0.012, lng: c.lng + (i - 2) * 0.014,
         spd: 11 + i, hdg: 90, acc: 6, ts: Date.now(),
         eta: null, isMe: false, demo: true,
+        away: false, awayAt: 0, presence: 'live',
         _spd: 10 + i * 1.5,
       });
     });
@@ -799,6 +941,15 @@
     });
     if (demoDestSet) { state.dest = null; demoDestSet = false; drawDest(); renderDest(); }
     if (myLine) { map.removeLayer(myLine); myLine = null; }
+    renderPeople();
+  }
+
+  // "My app is going to the background." Best effort: a force-kill gives no chance to
+  // send it, which is exactly why sweepPresence exists as the backstop.
+  function goAway() {
+    if (!state.joined || demoTimer || state.away) return;
+    state.away = true;
+    send({ t: 'away' });
     renderPeople();
   }
 
@@ -851,9 +1002,19 @@
       if (state.joined && client && client.connected && !demoTimer) send({ t: 'bye' });
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && state.joined && client &&
-          !client.connected) connect();
+      if (document.visibilityState === 'hidden') { goAway(); return; }
+      if (!state.joined) return;
+      if (state.away) {
+        // Back on screen: say so and push our state again.
+        state.away = false;
+        if (client && client.connected) { send({ t: 'back' }); sendState(); }
+        else connect();
+      } else if (!client || !client.connected) {
+        connect();
+      }
+      renderPeople();
     });
+    window.addEventListener('pagehide', goAway);
   }
 
   /* ---------------------------------------------------------------- *
@@ -903,7 +1064,8 @@
     CFG, state, esc, toast, setDest, clearDest, join, leave, share,
     map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
-                  onMessage, onFix, notify, startDemo, stopDemo, colorFor },
+                  onMessage, onFix, notify, startDemo, stopDemo, colorFor,
+                  presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest },
   };
 
   boot();

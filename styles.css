@@ -154,7 +154,11 @@ body.sheet-collapsed #sheet { max-height: 56px; }
   padding: 10px 9px; border-radius: 12px;
 }
 #people li + li { border-top: 1px solid var(--sep); border-radius: 0; }
-#people li.stale { opacity: 0.5; }
+/* Someone we cannot reach: put away, or gone quiet */
+#people li.away { opacity: 0.66; }
+#people li.lost { opacity: 0.45; }
+#people li.lost .pdot { filter: grayscale(0.75); }
+.mk.stale { opacity: 0.45; }
 .pdot {
   flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
