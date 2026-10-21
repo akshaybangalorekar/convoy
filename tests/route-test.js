@@ -275,13 +275,86 @@ async function testResultsSurviveTheOtherServiceBeingDown() {
         hits[0].label);
 }
 
-async function testAThinAddressIsLookedUpAgain() {
+async function testAFullerAnswerArrivesAfterTheFirst() {
   const api = boot({ fetch: photonThinNominatimRich });
+  const R = api.window.ConvoyRoute;
+
+  const first = await R.search('92 mimosa road');
+  check('the quick answer comes back first, so nothing waits on the slow one',
+        first.length === 1 && /Mimosa Road/.test(first[0].label), JSON.stringify(first));
+
+  const enrich = R._internals.takeEnrichment();
+  check('a fuller answer is on its way', !!enrich);
+  const better = await enrich;
+  check('and it carries the postcode the first one lacked',
+        better && better.length && /3163/.test(better[0].label), JSON.stringify(better));
+  check('and reads as a full address',
+        better && better[0].label === '92 Mimosa Road, Carnegie, Victoria 3163',
+        better && better[0].label);
+}
+
+/* ---------- The country restriction must never be the reason for nothing ---------- */
+// Photon hides it behind the country box, but has it when asked plainly.
+const photonOnlyWithoutTheBox = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    const filtered = url.indexOf('bbox=') >= 0;
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: filtered ? [] : [{
+        geometry: { coordinates: [145.05, -37.89] },
+        properties: {
+          name: 'Mimosa Road', street: 'Mimosa Road', housenumber: '92',
+          locality: 'Carnegie', state: 'Victoria', postcode: '3163', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return Promise.resolve({ ok: true, status: 200, json: async () => ([]) });
+};
+
+async function testTheCountryFilterCannotHideAnAnswer() {
+  const api = boot({ fetch: photonOnlyWithoutTheBox });
   const hits = await api.window.ConvoyRoute.search('92 mimosa road');
-  const label = (hits[0] && hits[0].label) || '';
-  check('an address missing its postcode is looked up again', /3163/.test(label), label);
-  check('and the fuller answer wins',
-        label === '92 Mimosa Road, Carnegie, Victoria 3163', label);
+
+  check('a result the country filter hid is still found', hits.length === 1,
+        JSON.stringify(hits));
+  check('and it is the right one', /Carnegie/.test(hits[0].label), hits[0].label);
+
+  const photonCalls = api.netCalls.map((c) => c.url)
+    .filter((u) => u.indexOf('photon') >= 0);
+  check('the question is asked again without the restriction',
+        photonCalls.length >= 2 && photonCalls.some((u) => u.indexOf('bbox=') < 0),
+        photonCalls.join(' '));
+}
+
+/* ---------- When nothing comes back, say why ---------- */
+const everythingAnswersEmpty = (url) => Promise.resolve({
+  ok: true, status: 200,
+  json: async () => (url.indexOf('photon') >= 0 ? { features: [] } : []),
+});
+const everythingIsDown = () => Promise.resolve({
+  ok: false, status: 503, json: async () => ({}),
+});
+
+async function testTheMessageSaysWhatWentWrong() {
+  const empty = boot({ fetch: everythingAnswersEmpty });
+  const none = await empty.window.ConvoyRoute.search('92 mimosa road');
+  check('no results when the services answered with nothing', none.length === 0);
+  check('and the message says nothing was found',
+        /Nothing found/.test(empty.window.ConvoyRoute._internals.diag.note),
+        empty.window.ConvoyRoute._internals.diag.note);
+  check('naming what was searched for',
+        /92 mimosa road/.test(empty.window.ConvoyRoute._internals.diag.note),
+        empty.window.ConvoyRoute._internals.diag.note);
+
+  const down = boot({ fetch: everythingIsDown });
+  const none2 = await down.window.ConvoyRoute.search('92 mimosa road');
+  check('no results when the services cannot be reached', none2.length === 0);
+  check('and the message says that instead of blaming the name',
+        /Could not reach/.test(down.window.ConvoyRoute._internals.diag.note),
+        down.window.ConvoyRoute._internals.diag.note);
+  check('and does not claim the address does not exist',
+        !/Nothing found/.test(down.window.ConvoyRoute._internals.diag.note),
+        down.window.ConvoyRoute._internals.diag.note);
 }
 
 async function testAPlaceIsNotLookedUpTwice() {
@@ -414,7 +487,9 @@ async function testSearchSheet() {
     await testAnAddressGetsTheFullAddress();
     await testAnEmptyAnswerDoesNotHideTheOther();
     await testResultsSurviveTheOtherServiceBeingDown();
-    await testAThinAddressIsLookedUpAgain();
+    await testAFullerAnswerArrivesAfterTheFirst();
+    await testTheCountryFilterCannotHideAnAnswer();
+    await testTheMessageSaysWhatWentWrong();
     await testAPlaceIsNotLookedUpTwice();
     await testPlaceStillGoesToPhotonFirst();
     await testAddressServiceIsNotHammered();

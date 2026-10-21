@@ -135,7 +135,7 @@ makes a server unnecessary here rather than merely absent.
 |---|---|
 | **Leaflet + OpenStreetMap** | Draws the map and the cars. Free, no API key. |
 | **MQTT over WebSocket** | One topic per room carries positions, the destination and arrival times. |
-| **Photon / Nominatim** | Place search. Photon is asked first, always — it is quick and has no rate limit. A street address (a query starting with a number) that comes back without a postcode is then looked up through Nominatim, which keeps the suburb and postcode that Photon often drops, and the fuller answer wins. Both free, no key. Results are reassembled from the parts each service returns: number and street, then the suburb, then state and postcode, so `92 mimosa road` reads `92 Mimosa Road, Carnegie, Victoria 3163`. Whatever is more local than the city wins, so a suburb never loses to "Melbourne". The search leans towards where the phone is, and Nominatim calls are spaced a second apart to stay inside its usage policy. |
+| **Photon / Nominatim** | Place search. Photon is asked first, always — it is quick and has no rate limit. A street address (a query starting with a number) that comes back without a postcode is then looked up through Nominatim, which keeps the suburb and postcode that Photon often drops; the quick answer shows first and the fuller one swaps in when it lands. Both free, no key. Results are reassembled from the parts each service returns: number and street, then the suburb, then state and postcode, so `92 mimosa road` reads `92 Mimosa Road, Carnegie, Victoria 3163`. Whatever is more local than the city wins. The search leans towards where the phone is, and Nominatim calls are spaced a second apart. **If the country restriction hides everything, the question is asked again without it** — a preference must never be the reason for "nothing found". |
 | **FOSSGIS OSRM** | The car route from you to the destination, which gives your arrival time. Free, no key. |
 | **Notifications API** | The system ping, with an on-screen banner and vibration as well. |
 | **Service worker** | Installable, works offline, and keeps the map tiles you have already seen. |
@@ -198,7 +198,7 @@ proper night map.
 ## Testing
 
 Seven headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 326 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 337 checks:
 
 ```bash
 npm install
@@ -218,10 +218,12 @@ npm test
 - `tests/install-test.js` — who gets offered the install and who does not, the browser's own
   prompt being fired from our button, dismissing it being remembered, the iOS instructions
   where there is no prompt to fire, and an invite code surviving the install.
-- `tests/route-test.js` — place search, which service an address goes to and why, the suburb
-  beating the city, the postcode, a service answering with an empty list not hiding one that
-  has an answer, a broken service not emptying the search, the bias towards where the phone
-  is, the rate gap and the query cache, the car route, and the search sheet.
+- `tests/route-test.js` — place search, the suburb beating the city, the postcode, a fuller
+  answer arriving after the quick one, a service answering with an empty list not hiding one
+  that has an answer, a broken service not emptying the search, the country restriction never
+  being the reason for nothing, the message saying which of the two kinds of failure it was,
+  the bias towards where the phone is, the rate gap and the cache, the car route, and the
+  search sheet.
 - `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
   everyone in frame, and the one-tap-out / two-taps-in gestures.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are

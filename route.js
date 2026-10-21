@@ -29,6 +29,8 @@
   let API = null;
   let seq = 0;
   let lastNominatimAt = 0;
+  let pendingEnrich = null;          // a fuller answer still on its way, if any
+  const diag = { note: '' };         // what to tell the user when nothing comes back
 
   // Same query twice in a row should not cost two requests.
   const cache = new Map();
@@ -106,15 +108,17 @@
     return tidy([line1, pickNominatimArea(a), region]);
   }
 
-  async function viaPhoton(q) {
+  // `plain` drops the country restriction and the location bias — the plainest possible
+  // question, asked as a last resort before telling someone their address does not exist.
+  async function viaPhoton(q, plain) {
     let url = CFG.photon + '?q=' + encodeURIComponent(q) +
               '&limit=' + CFG.maxResults + '&lang=en';
-    const box = CFG.countryBox[CFG.country];
+    const box = plain ? '' : CFG.countryBox[CFG.country];
     if (box) url += '&bbox=' + box;
 
     // Bias towards where the phone is, so a street near you beats a namesake far away.
-    const me = API && API.state && API.state.me;
-    if (me && me.lat != null) url += '&lat=' + me.lat + '&lon=' + me.lng;
+    const me = !plain && API && API.state && API.state.me;
+    if (me && me.lat != null && me.lng != null) url += '&lat=' + me.lat + '&lon=' + me.lng;
 
     const j = await getJson(url, CFG.timeoutMs);
     if (!j || !Array.isArray(j.features)) return null;
@@ -133,7 +137,7 @@
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
 
-  async function viaNominatim(q) {
+  async function viaNominatim(q, plain) {
     // Stay inside their one-request-a-second policy, however fast the typing is.
     const wait = Math.max(0, CFG.nominatimGapMs - (Date.now() - lastNominatimAt));
     if (wait) await new Promise((r) => setTimeout(r, wait));
@@ -142,7 +146,7 @@
     let url = CFG.nominatim + '?q=' + encodeURIComponent(q) +
               '&format=jsonv2&limit=' + CFG.maxResults +
               '&addressdetails=1&accept-language=en';
-    if (CFG.country) url += '&countrycodes=' + CFG.country;
+    if (CFG.country && !plain) url += '&countrycodes=' + CFG.country;
 
     const j = await getJson(url, CFG.timeoutMs);
     if (!Array.isArray(j)) return null;
@@ -167,25 +171,52 @@
 
   async function search(q) {
     const query = String(q || '').trim();
+    pendingEnrich = null;
     if (query.length < CFG.minChars) return [];
     if (cache.has(query)) return cache.get(query);
+    diag.note = '';
 
-    // Photon first, always: it is quick, has no rate limit, and its answer means a search
-    // never comes back empty-handed just because the other service is unhappy.
+    // `null` means a service could not be reached; an empty list means it answered and
+    // had nothing. The difference matters, because only one of those is the user's fault.
+    let answered = false;
+
+    // Photon first, always. It is quick, it has no rate limit, and its answer means a
+    // search never comes back empty-handed just because the other service is unhappy.
     //
-    // Note the `.length` checks. An empty list is TRUTHY in JavaScript, so a
-    // `a || b` here would let a service that answered with nothing hide the one that
-    // had the answer — which is exactly how this went wrong before.
-    let out = (await viaPhoton(query)) || [];
+    // Every check below is on `.length`, never on truthiness: an empty list is TRUTHY in
+    // JavaScript, so a plain `a || b` would let a service that answered with nothing hide
+    // the one that had the answer. That is exactly how this broke before.
+    let out = await viaPhoton(query);
+    if (out !== null) answered = true;
+    out = out || [];
 
     if (!out.length) {
-      out = (await viaNominatim(query)) || [];
+      const other = await viaNominatim(query);
+      if (other !== null) answered = true;
+      if (other && other.length) out = other;
     } else if (looksLikeAddress(query) && !out.some((r) => r.placed)) {
-      // Photon often returns a street address without its suburb or postcode. When that
-      // happens, ask the service built for addresses and prefer its answer — but never
-      // wait long for it, and never let it replace a good answer with nothing.
-      const better = await withDeadline(viaNominatim(query), CFG.enrichMs);
-      if (better && better.length) out = better;
+      // Photon often returns a street address without its suburb or postcode. Ask the
+      // service built for addresses for a second opinion and swap it in when it lands —
+      // the answer we already have is on screen in the meantime.
+      pendingEnrich = withDeadline(viaNominatim(query), CFG.enrichMs);
+    }
+
+    // The country restriction is a preference, not a rule. If it has hidden everything,
+    // ask again without it rather than telling someone their address does not exist.
+    if (!out.length && CFG.country) {
+      const loose = await viaPhoton(query, true);
+      if (loose !== null) answered = true;
+      if (loose && loose.length) out = loose;
+      if (!out.length) {
+        const looseOther = await withDeadline(viaNominatim(query, true), CFG.enrichMs);
+        if (looseOther && looseOther.length) out = looseOther;
+      }
+    }
+
+    if (!out.length) {
+      diag.note = answered
+        ? 'Nothing found for "' + query + '". Try a different name.'
+        : 'Could not reach the address service. Check your connection and try again.';
     }
 
     if (out.length) {
@@ -193,6 +224,14 @@
       cache.set(query, out);
     }
     return out;
+  }
+
+  // A fuller answer still on its way, if any. The caller renders what it has, then waits
+  // on this and swaps it in.
+  function takeEnrichment() {
+    const p = pendingEnrich;
+    pendingEnrich = null;
+    return p;
   }
 
   // The drive from one point to another: how far, how long, and the line to draw.
@@ -259,7 +298,16 @@
     const list = await search(q);
     if (mine !== seq) return;                 // a newer keystroke won
     if ($('search').classList.contains('hidden')) return;
+    if (!list.length) { showHint(diag.note || 'Nothing found.'); return; }
     renderResults(list);
+
+    // A fuller address may still be coming. Swap it in when it lands.
+    const enrich = takeEnrichment();
+    if (!enrich) return;
+    const better = await enrich;
+    if (mine !== seq) return;
+    if ($('search').classList.contains('hidden')) return;
+    if (better && better.length) renderResults(better);
   }
 
   function init(api) {
@@ -282,6 +330,7 @@
   window.ConvoyRoute = {
     init, openSearch, closeSearch, search, drive,
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
-                  pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline },
+                  pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
+                  diag, takeEnrichment },
   };
 })();
