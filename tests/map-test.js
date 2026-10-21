@@ -130,6 +130,63 @@ async function testTakingControl() {
   check('and refits at once', api.calls.fitBounds.length === 1, String(api.calls.fitBounds.length));
 }
 
+/* ---------- One tap out, two taps in ---------- */
+async function testTapZoom() {
+  const api = boot();
+  const d = api.document;
+  const c = api.container;
+  const fire = (type, x, y, target) => {
+    (target || c).dispatchEvent(new api.window.MouseEvent(type,
+      { clientX: x, clientY: y, bubbles: true }));
+  };
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  api.calls.zoomOut = 0;
+  api.calls.zoomIn = 0;
+  fire('pointerdown', 100, 100);
+  fire('pointerup', 100, 100);
+  await sleep(40);
+  check('one tap does not zoom straight away — it waits to see if a second is coming',
+        api.calls.zoomOut === 0 && api.calls.zoomIn === 0,
+        api.calls.zoomOut + '/' + api.calls.zoomIn);
+  await sleep(320);
+  check('one tap then zooms out', api.calls.zoomOut === 1, String(api.calls.zoomOut));
+  check('and does not zoom in', api.calls.zoomIn === 0, String(api.calls.zoomIn));
+
+  api.calls.zoomOut = 0;
+  api.calls.zoomIn = 0;
+  fire('pointerdown', 100, 100);
+  fire('pointerup', 100, 100);
+  await sleep(60);
+  fire('pointerdown', 100, 100);
+  fire('pointerup', 100, 100);
+  await sleep(40);
+  check('two taps zoom in', api.calls.zoomIn === 1, String(api.calls.zoomIn));
+  await sleep(320);
+  check('and the first tap is cancelled, so it does not also zoom out',
+        api.calls.zoomOut === 0, String(api.calls.zoomOut));
+
+  // A finger that moves was panning, not tapping.
+  api.calls.zoomOut = 0;
+  fire('pointerdown', 100, 100);
+  fire('pointermove', 220, 100);
+  fire('pointerup', 220, 100);
+  await sleep(320);
+  check('panning the map does not zoom it', api.calls.zoomOut === 0, String(api.calls.zoomOut));
+
+  // A tap that lands on a car belongs to the car.
+  const car = d.createElement('div');
+  car.className = 'mk';
+  c.appendChild(car);
+  api.calls.zoomOut = 0;
+  fire('pointerdown', 100, 100, car);
+  fire('pointerup', 100, 100, car);
+  await sleep(320);
+  check('tapping a car does not zoom the map', api.calls.zoomOut === 0,
+        String(api.calls.zoomOut));
+}
+
 /* ---------- The sheet ---------- */
 async function testSheetCollapses() {
   const api = boot();
@@ -153,6 +210,7 @@ async function testSheetCollapses() {
     await testColorsAgreeAcrossPhones();
     await testAutoFit();
     await testTakingControl();
+    await testTapZoom();
     await testSheetCollapses();
   } catch (e) { crash(e); }
   finish('map');

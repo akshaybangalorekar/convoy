@@ -8,7 +8,8 @@ Three things, and nothing else:
    is on the map.
 2. **Anyone can set the destination.** Everyone sees every car, and each person's arrival time
    at that destination — worked out on that person's own phone, so it is accurate for them.
-3. **Notifications.** A ping when the destination changes, and when someone joins or leaves.
+3. **Notifications.** A ping when the destination changes, and when someone joins, leaves or
+   drops out of contact.
 
 No sign-up, no account, no backend. Positions and destinations travel as small messages over
 a public relay.
@@ -25,6 +26,9 @@ To bring someone in, tap **Invite** and send them the link. They type their name
 on your map.
 
 To see it work on one phone, tap **Just looking? Preview with demo cars** on the join screen.
+
+On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
+instead, and a finger that moves was panning, not tapping.
 
 ## Put it on your phone
 
@@ -146,6 +150,7 @@ publishMs: 5000,        // how often a phone shares its position
 etaMs: 60000,           // how often it recomputes its arrival time
 staleMs: 90000,         // silence before someone counts as out of contact
 awayMs: 180000,         // backgrounded this long counts as out of contact too
+tapZoom: { delayMs: 260, moveTolerancePx: 12 },   // one tap out, two taps in
 fallbackCenter: { lat: -33.8688, lng: 151.2093 },   // shown before GPS arrives
 ```
 
@@ -159,7 +164,7 @@ proper night map.
 ## Testing
 
 Five headless jsdom suites run the real `app.js` and `route.js` against stubbed Leaflet,
-MQTT, geolocation, notifications and network — 216 checks:
+MQTT, geolocation, notifications and network — 225 checks:
 
 ```bash
 npm install
@@ -175,8 +180,8 @@ npm test
   newer decision.
 - `tests/route-test.js` — place search, the fallback when Photon is down, the car route, and
   the search sheet end to end.
-- `tests/map-test.js` — rejoining on launch, unique car colours, and the view that keeps
-  everyone in frame.
+- `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
+  everyone in frame, and the one-tap-out / two-taps-in gestures.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are
   really gone.
 

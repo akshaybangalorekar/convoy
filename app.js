@@ -33,6 +33,10 @@
     minMoveM: 12,             // publish early if we moved this far
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
+    // One tap zooms out, two zoom in. The wait is how long a single tap is held back to
+    // see whether a second one is coming, and the tolerance is how far a finger may
+    // wander before it counts as a pan rather than a tap.
+    tapZoom: { delayMs: 260, moveTolerancePx: 12 },
   };
 
   const PALETTE = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de',
@@ -226,6 +230,7 @@
       zoomControl: false,
       attributionControl: true,
       rotate: false,
+      doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -236,6 +241,73 @@
     map.on('dragstart zoomstart', () => {
       if (Date.now() - lastAutoView > 700) { state.autoFit = false; }
     });
+    wireTapZoom(map.getContainer());
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Tap gestures: one tap zooms out, two zoom in
+   * ---------------------------------------------------------------- */
+  const tap = { last: 0, timer: null };
+
+  // A single tap cannot be acted on straight away — a second one may be on its way — so
+  // it is held back briefly. A second tap cancels the first and zooms the other way.
+  function handleTap() {
+    const now = Date.now();
+    if (now - tap.last < CFG.tapZoom.delayMs) {
+      tap.last = 0;
+      if (tap.timer) { clearTimeout(tap.timer); tap.timer = null; }
+      map.zoomIn();
+      return 'in';
+    }
+    tap.last = now;
+    if (tap.timer) clearTimeout(tap.timer);
+    tap.timer = setTimeout(() => {
+      tap.timer = null;
+      tap.last = 0;
+      map.zoomOut();
+    }, CFG.tapZoom.delayMs);
+    return 'held';
+  }
+
+  function wireTapZoom(container) {
+    if (!container || !container.addEventListener) return;
+    const tol = CFG.tapZoom.moveTolerancePx;
+    let from = null;
+    let dragged = false;
+
+    // A tap that lands on a car or a control belongs to that, not to the zoom.
+    const ours = (target) => !(target && target.closest &&
+      target.closest('.mk, .mk-dest, .leaflet-marker-icon, .leaflet-control'));
+
+    const point = (e) => (e.touches && e.touches[0]) ||
+                         (e.changedTouches && e.changedTouches[0]) || e;
+
+    const down = (e) => {
+      const p = point(e);
+      from = { x: p.clientX, y: p.clientY };
+      dragged = false;
+    };
+    const move = (e) => {
+      if (!from) return;
+      const p = point(e);
+      if (Math.abs(p.clientX - from.x) > tol || Math.abs(p.clientY - from.y) > tol) {
+        dragged = true;
+      }
+    };
+    const up = (e) => {
+      const started = from;
+      const wasDrag = dragged;
+      from = null;
+      dragged = false;
+      if (!started || wasDrag) return;      // that was a pan, not a tap
+      if (!ours(e.target)) return;
+      handleTap();
+    };
+
+    container.addEventListener('pointerdown', down);
+    container.addEventListener('pointermove', move);
+    container.addEventListener('pointerup', up);
+    container.addEventListener('pointercancel', () => { from = null; dragged = false; });
   }
 
   function makeIcon(p) {
@@ -1065,7 +1137,8 @@
     map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
-                  presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest },
+                  presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest,
+                  handleTap, wireTapZoom, tap }, 
   };
 
   boot();

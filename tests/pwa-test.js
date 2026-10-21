@@ -40,6 +40,9 @@ try {
   check('the invite copies a room link', /navigator\.clipboard\.writeText/.test(app) ||
         /navigator\.share/.test(app));
   check('there is a destination row', /id="destRow"/.test(html));
+  check('one tap zooms out and two zoom in', /function handleTap/.test(app));
+  check('the browser double tap is off so ours is the only one',
+        /doubleClickZoom: false/.test(app));
   check('anyone can set the destination', /function setDest/.test(app) &&
         /t: 'dest'/.test(app));
   check('the destination travels to the room', /'dest-clear'/.test(app));

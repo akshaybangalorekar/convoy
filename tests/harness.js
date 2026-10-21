@@ -25,12 +25,14 @@ function layer() {
 }
 
 function makeMap() {
-  const calls = { fitBounds: [], setView: [], panTo: [] };
+  const calls = { fitBounds: [], setView: [], panTo: [], zoomIn: 0, zoomOut: 0 };
   const handlers = {};
   const m = layer();
   m.fitBounds = (b, o) => { calls.fitBounds.push(o || {}); return m; };
   m.setView = (c, z, o) => { calls.setView.push([c, z, o || {}]); return m; };
   m.panTo = (c, o) => { calls.panTo.push(c); return m; };
+  m.zoomIn = () => { calls.zoomIn++; return m; };
+  m.zoomOut = () => { calls.zoomOut++; return m; };
   m.on = (ev, fn) => {
     String(ev).split(/\s+/).forEach((e) => { (handlers[e] = handlers[e] || []).push(fn); });
     return m;
@@ -56,6 +58,10 @@ function boot(opts = {}) {
   });
   const { window } = dom;
   const { m: mapObj, calls, handlers: mapHandlers } = makeMap();
+  const container = window.document.createElement('div');
+  container.className = 'leaflet-container';
+  window.document.body.appendChild(container);
+  mapObj.getContainer = () => container;
 
   window.L = {
     map: () => mapObj,
@@ -127,6 +133,7 @@ function boot(opts = {}) {
     window,
     document: window.document,
     calls,
+    container,
     mapHandlers,
     clients,
     netCalls,
