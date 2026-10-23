@@ -60,12 +60,14 @@ The sheet under the map holds four switches:
   is the difference between arriving with a phone and arriving with a dead one.
 - **Sound** — a short ping on a notification, which matters most on an iPhone, where there is
   no vibration at all.
-- **I'm here** marks you arrived when the app's own guess is early or wrong.
+- **Arrived** marks you arrived early. You rarely need it: the app does it for you the
+  moment you come within 50 m of the destination. Until then everyone keeps seeing your
+  arrival time, and once you are there that time is replaced by "arrived".
 
 Tapping a name brings the map to that person and stops the view chasing everyone else. Each row
 says how long ago you last heard from them, and — once a destination is set — who is ahead of
-you and who has fallen behind: *"3.2 km behind you"*. When someone reaches the destination the
-room is told, *"Priya has arrived."*
+you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 50 m of the
+destination the room is told, *"Priya has arrived."*
 
 You can also **name the room** — "Sunday drive" instead of `goa-trip` — and the name travels
 round the group the same way the destination does. And if someone pastes the whole invite link
@@ -254,7 +256,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 488 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 496 checks:
 
 ```bash
 npm install

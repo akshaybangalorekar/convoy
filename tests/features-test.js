@@ -57,6 +57,8 @@ async function testTheRosterRemembersLastSeen() {
 }
 
 /* ---------- Arrivals ---------- */
+// Roughly 0.0003 degrees of latitude is 33 m, and 0.0005 is 56 m — either side of the
+// fifty-metre line, so the threshold is tested rather than assumed.
 async function testArrivingIsAnnounced() {
   const api = boot();
   await joinRoom(api);
@@ -70,11 +72,17 @@ async function testArrivingIsAnnounced() {
   check('nobody is called arrived while they are still coming',
         api.notes.length === before, String(api.notes.length - before));
 
-  api.recv(pos('p1', 'Priya', DEST.lat + 0.0005, DEST.lng));   // ~55 m away
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.0005, DEST.lng));   // ~56 m out
+  await sleep(20);
+  I(api).checkArrivals();
+  check('fifty-six metres out is not arrived yet', api.notes.length === before,
+        String(api.notes.length - before));
+
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.0003, DEST.lng));   // ~33 m out
   await sleep(20);
   I(api).checkArrivals();
   const last = api.notes[api.notes.length - 1];
-  check('arriving is announced', /Priya has arrived/.test(last.title), last.title);
+  check('inside fifty metres it is announced', /Priya has arrived/.test(last.title), last.title);
 
   const after = api.notes.length;
   I(api).checkArrivals();
@@ -83,12 +91,53 @@ async function testArrivingIsAnnounced() {
         String(api.notes.length - after));
 }
 
+async function testTheArrivalTimeStaysUntilTheyArrive() {
+  const api = boot();
+  await joinRoom(api);
+  api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
+  await sleep(20);
+  const row = () => api.document.querySelector('#people li[data-id="p1"]').textContent;
+
+  api.recv(pos('p1', 'Priya', -37.95, 145.05));
+  await sleep(20);
+  api.recv({ t: 'eta', id: 'p1', dur: 600, dist: 5000, ts: Date.now() });
+  await sleep(20);
+  check('someone on their way shows the time they will arrive',
+        /\d{1,2}:\d{2}/.test(row()) && !/arrived/.test(row()), row());
+
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.0003, DEST.lng));   // ~33 m out
+  await sleep(20);
+  I(api).checkArrivals();
+  check('once they are there, that is replaced by arrived', /arrived/.test(row()), row());
+  check('and no clock time is left over', !/\d{1,2}:\d{2}/.test(row()), row());
+}
+
+async function testTheButtonWorksFromAnywhere() {
+  const api = boot();
+  await joinRoom(api);
+  api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
+  await sleep(20);
+
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.05, DEST.lng));    // 5.5 km out
+  await sleep(20);
+  I(api).checkArrivals();
+  check('nobody is arrived from five kilometres out',
+        api.window.Convoy.state.peers.get('p1').arrived !== true);
+
+  api.recv({ t: 'arrived', id: 'p1', on: true });             // she says so herself
+  await sleep(20);
+  check('but they can say so themselves, from anywhere',
+        api.window.Convoy.state.peers.get('p1').arrived === true);
+  const last = api.notes[api.notes.length - 1];
+  check('and it is announced', /Priya has arrived/.test(last.title), last.title);
+}
+
 async function testANewDestinationResetsArrivals() {
   const api = boot();
   await joinRoom(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
-  api.recv(pos('p1', 'Priya', DEST.lat + 0.0005, DEST.lng));
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.0003, DEST.lng));
   await sleep(20);
   I(api).checkArrivals();
   check('she has arrived', api.window.Convoy.state.peers.get('p1').arrived === true);
@@ -111,10 +160,13 @@ async function testTheImHereButton() {
 
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
+  check('the button is called Arrived', text(api, 'btnHere') === 'Arrived', text(api, 'btnHere'));
+
   api.document.getElementById('btnHere').click();
   await sleep(20);
   check('the button marks you arrived', api.window.Convoy.state.arrived === true);
-  check('and says so on the button', text(api, 'btnHere') === 'Arrived', text(api, 'btnHere'));
+  check('and shows that it is set', /Arrived/.test(text(api, 'btnHere')) &&
+        api.document.getElementById('btnHere').classList.contains('on'), text(api, 'btnHere'));
   check('and tells the room', !!api.sent('arrived'));
   check('and marks it beside your name', /arrived/.test(text(api, 'people')),
         text(api, 'people'));
@@ -373,6 +425,8 @@ async function testBehindAndAhead() {
     await testSomeoneGoneQuietSaysHowLong();
     await testTheRosterRemembersLastSeen();
     await testArrivingIsAnnounced();
+    await testTheArrivalTimeStaysUntilTheyArrive();
+    await testTheButtonWorksFromAnywhere();
     await testANewDestinationResetsArrivals();
     await testTheImHereButton();
     await testPauseSharing();

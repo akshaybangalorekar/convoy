@@ -98,6 +98,10 @@ try {
   check('and looks up what is there', /function reverse/.test(read('route.js')) &&
         /nominatimReverse/.test(read('route.js')));
   check('arrivals are announced', /has arrived/.test(app) && /function checkArrivals/.test(app));
+  check('and are automatic within fifty metres', /arrivedM: 50/.test(app));
+  check('the button is simply called Arrived', /state\.arrived \? 'Arrived/.test(app));
+  check('and the arrival time gives way to arrived once they are there',
+        /peta arrived/.test(app) && /\.peta\.arrived/.test(css));
   check('out-of-contact people say when they were last heard from',
         /last seen /.test(app) && /function lastSeenOf/.test(app));
   check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
@@ -157,7 +161,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v9/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v10/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -345,3 +345,6 @@ input:focus { outline: none; border-color: var(--accent); }
   font-size: 11px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
   background: #34c759; color: #fff;
 }
+
+/* The arrival time slot, once somebody is actually there */
+.peta.arrived { color: #34c759; font-weight: 700; font-size: 14px; }

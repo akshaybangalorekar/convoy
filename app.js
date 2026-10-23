@@ -34,7 +34,7 @@
     roomDays: 7,
     saverPublishMs: 30000,    // battery saver: share our position this often instead
     saverEtaMs: 300000,
-    arrivedM: 150,            // within this much of the destination counts as arrived
+    arrivedM: 50,             // within this much of the destination counts as arrived
     behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,             // publish early if we moved this far
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
@@ -239,9 +239,11 @@
   // arrived, and the room is told once.
   function checkArrivals() {
     if (!state.dest) return;
+    let changed = false;
     const mine = distToDest(state.me);
     if (mine != null && mine <= CFG.arrivedM && !state.arrived) {
       state.arrived = true;
+      changed = true;
       send({ t: 'arrived', on: true });
       notify('You have arrived', state.dest.label);
       renderControls();
@@ -250,8 +252,12 @@
       const d = distToDest(p);
       if (d == null || p.arrived || d > CFG.arrivedM) return;
       p.arrived = true;
+      changed = true;
       notify(p.name + ' has arrived', state.dest.label);
     });
+    // Redraw here rather than leaving it to the caller, so the arrival time on screen is
+    // replaced by "arrived" the moment it happens.
+    if (changed) renderPeople();
   }
 
   function onArrived(msg) {
@@ -1044,6 +1050,12 @@
 
   function etaCell(p) {
     if (!state.dest) return '<span class="peta">no destination</span>';
+    // Nobody presses the button if they do not have to: coming within reach of the
+    // destination is arriving. Until that happens the arrival time stays on screen — it is
+    // the one thing everyone actually watches.
+    if (p.arrived || (p.isMe && state.arrived)) {
+      return '<span class="peta arrived">arrived</span>';
+    }
     const eta = p.isMe ? state.myEta : p.eta;
     if (!eta) return '<span class="peta">—</span>';
     const arrive = eta.ts + eta.dur * 1000;
@@ -1133,7 +1145,7 @@
     set('btnPause', state.paused, state.paused ? 'Sharing paused' : 'Pause sharing');
     set('btnSaver', state.saver, 'Battery saver');
     set('btnSound', state.sound, 'Sound');
-    set('btnHere', state.arrived, state.arrived ? 'Arrived' : "I'm here");
+    set('btnHere', state.arrived, state.arrived ? 'Arrived \u2713' : 'Arrived');
   }
 
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
