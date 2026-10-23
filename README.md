@@ -257,7 +257,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 493 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 504 checks:
 
 ```bash
 npm install
@@ -282,7 +282,8 @@ npm test
 - `tests/features-test.js` — last-seen times, arrival announcements and their reset, that
   arriving is automatic and has no button, the sharing rate and that there is no switch for it,
   the sound, the hide-my-location switch, a long press setting the destination, pasting an
-  invite link into the code box, naming the room, tapping a person, and who is behind whom.
+  invite link into the code box, naming the room, tapping a person, who is behind whom, and
+  that a phone with no position yet is never handed to the map.
 - `tests/route-test.js` — place search, the suburb beating the city, the postcode, a fuller
   answer arriving after the quick one, a service answering with an empty list not hiding one
   that has an answer, a broken service not emptying the search, the country restriction never

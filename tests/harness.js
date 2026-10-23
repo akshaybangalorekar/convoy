@@ -24,13 +24,30 @@ function layer() {
   return o;
 }
 
+// Real Leaflet throws "Invalid LatLng object" when handed a null coordinate, and a stub
+// that quietly accepts anything hides exactly that class of bug. So this one checks, the
+// way Leaflet does.
+function checkLatLng(one) {
+  const lat = Array.isArray(one) ? one[0] : (one && one.lat);
+  const lng = Array.isArray(one) ? one[1] : (one && one.lng);
+  if (typeof lat !== 'number' || typeof lng !== 'number' ||
+      !isFinite(lat) || !isFinite(lng)) {
+    throw new Error('Invalid LatLng object: (' + lat + ', ' + lng + ')');
+  }
+}
+
 function makeMap() {
   const calls = { fitBounds: [], setView: [], panTo: [], zoomIn: 0, zoomOut: 0 };
   const handlers = {};
   const m = layer();
-  m.fitBounds = (b, o) => { calls.fitBounds.push(o || {}); return m; };
-  m.setView = (c, z, o) => { calls.setView.push([c, z, o || {}]); return m; };
-  m.panTo = (c, o) => { calls.panTo.push(c); return m; };
+  m.fitBounds = (b, o) => {
+    const pts = b && b._pts ? b._pts : [];
+    pts.forEach(checkLatLng);
+    calls.fitBounds.push(o || {});
+    return m;
+  };
+  m.setView = (c, z, o) => { checkLatLng(c); calls.setView.push([c, z, o || {}]); return m; };
+  m.panTo = (c, o) => { checkLatLng(c); calls.panTo.push(c); return m; };
   m.zoomIn = () => { calls.zoomIn++; return m; };
   m.zoomOut = () => { calls.zoomOut++; return m; };
   m.on = (ev, fn) => {
@@ -66,7 +83,8 @@ function boot(opts = {}) {
   window.L = {
     map: () => mapObj,
     tileLayer: () => ({ addTo: () => ({}) }),
-    polyline: layer, latLngBounds: layer,
+    polyline: layer,
+    latLngBounds: (pts) => { const b = layer(); b._pts = (pts || []).slice(); return b; },
     control: { zoom: () => ({ addTo: () => {} }) },
     divIcon: (o) => o, marker: layer,
   };

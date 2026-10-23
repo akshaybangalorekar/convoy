@@ -327,9 +327,12 @@
       li.addEventListener('click', () => {
         const r = list[parseInt(li.getAttribute('data-recent'), 10)];
         if (!r) return;
-        API.setDest(r.lat, r.lng, r.label);
-        rememberPlace(r);
-        closeSearch();
+        try {
+          API.setDest(r.lat, r.lng, r.label);
+          rememberPlace(r);
+        } finally {
+          closeSearch();
+        }
       });
     });
   }
@@ -393,9 +396,13 @@
       li.addEventListener('click', () => {
         const r = shown[parseInt(li.getAttribute('data-i'), 10)];
         if (!r) return;
-        API.setDest(r.lat, r.lng, r.label);
-        rememberPlace(r);
-        closeSearch();
+        // Whatever else happens, the sheet gets out of the way.
+        try {
+          API.setDest(r.lat, r.lng, r.label);
+          rememberPlace(r);
+        } finally {
+          closeSearch();
+        }
       });
     });
     shown = list;
@@ -428,6 +435,10 @@
     API = api;
     window.addEventListener('popstate', onPop);
     $('btnSearchClose').addEventListener('click', closeSearch);
+    // A tap on the dimmed area, outside the card, always gets you out.
+    $('search').addEventListener('click', (e) => {
+      if (e.target === $('search')) closeSearch();
+    });
     $('btnClearDest').addEventListener('click', () => {
       API.clearDest();
       closeSearch();

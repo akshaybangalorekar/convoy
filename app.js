@@ -587,10 +587,16 @@
     refreshColors();
   }
 
+  // Only people whose position we actually know. A phone brought back from the room's
+  // roster has no coordinates yet, and a null in a bounds calculation throws inside
+  // Leaflet — which used to take the whole screen down with it, leaving the search sheet
+  // stuck open over a destination that had in fact been set.
   function allPeople() {
     const list = [];
-    if (state.me && state.me.lat != null) list.push(state.me);
-    state.peers.forEach((p) => list.push(p));
+    if (state.me && state.me.lat != null && state.me.lng != null) list.push(state.me);
+    state.peers.forEach((p) => {
+      if (p.lat != null && p.lng != null) list.push(p);
+    });
     return list;
   }
 
@@ -1135,13 +1141,17 @@
     state.myEta = null;
     resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
-    drawDest();
-    refreshRoute();
-    saveDest();
-    send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by, ts: state.destTs });
-    state.autoFit = true;
-    lastFitAt = 0;
-    fitAll();
+    // From here on it is drawing and telling the room. None of that may be allowed to
+    // stop the caller: a map or network hiccup must never leave a screen stuck.
+    try {
+      drawDest();
+      refreshRoute();
+      saveDest();
+      send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by, ts: state.destTs });
+      state.autoFit = true;
+      lastFitAt = 0;
+      fitAll();
+    } catch (e) { /* the destination is set; the rest is best effort */ }
   }
 
   function clearDest() {
@@ -1597,7 +1607,7 @@
     map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom, roomFromUrl,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
-                  presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest,
+                  presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest, allPeople,
                   handleTap, wireTapZoom, tap,
                   loadRoom, saveRoom, rememberMember, forgetMember, roomNoteText,
                   roomLifeMs,

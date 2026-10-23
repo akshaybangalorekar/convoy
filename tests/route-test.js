@@ -436,6 +436,83 @@ async function testTheRowSurvivesTheFullerAnswerArriving() {
   check('with the fuller address', !!dest && /3163/.test(dest.label), dest && dest.label);
 }
 
+async function testSelectingWorksWithAQuietPhoneInTheRoom() {
+  // A phone brought back from the room's roster has no coordinates yet. It used to be
+  // handed to Leaflet as (null, null), which throws — after the destination was set and
+  // drawn but before the sheet was told to close. So the sheet stuck open over a
+  // destination that had visibly changed, and the screen looked frozen.
+  const api = boot({ fetch: photonCarnegie });
+  api.window.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
+    code: 'goa-trip', startedAt: Date.now(), expiresAt: Date.now() + 86400000,
+    updatedAt: Date.now(),
+    members: { ghost: { name: 'Ravi', lastSeen: Date.now() - 600000 } },
+  }));
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  const d = api.document;
+  check('the quiet phone is on the list',
+        !!d.querySelector('#people li[data-id="ghost"]'));
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  d.getElementById('inSearch').value = 'mimosa road';
+  d.getElementById('inSearch').dispatchEvent(new api.window.Event('input', { bubbles: true }));
+  await sleep(480);
+
+  const row = d.querySelector('#results li[data-i]');
+  check('a result is listed', !!row, d.getElementById('results').textContent);
+  row.click();
+  await sleep(30);
+
+  check('the destination is set', !!api.window.Convoy.state.dest,
+        JSON.stringify(api.window.Convoy.state.dest));
+  check('and the sheet still closes, rather than stranding the screen',
+        d.getElementById('search').classList.contains('hidden'));
+}
+
+async function testAQuietPhoneIsNeverHandedToTheMap() {
+  // The root of it: a phone with no coordinates yet must never reach Leaflet, because a
+  // null in a bounds calculation throws.
+  const api = boot({ fetch: photonCarnegie });
+  api.window.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
+    code: 'goa-trip', startedAt: Date.now(), expiresAt: Date.now() + 86400000,
+    updatedAt: Date.now(), members: { ghost: { name: 'Ravi', lastSeen: Date.now() } },
+  }));
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  const I = api.window.Convoy._internals;
+  const people = I.allPeople();
+  check('a phone with no position is kept out of the map\'s list',
+        people.every((p) => p.lat != null && p.lng != null),
+        JSON.stringify(people.map((p) => [p.name, p.lat, p.lng])));
+  check('and it is still on the list you can see',
+        /Ravi/.test(api.document.getElementById('people').textContent),
+        api.document.getElementById('people').textContent);
+
+  let threw = null;
+  try { I.fitAll(); } catch (e) { threw = e.message; }
+  check('so fitting the view cannot throw on a null position', threw === null, String(threw));
+}
+
+async function testTheBackdropGetsYouOut() {
+  const api = boot({ fetch: photonCarnegie });
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const d = api.document;
+
+  d.getElementById('destRow').click();
+  await sleep(20);
+  check('the sheet is open', !d.getElementById('search').classList.contains('hidden'));
+
+  // A tap on the dimmed area, not on the card.
+  d.getElementById('search').click();
+  await sleep(20);
+  check('tapping outside the sheet closes it, whatever else is going on',
+        d.getElementById('search').classList.contains('hidden'));
+}
+
 async function testAPlaceIsNotLookedUpTwice() {
   const api = boot({ fetch: photonCarnegie });
   await api.window.ConvoyRoute.search('carnegie');
@@ -715,6 +792,9 @@ async function testHistoryIsPerPhone() {
     await testTheMessageSaysWhatWentWrong();
     await testTappingAnAddressResultSelectsIt();
     await testTheRowSurvivesTheFullerAnswerArriving();
+    await testAQuietPhoneIsNeverHandedToTheMap();
+    await testSelectingWorksWithAQuietPhoneInTheRoom();
+    await testTheBackdropGetsYouOut();
     await testAPlaceIsNotLookedUpTwice();
     await testPlaceStillGoesToPhotonFirst();
     await testAddressServiceIsNotHammered();
