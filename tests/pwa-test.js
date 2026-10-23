@@ -88,9 +88,12 @@ try {
         /overflow-y: auto/.test(css) && /margin: auto/.test(css));
 
   /* ---------- The later features ---------- */
-  check('the switches are in the sheet',
-        /id="btnPause"/.test(html) && /id="btnSaver"/.test(html) &&
-        /id="btnSound"/.test(html) && /id="btnHere"/.test(html));
+  check('the sheet has exactly one switch, and it takes you off the map',
+        /id="btnPause"/.test(html) && /Hide my location/.test(html) &&
+        !/id="btnSaver"/.test(html) && !/id="btnSound"/.test(html) &&
+        !/id="btnHere"/.test(html));
+  check('sharing is set for battery life, with no switch for it',
+        /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
   check('the room can be named', /id="inRoomName"/.test(html) && /function setRoomName/.test(app));
   check('the name is shared with the room', /t: 'room-name'/.test(app));
   check('a long press on the map sets the destination',
@@ -99,7 +102,8 @@ try {
         /nominatimReverse/.test(read('route.js')));
   check('arrivals are announced', /has arrived/.test(app) && /function checkArrivals/.test(app));
   check('and are automatic within fifty metres', /arrivedM: 50/.test(app));
-  check('the button is simply called Arrived', /state\.arrived \? 'Arrived/.test(app));
+  check('there is no button to press to arrive', !/btnHere/.test(app) &&
+        /function checkArrivals/.test(app));
   check('and the arrival time gives way to arrived once they are there',
         /peta arrived/.test(app) && /\.peta\.arrived/.test(css));
   check('out-of-contact people say when they were last heard from',
@@ -107,7 +111,6 @@ try {
   check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
   check('pausing is announced rather than looking like silence',
         /state\.paused \? 'paused' : 'sharing'/.test(app));
-  check('battery saver slows the sharing down', /saverPublishMs/.test(app));
   check('a notification makes a sound', /function ping/.test(app) && /AudioContext/.test(app));
   check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
   check('pasting the invite link into the code box works', /function extractRoomCode/.test(app));
@@ -161,7 +164,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v10/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v11/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -24,16 +24,17 @@
       { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
     ],
-    publishMs: 5000,          // broadcast our position at least this often
+    // Chosen for battery life, which matters more on a long drive than a smooth trail of
+    // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
+    // make anyone look out of contact.
+    publishMs: 30000,         // broadcast our position at least this often
     renderMs: 3000,           // sweep the list and the view
-    etaMs: 60000,             // recompute our arrival time this often
+    etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
     awayMs: 180000,           // backgrounded this long counts as out of contact too
     // A room stays open this long after anyone last used it. Nobody is ever dropped
     // from the room while it is open — a quiet phone just sits there as out of contact.
     roomDays: 7,
-    saverPublishMs: 30000,    // battery saver: share our position this often instead
-    saverEtaMs: 300000,
     arrivedM: 50,             // within this much of the destination counts as arrived
     behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,             // publish early if we moved this far
@@ -49,17 +50,7 @@
                    '#5ac8fa', '#ffcc00', '#ff2d55', '#30d158', '#5856d6'];
 
   const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me',
-               invite: 'convoy.invite', saver: 'convoy.saver', sound: 'convoy.sound' };
-
-  function readPref(key, fallback) {
-    try {
-      const v = localStorage.getItem(key);
-      return v === null ? fallback : v;
-    } catch (e) { return fallback; }
-  }
-  function writePref(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
-  }
+               invite: 'convoy.invite' };
 
   const state = {
     me: null,
@@ -77,9 +68,7 @@
     destTs: 0,            // when the destination was last set or cleared; newest wins
     away: false,          // true while our own app is in the background
     roomExpires: 0,       // when this room lapses, for the note in the sheet
-    paused: false,        // deliberately not sharing our position
-    saver: false,         // battery saver: share less often
-    sound: true,          // ping on a notification
+    paused: false,        // hidden from the map: deliberately not sharing our position
     roomName: '',         // a human name for the room, shared with everyone in it
     roomNameTs: 0,        // when it was last named; newest wins, like the destination
     arrived: false,       // we have reached the destination (or said we have)
@@ -92,10 +81,6 @@
   let renderTimer = null;
   let etaTimer = null;
   let audio = null;                 // lazily built on the first tap; browsers block it before
-
-  // How often we share, given the battery saver switch.
-  const publishInterval = () => (state.saver ? CFG.saverPublishMs : CFG.publishMs);
-  const etaInterval = () => (state.saver ? CFG.saverEtaMs : CFG.etaMs);
 
   /* Sound, so a notification is noticed while driving. iOS has no vibration at all, and
      every browser refuses to make a sound until the user has touched the page — so the
@@ -110,7 +95,7 @@
   }
 
   function ping() {
-    if (!state.sound || !audio) return;
+    if (!audio) return;
     try {
       const now = audio.currentTime;
       const osc = audio.createOscillator();
@@ -271,36 +256,9 @@
     renderPeople();
   }
 
-  // The button in the sheet, for when the app's own guess is wrong or early.
-  function markArrived() {
-    if (!state.dest) { banner('Set a destination first'); return; }
-    state.arrived = !state.arrived;
-    send({ t: 'arrived', on: state.arrived });
-    banner(state.arrived ? 'Marked as arrived' : 'Not there yet');
-    renderControls();
-    renderPeople();
-  }
-
   /* ---------------------------------------------------------------- *
    * Not sharing my position
    * ---------------------------------------------------------------- */
-  function setSaver(on) {
-    state.saver = !!on;
-    writePref(LS.saver, state.saver ? '1' : '0');
-    restartTimers();
-    banner(state.saver
-      ? 'Battery saver on — sharing every 30 seconds'
-      : 'Battery saver off — sharing every 5 seconds');
-    renderControls();
-  }
-
-  function setSound(on) {
-    state.sound = !!on;
-    writePref(LS.sound, state.sound ? '1' : '0');
-    if (state.sound) { unlockAudio(); ping(); }     // so they hear what they just turned on
-    renderControls();
-  }
-
   function setPaused(on) {
     state.paused = !!on;
     send({ t: state.paused ? 'paused' : 'sharing' });
@@ -693,7 +651,7 @@
     if (state.paused) return;          // deliberately not sharing
     const last = state.lastSentFix;
     if (!force && last && haversine(last, me) < CFG.minMoveM &&
-        Date.now() - state.lastPublish < publishInterval()) return;
+        Date.now() - state.lastPublish < CFG.publishMs) return;
     state.lastSentFix = { lat: me.lat, lng: me.lng };
     send({ t: 'pos', lat: me.lat, lng: me.lng, spd: me.spd, hdg: me.hdg, acc: me.acc });
   }
@@ -1090,8 +1048,8 @@
       meta = state.away ? 'app in the background' : 'you';
       if (state.arrived) tag = 'arrived';
     } else if (kind === 'paused') {
-      meta = 'not sharing';
-      tag = 'paused';
+      meta = 'location hidden';
+      tag = 'hidden';
     } else if (p.lat == null) {
       const seen = lastSeenOf(p);
       meta = seen ? 'out of contact · last seen ' + fmtAgo(seen) : 'out of contact';
@@ -1133,19 +1091,14 @@
     if ($('inRoomName')) $('inRoomName').value = state.roomName || '';
   }
 
-  // The switches in the sheet.
+  // The one switch in the sheet. Internally this is still "paused"; on screen it says what
+  // it actually does, which is take you off the map.
   function renderControls() {
-    const set = (id, on, label) => {
-      const el = $(id);
-      if (!el) return;
-      el.classList.toggle('on', !!on);
-      el.textContent = label;
-      el.setAttribute('aria-pressed', on ? 'true' : 'false');
-    };
-    set('btnPause', state.paused, state.paused ? 'Sharing paused' : 'Pause sharing');
-    set('btnSaver', state.saver, 'Battery saver');
-    set('btnSound', state.sound, 'Sound');
-    set('btnHere', state.arrived, state.arrived ? 'Arrived \u2713' : 'Arrived');
+    const el = $('btnPause');
+    if (!el) return;
+    el.classList.toggle('on', !!state.paused);
+    el.textContent = state.paused ? 'Location hidden' : 'Hide my location';
+    el.setAttribute('aria-pressed', state.paused ? 'true' : 'false');
   }
 
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
@@ -1236,7 +1189,7 @@
    * ---------------------------------------------------------------- */
   function startTimers() {
     stopTimers();
-    publishTimer = setInterval(publishNow, publishInterval());
+    publishTimer = setInterval(publishNow, CFG.publishMs);
     renderTimer = setInterval(() => {
       // Nobody is dropped from the room while it is open. A phone that goes quiet stays
       // on the list as out of contact; only the room itself lapsing clears the roster,
@@ -1249,15 +1202,7 @@
       renderPeople();
       maybeAutoView();
     }, CFG.renderMs);
-    etaTimer = setInterval(refreshRoute, etaInterval());
-  }
-
-  // The battery saver changes how often we share, so the timers are rebuilt when it flips.
-  function restartTimers() {
-    if (publishTimer) clearInterval(publishTimer);
-    if (etaTimer) clearInterval(etaTimer);
-    publishTimer = setInterval(publishNow, publishInterval());
-    etaTimer = setInterval(refreshRoute, etaInterval());
+    etaTimer = setInterval(refreshRoute, CFG.etaMs);
   }
 
   function stopTimers() {
@@ -1287,10 +1232,6 @@
     state.joined = true;
     state.seen = new Set();
     state.away = false;
-
-    // Preferences that survive closing the app.
-    state.saver = readPref(LS.saver, '0') === '1';
-    state.sound = readPref(LS.sound, '1') !== '0';
 
     // Restore the destination this phone last knew for this room, so a returning phone
     // can put it straight back on the air without asking anybody.
@@ -1543,11 +1484,8 @@
     $('btnInvite').addEventListener('click', share);
     $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
 
-    // The switches in the sheet.
+    // The one switch in the sheet.
     $('btnPause').addEventListener('click', () => setPaused(!state.paused));
-    $('btnSaver').addEventListener('click', () => setSaver(!state.saver));
-    $('btnSound').addEventListener('click', () => setSound(!state.sound));
-    $('btnHere').addEventListener('click', markArrived);
     $('inRoomName').addEventListener('change', () => setRoomName($('inRoomName').value));
 
     // Tapping someone brings the map to them.
@@ -1664,11 +1602,10 @@
                   loadRoom, saveRoom, rememberMember, forgetMember, roomNoteText,
                   roomLifeMs,
                   // The switches, the arrival logic, and the small helpers behind them.
-                  setPaused, setSaver, setSound, markArrived, checkArrivals, resetArrivals,
+                  setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   setRoomName, renderControls, renderTop, renderPeople,
-                  unlockAudio, ping, publishInterval, etaInterval, restartTimers,
-                  onMapLongPress, rowFor, readPref, writePref, publishNow, send },
+                  unlockAudio, ping, onMapLongPress, rowFor, publishNow, send },
   };
 
   boot();

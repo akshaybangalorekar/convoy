@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = 'convoy-v10';
+const VERSION = 'convoy-v11';
 const TILE_CACHE = 'convoy-tiles-v1';
 const MAX_TILES = 400;          // ~6 MB, roughly one afternoon of driving
 

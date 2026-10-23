@@ -112,7 +112,7 @@ async function testTheArrivalTimeStaysUntilTheyArrive() {
   check('and no clock time is left over', !/\d{1,2}:\d{2}/.test(row()), row());
 }
 
-async function testTheButtonWorksFromAnywhere() {
+async function testAnotherPhoneAnnouncingItsArrival() {
   const api = boot();
   await joinRoom(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
@@ -124,9 +124,10 @@ async function testTheButtonWorksFromAnywhere() {
   check('nobody is arrived from five kilometres out',
         api.window.Convoy.state.peers.get('p1').arrived !== true);
 
-  api.recv({ t: 'arrived', id: 'p1', on: true });             // she says so herself
+  // Her phone works it out for itself and says so, which is the only way it can happen now.
+  api.recv({ t: 'arrived', id: 'p1', on: true });
   await sleep(20);
-  check('but they can say so themselves, from anywhere',
+  check('and her own phone telling us counts',
         api.window.Convoy.state.peers.get('p1').arrived === true);
   const last = api.notes[api.notes.length - 1];
   check('and it is announced', /Priya has arrived/.test(last.title), last.title);
@@ -149,33 +150,26 @@ async function testANewDestinationResetsArrivals() {
   check('including us', api.window.Convoy.state.arrived === false);
 }
 
-async function testTheImHereButton() {
+async function testThereIsNoArrivedButton() {
   const api = boot();
   await joinRoom(api);
-
-  api.document.getElementById('btnHere').click();
-  await sleep(20);
-  check('with no destination it says so rather than doing nothing',
-        /destination/i.test(banner(api)), banner(api));
-
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
-  check('the button is called Arrived', text(api, 'btnHere') === 'Arrived', text(api, 'btnHere'));
 
-  api.document.getElementById('btnHere').click();
+  check('there is no button to press, because arriving is automatic',
+        !api.document.getElementById('btnHere'));
+  check('and we are not marked arrived just because a destination exists',
+        api.window.Convoy.state.arrived === false);
+
+  // Driving up to the destination does it on its own.
+  api.fix(DEST.lat + 0.0003, DEST.lng);
   await sleep(20);
-  check('the button marks you arrived', api.window.Convoy.state.arrived === true);
-  check('and shows that it is set', /Arrived/.test(text(api, 'btnHere')) &&
-        api.document.getElementById('btnHere').classList.contains('on'), text(api, 'btnHere'));
-  check('and tells the room', !!api.sent('arrived'));
-  check('and marks it beside your name', /arrived/.test(text(api, 'people')),
+  I(api).checkArrivals();
+  check('coming within fifty metres marks it without anyone touching anything',
+        api.window.Convoy.state.arrived === true);
+  check('and the room is told', !!api.sent('arrived'));
+  check('and it shows beside your name', /arrived/.test(text(api, 'people')),
         text(api, 'people'));
-
-  api.document.getElementById('btnHere').click();
-  await sleep(20);
-  check('and it can be undone', api.window.Convoy.state.arrived === false);
-  check('which the room is told as well', api.sent('arrived').on === false,
-        JSON.stringify(api.sent('arrived')));
 }
 
 /* ---------- Not sharing ---------- */
@@ -186,10 +180,13 @@ async function testPauseSharing() {
   await sleep(20);
   const shared = () => api.sentAll('pos').length;
 
+  check('the one switch is called Hide my location',
+        text(api, 'btnPause') === 'Hide my location', text(api, 'btnPause'));
+
   api.document.getElementById('btnPause').click();
   await sleep(20);
-  check('the switch says sharing is paused', text(api, 'btnPause') === 'Sharing paused',
-        text(api, 'btnPause'));
+  check('and says the location is hidden once it is on',
+        text(api, 'btnPause') === 'Location hidden', text(api, 'btnPause'));
   check('and the room is told, so it is not mistaken for losing us',
         !!api.sent('paused'));
 
@@ -216,7 +213,7 @@ async function testAPausedPhoneIsNotJustQuiet() {
 
   const kind = I(api).presenceOf(api.window.Convoy.state.peers.get('p1'));
   check('a paused phone is marked paused, not lost', kind === 'paused', kind);
-  check('and the list says why', /not sharing/.test(text(api, 'people')),
+  check('and the list says why', /location hidden/.test(text(api, 'people')),
         text(api, 'people'));
 
   api.recv({ t: 'sharing', id: 'p1' });
@@ -225,29 +222,21 @@ async function testAPausedPhoneIsNotJustQuiet() {
         I(api).presenceOf(api.window.Convoy.state.peers.get('p1')) === 'live');
 }
 
-/* ---------- Battery saver ---------- */
-async function testBatterySaver() {
+/* ---------- How often we share ---------- */
+async function testTheSharingRateIsChosenForBattery() {
   const api = boot();
   await joinRoom(api);
-  check('by default we share every five seconds', I(api).publishInterval() === 5000,
-        String(I(api).publishInterval()));
+  const CFG = api.window.Convoy.CFG;
 
-  api.document.getElementById('btnSaver').click();
-  await sleep(20);
-  check('battery saver slows that right down', I(api).publishInterval() === 30000,
-        String(I(api).publishInterval()));
-  check('and the arrival time is worked out less often', I(api).etaInterval() === 300000,
-        String(I(api).etaInterval()));
-  check('the switch shows it is on',
-        api.document.getElementById('btnSaver').classList.contains('on'));
-  check('and it is remembered on this phone',
-        api.window.localStorage.getItem('convoy.saver') === '1',
-        String(api.window.localStorage.getItem('convoy.saver')));
-
-  api.document.getElementById('btnSaver').click();
-  await sleep(20);
-  check('and it can be turned off again', I(api).publishInterval() === 5000,
-        String(I(api).publishInterval()));
+  check('we share every thirty seconds, not every five', CFG.publishMs === 30000,
+        String(CFG.publishMs));
+  check('and the arrival time is worked out every five minutes', CFG.etaMs === 300000,
+        String(CFG.etaMs));
+  check('which is well inside the silence that counts as out of contact',
+        CFG.publishMs * 3 <= CFG.staleMs,
+        CFG.publishMs + ' every, stale at ' + CFG.staleMs);
+  check('and there is no switch for it, because it is simply the setting',
+        !api.document.getElementById('btnSaver'));
 }
 
 /* ---------- Sound ---------- */
@@ -264,20 +253,10 @@ async function testTheNotificationSound() {
   check('after a touch a notification makes a sound', api.pings.length > 0,
         String(api.pings.length));
 
-  api.document.getElementById('btnSound').click();
-  await sleep(20);
   const after = api.pings.length;
-  I(api).notify('Quiet', 'now');
-  check('turning the sound off stops it', api.pings.length === after,
+  I(api).notify('Again', 'please');
+  check('and every notification after that does too', api.pings.length > after,
         String(api.pings.length - after));
-  check('and the choice is remembered',
-        api.window.localStorage.getItem('convoy.sound') === '0',
-        String(api.window.localStorage.getItem('convoy.sound')));
-
-  api.document.getElementById('btnSound').click();
-  await sleep(20);
-  check('turning it back on plays a sample so you know it works',
-        api.pings.length > after, String(api.pings.length - after));
 }
 
 /* ---------- A long press on the map ---------- */
@@ -426,12 +405,12 @@ async function testBehindAndAhead() {
     await testTheRosterRemembersLastSeen();
     await testArrivingIsAnnounced();
     await testTheArrivalTimeStaysUntilTheyArrive();
-    await testTheButtonWorksFromAnywhere();
+    await testAnotherPhoneAnnouncingItsArrival();
     await testANewDestinationResetsArrivals();
-    await testTheImHereButton();
+    await testThereIsNoArrivedButton();
     await testPauseSharing();
     await testAPausedPhoneIsNotJustQuiet();
-    await testBatterySaver();
+    await testTheSharingRateIsChosenForBattery();
     await testTheNotificationSound();
     await testALongPressSetsTheDestination();
     await testALongPressWorksWithNoLookup();
