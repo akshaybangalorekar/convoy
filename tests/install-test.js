@@ -200,6 +200,42 @@ async function testARefusedLocationSaysWhy() {
         shown(api), body(api));
 }
 
+/* ---------- A link cannot open the installed app on an iPhone ---------- */
+const iosNote = (api) => api.document.getElementById('iosNote');
+const noteShown = (api) => !iosNote(api).classList.contains('hidden');
+
+async function testTheIPhoneIsToldWhereToOpenIt() {
+  const ios = boot({ setup: withUA(REAL_IOS) });
+  await sleep(30);
+  check('an iPhone is told a link opens in Safari, not the home-screen app',
+        noteShown(ios), iosNote(ios).textContent);
+  check('and where to go instead', /home screen/i.test(iosNote(ios).textContent),
+        iosNote(ios).textContent);
+
+  const android = boot({ setup: withUA(REAL_ANDROID) });
+  await sleep(30);
+  check('Android is not told that, because there a link does open the installed app',
+        !noteShown(android));
+
+  const installed = boot({ setup: (w) => {
+    withUA(REAL_IOS)(w);
+    Object.defineProperty(w.navigator, 'standalone', { configurable: true, value: true });
+  } });
+  await sleep(30);
+  check('nor is an app already on the home screen', !noteShown(installed));
+
+  const plain = boot();
+  await sleep(30);
+  check('nor is a desktop browser', !noteShown(plain));
+}
+
+async function testAndroidIsToldWhereTheHandOffLands() {
+  const api = boot({ setup: withUA(APP_ANDROID) });
+  await sleep(30);
+  check('an Android phone in a chat app is told the browser hand-off reaches the app',
+        /goes straight into it/.test(body(api)), body(api));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -215,6 +251,8 @@ async function testARefusedLocationSaysWhy() {
     await testTheAppBrowserNoteRepeats();
     await testItIsShownEvenToSomeoneWhoHasUsedTheApp();
     await testARefusedLocationSaysWhy();
+    await testTheIPhoneIsToldWhereToOpenIt();
+    await testAndroidIsToldWhereTheHandOffLands();
   } catch (e) { crash(e); }
   finish('install');
 })();

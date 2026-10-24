@@ -2,6 +2,7 @@
   "name": "Convoy — everyone on one map",
   "short_name": "Convoy",
   "description": "See everyone in your group on one map, with the time each person will reach the destination. No sign-up, no backend.",
+  "id": ".",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

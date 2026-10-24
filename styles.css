@@ -348,3 +348,7 @@ input:focus { outline: none; border-color: var(--accent); }
 
 /* The arrival time slot, once somebody is actually there */
 .peta.arrived { color: #34c759; font-weight: 700; font-size: 14px; }
+
+/* The note that only appears on an iPhone */
+#iosNote.hidden { display: none; }
+#iosNote { margin-top: 2px; }

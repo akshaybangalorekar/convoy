@@ -106,7 +106,9 @@
                    : 'Tap the <b>&#8942;</b> menu at the top, then <b>Open in Chrome</b>.') +
         '</p>' +
         '<p class="install-sub">Your location, notifications and adding Convoy to the home ' +
-        'screen all need the real browser — the one built into a chat app cannot do them.</p>' +
+        'screen all need the real browser — the one built into a chat app cannot do them. ' +
+        (isIOS() ? '' : 'And if Convoy is already on your home screen, opening it in Chrome ' +
+                        'goes straight into it.') + '</p>' +
         DONE;
       wireDismiss(false);          // worth saying again next time; not remembered
     } else if (deferred) {
@@ -181,6 +183,11 @@
       hide();
     });
     maybeOffer();
+
+    // On an iPhone a link can never open the home-screen app — Apple gives a web page no
+    // way to do it — so if it is already installed, the kindest thing is to say so.
+    const note = $('iosNote');
+    if (note && isIOS() && !isStandalone()) note.classList.remove('hidden');
   }
 
   window.ConvoyInstall = {

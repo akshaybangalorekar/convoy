@@ -91,6 +91,12 @@ than ours:
   the app notices where it is and says **"Open Convoy in your browser"**, pointing at the right
   button for the phone it is on. This is the one to know about if you are sharing by WhatsApp:
   the link works, but the recipient should open it in Safari or Chrome for the full app.
+- **A link opens the app on Android, but never on an iPhone.** The manifest claims the app's
+  own address, so on Android Chrome hands a link to the app already on the home screen rather
+  than opening a tab. Apple gives a web page no way to do that — there is no manifest field, no
+  API, and Universal Links need a real native app — so on an iPhone a link always opens in
+  Safari. The join card says so, and points at the home-screen icon instead. This is the one
+  place the two phones genuinely cannot be made to behave the same, and it is Apple's rule.
 - **Installing is one tap on Android and two on an iPhone.** Android hands the app its own
   install prompt, which it fires from its own button. Safari has no such thing — Apple does not
   let a page trigger it — so the card points at the Share button instead. Note that on iOS the
@@ -257,7 +263,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 520 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 528 checks:
 
 ```bash
 npm install

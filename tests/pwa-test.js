@@ -152,6 +152,13 @@ try {
   check('the manifest is valid JSON', !!mf);
   check('the manifest names the app', mf && mf.short_name === 'Convoy', mf && mf.short_name);
   check('the manifest opens standalone', mf && mf.display === 'standalone', mf && mf.display);
+  // The scope and id are what let Android hand a link to the installed app instead of a
+  // tab. They match the address the app is served from, so nothing is orphaned.
+  check('the manifest claims its own address, which is what lets Android hand links to the installed app',
+        mf && mf.scope === '.' && mf.start_url === '.' && mf.id === '.',
+        JSON.stringify(mf && { id: mf.id, scope: mf.scope, start_url: mf.start_url }));
+  check('and an iPhone is told a link opens in Safari rather than the installed app',
+        /id="iosNote"/.test(html) && /iosNote/.test(install) && /#iosNote\.hidden/.test(css));
   check('the manifest lists icons', mf && Array.isArray(mf.icons) && mf.icons.length >= 3,
         String(mf && mf.icons && mf.icons.length));
   (mf && mf.icons ? mf.icons : []).forEach((i) => {
@@ -172,7 +179,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v13/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v14/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 
