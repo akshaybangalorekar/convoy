@@ -229,6 +229,31 @@ async function testTheIPhoneIsToldWhereToOpenIt() {
   check('nor is a desktop browser', !noteShown(plain));
 }
 
+async function testTheIPhoneNoteWalksThemThroughIt() {
+  const api = boot({ setup: (w) => {
+    withUA(REAL_IOS)(w);
+    w.history.replaceState(null, '', '/#r=goa-trip');
+  } });
+  await sleep(30);
+  const note = iosNote(api).textContent;
+  check('the note names both steps: add it, then open it from the home screen',
+        /Add to Home Screen/.test(note) && /home screen/i.test(note), note);
+  check('and says plainly that there is no way round it',
+        /no way round it|always opens/.test(note), note);
+
+  // The one manual step is carrying the code across, so that must be a copy.
+  const box = api.document.getElementById('inRoom');
+  check('the code is filled in ready to copy', box.value === 'goa-trip', box.value);
+  let copied = null;
+  api.window.document.execCommand = () => { copied = true; return true; };
+  Object.defineProperty(api.window.navigator, 'clipboard', { configurable: true, value: undefined });
+  api.document.getElementById('btnCopyCode').click();
+  await sleep(20);
+  check('and there is a button to copy it', copied === true);
+  check('which says so', /copied/i.test(api.document.getElementById('banner').textContent),
+        api.document.getElementById('banner').textContent);
+}
+
 async function testAndroidIsToldWhereTheHandOffLands() {
   const api = boot({ setup: withUA(APP_ANDROID) });
   await sleep(30);
@@ -252,6 +277,7 @@ async function testAndroidIsToldWhereTheHandOffLands() {
     await testItIsShownEvenToSomeoneWhoHasUsedTheApp();
     await testARefusedLocationSaysWhy();
     await testTheIPhoneIsToldWhereToOpenIt();
+    await testTheIPhoneNoteWalksThemThroughIt();
     await testAndroidIsToldWhereTheHandOffLands();
   } catch (e) { crash(e); }
   finish('install');

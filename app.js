@@ -1519,6 +1519,14 @@
     $('btnInvite').addEventListener('click', share);
     $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
 
+    // Carrying the code from Safari into the installed app is the one manual step an iPhone
+    // forces, so make it a copy and a paste rather than reading it off one screen.
+    $('btnCopyCode').addEventListener('click', async () => {
+      const code = normRoom($('inRoom').value);
+      if (!code) { banner('No code to copy yet'); return; }
+      banner(await copyText(code) ? 'Code copied' : 'Copy the code: ' + code);
+    });
+
     // The one switch in the sheet.
     $('btnPause').addEventListener('click', () => setPaused(!state.paused));
     $('inRoomName').addEventListener('change', () => setRoomName($('inRoomName').value));

@@ -159,6 +159,8 @@ try {
         JSON.stringify(mf && { id: mf.id, scope: mf.scope, start_url: mf.start_url }));
   check('and an iPhone is told a link opens in Safari rather than the installed app',
         /id="iosNote"/.test(html) && /iosNote/.test(install) && /#iosNote\.hidden/.test(css));
+  check('with the code made copyable, since carrying it across is the one manual step',
+        /id="btnCopyCode"/.test(html) && /btnCopyCode/.test(app));
   check('the manifest lists icons', mf && Array.isArray(mf.icons) && mf.icons.length >= 3,
         String(mf && mf.icons && mf.icons.length));
   (mf && mf.icons ? mf.icons : []).forEach((i) => {
@@ -179,7 +181,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v14/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v15/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

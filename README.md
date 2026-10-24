@@ -95,8 +95,10 @@ than ours:
   own address, so on Android Chrome hands a link to the app already on the home screen rather
   than opening a tab. Apple gives a web page no way to do that — there is no manifest field, no
   API, and Universal Links need a real native app — so on an iPhone a link always opens in
-  Safari. The join card says so, and points at the home-screen icon instead. This is the one
-  place the two phones genuinely cannot be made to behave the same, and it is Apple's rule.
+  Safari. The join card says so, walks them through adding it and opening it from the home
+  screen, and offers a button to copy the code, since carrying that across is the one manual
+  step an iPhone forces. This is the one place the two phones genuinely cannot be made to
+  behave the same, and it is Apple's rule.
 - **Installing is one tap on Android and two on an iPhone.** Android hands the app its own
   install prompt, which it fires from its own button. Safari has no such thing — Apple does not
   let a page trigger it — so the card points at the Share button instead. Note that on iOS the
@@ -263,7 +265,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 528 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 534 checks:
 
 ```bash
 npm install
