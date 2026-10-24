@@ -115,6 +115,11 @@ try {
   check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
   check('pasting the invite link into the code box works', /function extractRoomCode/.test(app));
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
+  check('the location watch is armed again on coming back',
+        /startWatching\(\);/.test(app) && /geoWatch = navigator\.geolocation\.watchPosition/.test(app));
+  check('and a touch retries while we have no position', /haveMyPosition/.test(app));
+  check('our own row says when we are waiting for a location',
+        /waiting for your location/.test(app));
   check('a phone with no position is kept away from the map',
         /function allPeople/.test(app) && /p\.lat != null && p\.lng != null/.test(app));
   check('and the dimmed area closes the search sheet', /e\.target === \$\('search'\)/.test(read('route.js')));
@@ -167,7 +172,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v12/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v13/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

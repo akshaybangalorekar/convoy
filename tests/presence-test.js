@@ -48,6 +48,52 @@ async function testWeAnnounceGoingAway() {
   check('and we are present again', api.window.Convoy.state.away === false);
 }
 
+/* ---------- Coming back must put us on the map again ---------- */
+async function testTheLocationWatchIsArmedAgainOnReturn() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  const before = api.geo.started;
+
+  setVisibility(api, 'hidden');
+  await sleep(20);
+  setVisibility(api, 'visible');
+  await sleep(20);
+
+  check('coming back arms the location watch again, rather than leaving us off the map',
+        api.geo.started > before, before + ' -> ' + api.geo.started);
+  check('and the old watch is let go first, so there are never two',
+        api.geo.cleared >= 1, String(api.geo.cleared));
+  check('the old one is the one that was cleared',
+        api.geo.clearedIds.indexOf(before) >= 0, JSON.stringify(api.geo.clearedIds));
+}
+
+async function testATouchRetriesWhenWeHaveNoPosition() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);                       // no fix has arrived: we have no position
+  check('we start with no position', api.window.Convoy._internals.haveMyPosition() === false);
+  check('and our own row says why', /waiting for your location/.test(list(api)), list(api));
+
+  const before = api.geo.started;
+  api.touch();
+  await sleep(10);
+  check('a touch tries the watch again, which is what iOS needs before it will share',
+        api.geo.started > before, before + ' -> ' + api.geo.started);
+
+  // Once we have a position, a touch must not keep re-arming it.
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  const after = api.geo.started;
+  api.touch();
+  await sleep(10);
+  check('and once we are on the map it leaves the watch alone',
+        api.geo.started === after, after + ' -> ' + api.geo.started);
+  check('and our row stops saying it is waiting', !/waiting for your location/.test(list(api)),
+        list(api));
+}
+
 /* ---------- Someone else going away, and coming back ---------- */
 async function testSomeoneElseAway() {
   const api = boot();
@@ -225,6 +271,8 @@ async function testNewestDestinationWins() {
 (async () => {
   try {
     await testWeAnnounceGoingAway();
+    await testTheLocationWatchIsArmedAgainOnReturn();
+    await testATouchRetriesWhenWeHaveNoPosition();
     await testSomeoneElseAway();
     await testSomeoneGoesQuiet();
     await testBackgroundedTooLongCountsAsLost();

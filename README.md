@@ -257,7 +257,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 504 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 520 checks:
 
 ```bash
 npm install
@@ -268,7 +268,8 @@ npm test
   arrival times computed and shared, destination changes from either side, every notification,
   and inviting: the link going into the share text as well as the url, the older copy method,
   the link shown by hand when nothing else works, and both shapes of invite link.
-- `tests/presence-test.js` — announcing that our own app went to the background and back,
+- `tests/presence-test.js` — the location watch being armed again on coming back and on a
+  touch while we have none, announcing that our own app went to the background and back,
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
@@ -307,6 +308,13 @@ npm test
   signal, that person shows a dash until it recovers.
 - **The relay is public.** Anyone who guesses the room code can watch the room. Use a code
   that is hard to guess and do not post it publicly.
+- **Coming back from the background re-arms the location watch.** iOS in particular can
+  drop it while the app is away, and without it you are on nobody's map — not even your own.
+  It is armed again every time the app returns, and on any touch while you still have no
+  position, since iOS will not hand over a location until the page has been touched.
+- **A force-quit still lands you back in the room.** The room, your identity and your name
+  all live on the phone, so reopening puts you straight back in. If the name ever went
+  missing, the room's own roster has it, because you were added to it when you joined.
 - **Your recent places live on your phone.** They are not shared with the room and are not
   on any server, so a phone that is wiped loses them.
 - **The roster lives on each phone.** A phone that has never had the room does not know who

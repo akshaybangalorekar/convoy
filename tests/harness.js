@@ -128,10 +128,13 @@ function boot(opts = {}) {
     });
   }
 
-  const geo = { ok: null, err: null, watchId: 0 };
+  const geo = { ok: null, err: null, watchId: 0, started: 0, cleared: 0, clearedIds: [] };
   window.navigator.geolocation = {
-    watchPosition(ok, err) { geo.ok = ok; geo.err = err; geo.watchId++; return geo.watchId; },
-    clearWatch() {},
+    watchPosition(ok, err) {
+      geo.ok = ok; geo.err = err; geo.watchId++; geo.started++;
+      return geo.watchId;
+    },
+    clearWatch(id) { geo.cleared++; geo.clearedIds.push(id); },
   };
 
   const def = (obj, key, value) => Object.defineProperty(obj, key, {

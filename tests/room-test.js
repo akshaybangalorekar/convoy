@@ -207,6 +207,35 @@ async function testOneIdentityPerDevice() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- A force reset must still land in the room ---------- */
+async function testAForceResetStillLandsInTheRoom() {
+  // Everything needed to come back lives on the phone: the room, the identity, and the
+  // name. Even if the name went missing, the room's own roster has it, because we put
+  // ourselves in it when we joined.
+  const api = boot({ setup: (w) => {
+    w.localStorage.setItem('convoy.room', 'goa-trip');
+    w.localStorage.setItem('convoy.me', 'c-abc123');
+    w.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
+      code: 'goa-trip', startedAt: Date.now() - 1000,
+      expiresAt: Date.now() + 86400000, updatedAt: Date.now(),
+      members: { 'c-abc123': { name: 'Akshay', lastSeen: Date.now() - 1000 } },
+    }));
+  } });
+  await sleep(30);
+
+  check('a phone that lost its name still knows it from the room',
+        api.document.getElementById('inName').value === 'Akshay',
+        api.document.getElementById('inName').value);
+  check('and it rejoins without being asked', api.window.Convoy.state.joined === true);
+  check('into the same room', api.window.Convoy.state.room === 'goa-trip',
+        String(api.window.Convoy.state.room));
+  const me = api.window.Convoy.state.me;
+  check('with the same identity, so the others see the same person',
+        !!me && me.id === 'c-abc123', me && me.id);
+  check('and the join screen is gone',
+        api.document.getElementById('join').classList.contains('hidden'));
+}
+
 (async () => {
   try {
     await testRoomLastsAWeek();
@@ -218,6 +247,7 @@ async function testOneIdentityPerDevice() {
     await testLeavingDoesRemoveYou();
     await testRosterComesBack();
     await testOneIdentityPerDevice();
+    await testAForceResetStillLandsInTheRoom();
   } catch (e) { crash(e); }
   finish('room');
 })();

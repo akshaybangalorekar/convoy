@@ -940,11 +940,34 @@
   /* ---------------------------------------------------------------- *
    * Location
    * ---------------------------------------------------------------- */
+  let geoWatch = null;
+
+  function stopWatching() {
+    if (geoWatch == null || !navigator.geolocation) return;
+    try { navigator.geolocation.clearWatch(geoWatch); } catch (e) { /* ignore */ }
+    geoWatch = null;
+  }
+
+  /* Arming this again is the whole point. A phone that has been in the background, or
+     whose app was force-quit and reopened, very often comes back with its location watch
+     gone — and then you are on nobody's map, not even your own. So it is re-armed every
+     time we come back to the screen, and on any touch while we still have no position
+     (iOS will not hand over a location until the page has been touched). */
   function startWatching() {
     if (!navigator.geolocation) { banner('This device cannot share its location'); return; }
-    navigator.geolocation.watchPosition(onFix, onGeoError, {
-      enableHighAccuracy: true, maximumAge: 4000, timeout: 20000,
-    });
+    stopWatching();
+    try {
+      geoWatch = navigator.geolocation.watchPosition(onFix, onGeoError, {
+        enableHighAccuracy: true, maximumAge: 4000, timeout: 20000,
+      });
+    } catch (e) { banner('This device cannot share its location'); }
+  }
+
+  const haveMyPosition = () => !!(state.me && state.me.lat != null && state.me.lng != null);
+
+  function nudgeForLocation() {
+    if (!state.joined || state.paused || haveMyPosition()) return;
+    banner('Tap anywhere to share your location');
   }
 
   function onFix(pos) {
@@ -1051,7 +1074,9 @@
     let meta = '';
     let tag = '';
     if (p.isMe) {
-      meta = state.away ? 'app in the background' : 'you';
+      // Say so plainly rather than showing a bare "you" with no dot on the map.
+      meta = p.lat == null ? 'waiting for your location'
+           : state.away ? 'app in the background' : 'you';
       if (state.arrived) tag = 'arrived';
     } else if (kind === 'paused') {
       meta = 'location hidden';
@@ -1515,6 +1540,13 @@
     ['pointerdown', 'touchstart', 'keydown'].forEach((ev) => {
       window.addEventListener(ev, unlockAudio, { once: true, passive: true });
     });
+    // And any touch at all, while we still have no position, tries the watch again —
+    // which is what iOS needs before it will hand over a location.
+    ['pointerdown', 'touchstart'].forEach((ev) => {
+      window.addEventListener(ev, () => {
+        if (state.joined && !state.paused && !haveMyPosition()) startWatching();
+      }, { passive: true });
+    });
     $('btnLeave').addEventListener('click', () => { stopDemo(); leave(); });
     $('btnRecenter').addEventListener('click', () => {
       state.autoFit = true;
@@ -1537,6 +1569,9 @@
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
       unlockAudio();          // iOS suspends the audio context when the app is put away
+      // And arm the location watch again: it is often lost while the app is away.
+      startWatching();
+      if (!haveMyPosition()) setTimeout(nudgeForLocation, 2500);
       if (state.away) {
         // Back on screen: say so and push our state again.
         state.away = false;
@@ -1589,6 +1624,14 @@
       }
     } catch (e) { /* ignore */ }
 
+    // If the name went missing but the room did not, the room's own roster has it — we
+    // put ourselves in it when we joined. Nothing else is needed to come back.
+    if (!savedName) {
+      const rec = loadRoom(normRoom(savedRoom || invited));
+      const mine = rec && rec.members && rec.members[myId()];
+      if (mine && mine.name) savedName = mine.name;
+    }
+
     const room = normRoom(hash || savedRoom || invited);
     $('inName').value = savedName;
     $('inRoom').value = room;
@@ -1615,7 +1658,8 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   setRoomName, renderControls, renderTop, renderPeople,
-                  unlockAudio, ping, onMapLongPress, rowFor, publishNow, send },
+                  unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
+                  startWatching, stopWatching, haveMyPosition, nudgeForLocation },
   };
 
   boot();
