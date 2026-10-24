@@ -72,8 +72,14 @@ try {
   check('pointing at Safari on an iPhone and Chrome on Android',
         /Open in Safari/.test(install) && /Open in Chrome/.test(install));
   check('a refused location says the same thing', /showOpenInBrowser/.test(install));
-  check('the invite link goes in the share text as well as the url',
-        /Join my Convoy group: ' \+ url/.test(app));
+  check('the invite carries the code first, and the link as well',
+        /Code: ' \+ state\.room/.test(app) && /\+ url;/.test(app));
+  check('the screen is kept awake while the app is in front',
+        /navigator\.wakeLock\.request\('screen'\)/.test(app));
+  check('and the lock is taken again on coming back, since the browser drops it',
+        /askWakeLock\(\);/.test(app) && /addEventListener\('release'/.test(app));
+  check('codes are folded down, so capitals and spaces do not matter',
+        /function normRoom/.test(app) && /toLowerCase\(\)/.test(app));
   check('the old copy method is kept for browsers that block the clipboard',
         /execCommand/.test(app));
   check('the link is shown to copy by hand when nothing else works',
@@ -181,7 +187,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v15/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v16/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

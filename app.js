@@ -1245,10 +1245,24 @@
     publishTimer = renderTimer = etaTimer = null;
   }
 
+  /* Keep the screen awake while the app is in front, the way a maps app does. Two things
+     make this less simple than one request: the browser drops the lock the moment the page
+     is hidden and never gives it back on its own, and iOS refuses outright in Low Power
+     Mode. So it is asked for again on every return to the screen and on any touch. */
   async function askWakeLock() {
+    if (state.wakeLock) return;
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     try {
-      if ('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen');
-    } catch (e) { /* ignore */ }
+      const lock = await navigator.wakeLock.request('screen');
+      state.wakeLock = lock;
+      // Let go of our copy when the browser takes it away, or we would never ask again.
+      if (lock && lock.addEventListener) {
+        lock.addEventListener('release', () => { state.wakeLock = null; });
+      }
+    } catch (e) {
+      state.wakeLock = null;      // Low Power Mode, or a browser that will not allow it
+    }
   }
 
   function updateGoLabel() {
@@ -1393,10 +1407,11 @@
 
   async function share() {
     const url = inviteLink();
-    // WhatsApp on Android reads the `text` field and can drop a separate `url`, so the
-    // link goes in both. This is the difference between the message arriving with a
-    // tappable link and arriving as bare words.
-    const text = 'Join my Convoy group: ' + url;
+    // The code first, because typing a code into the app beats tapping a link — a link on
+    // an iPhone can only ever open Safari. The link is still there for anyone who has not
+    // got the app yet, and it goes in the `text` as well as the `url`, because WhatsApp on
+    // Android reads `text` and can drop a separate `url`.
+    const text = 'Join my Convoy group. Code: ' + state.room + ' (not case-sensitive)\n' + url;
 
     try {
       if (navigator.share) {
@@ -1552,6 +1567,7 @@
     // which is what iOS needs before it will hand over a location.
     ['pointerdown', 'touchstart'].forEach((ev) => {
       window.addEventListener(ev, () => {
+        askWakeLock();      // a refused screen lock is often allowed after a touch
         if (state.joined && !state.paused && !haveMyPosition()) startWatching();
       }, { passive: true });
     });
@@ -1577,7 +1593,9 @@
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
       unlockAudio();          // iOS suspends the audio context when the app is put away
-      // And arm the location watch again: it is often lost while the app is away.
+      // The screen lock is dropped while we are hidden, and the location watch is often
+      // lost too. Both are taken again every time we come back.
+      askWakeLock();
       startWatching();
       if (!haveMyPosition()) setTimeout(nudgeForLocation, 2500);
       if (state.away) {
@@ -1667,7 +1685,8 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   setRoomName, renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
-                  startWatching, stopWatching, haveMyPosition, nudgeForLocation },
+                  startWatching, stopWatching, haveMyPosition, nudgeForLocation,
+                  askWakeLock },
   };
 
   boot();

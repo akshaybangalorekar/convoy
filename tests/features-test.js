@@ -239,6 +239,62 @@ async function testTheSharingRateIsChosenForBattery() {
         !api.document.getElementById('btnSaver'));
 }
 
+/* ---------- The screen stays awake ---------- */
+function setVisible(api, value) {
+  Object.defineProperty(api.document, 'visibilityState', {
+    configurable: true, get: () => value,
+  });
+  api.document.dispatchEvent(new api.window.Event('visibilitychange'));
+}
+
+async function testTheScreenStaysAwake() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  check('joining takes a screen wake lock, so the phone does not sleep mid-drive',
+        api.wake.requested >= 1, String(api.wake.requested));
+}
+
+async function testTheScreenLockIsTakenAgainOnReturn() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const before = api.wake.requested;
+
+  // The browser drops the lock the moment the page is hidden, and never hands it back.
+  setVisible(api, 'hidden');
+  api.wake.drop();
+  await sleep(20);
+  setVisible(api, 'visible');
+  await sleep(20);
+
+  check('coming back takes the screen lock again', api.wake.requested > before,
+        before + ' -> ' + api.wake.requested);
+}
+
+async function testATouchRetriesARefusedScreenLock() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  api.wake.drop();                       // the browser took it away
+  await sleep(10);
+  const before = api.wake.requested;
+
+  api.touch();
+  await sleep(10);
+  check('a touch asks again, which is what iOS Low Power Mode needs',
+        api.wake.requested > before, before + ' -> ' + api.wake.requested);
+}
+
+async function testItIsFineWithNoWakeLockApi() {
+  const api = boot({ setup: (w) => { delete w.navigator.wakeLock; } });
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  check('a browser without a wake lock API still joins and works',
+        api.window.Convoy.state.joined === true);
+  check('and nothing was asked for', api.wake.requested === 0, String(api.wake.requested));
+}
+
 /* ---------- Sound ---------- */
 async function testTheNotificationSound() {
   const api = boot();
@@ -411,6 +467,10 @@ async function testBehindAndAhead() {
     await testPauseSharing();
     await testAPausedPhoneIsNotJustQuiet();
     await testTheSharingRateIsChosenForBattery();
+    await testTheScreenStaysAwake();
+    await testTheScreenLockIsTakenAgainOnReturn();
+    await testATouchRetriesARefusedScreenLock();
+    await testItIsFineWithNoWakeLockApi();
     await testTheNotificationSound();
     await testALongPressSetsTheDestination();
     await testALongPressWorksWithNoLookup();

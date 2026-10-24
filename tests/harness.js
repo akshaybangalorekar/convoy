@@ -128,6 +128,28 @@ function boot(opts = {}) {
     });
   }
 
+  const wake = {
+    requested: 0, released: 0, listeners: [], last: null,
+    // The browser takes the lock away when the page is hidden.
+    drop() { wake.released++; wake.listeners.forEach((fn) => fn()); wake.listeners = []; },
+  };
+  Object.defineProperty(window.navigator, 'wakeLock', {
+    configurable: true,
+    value: {
+      request: async () => {
+        wake.requested++;
+        wake.listeners = [];
+        const lock = {
+          released: false,
+          addEventListener: (ev, fn) => { if (ev === 'release') wake.listeners.push(fn); },
+          release: () => { wake.released++; },
+        };
+        wake.last = lock;
+        return lock;
+      },
+    },
+  });
+
   const geo = { ok: null, err: null, watchId: 0, started: 0, cleared: 0, clearedIds: [] };
   window.navigator.geolocation = {
     watchPosition(ok, err) {
@@ -223,6 +245,9 @@ function boot(opts = {}) {
 
     /** How many notification sounds have been played. */
     pings,
+
+    /** The screen wake lock, as the browser would give it to us. */
+    wake,
 
     /** A tap anywhere, which is what unlocks audio in a real browser. */
     touch() { window.dispatchEvent(new window.Event('pointerdown')); },

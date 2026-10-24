@@ -22,8 +22,11 @@ Live at **https://akshaybangalorekar.github.io/convoy/**
 
 Open the link, type your name, and press **Start a new group**. You get a code and a map.
 
-To bring someone in, tap **Invite** and send them the link. They type their name and they are
-on your map.
+To bring someone in, tap **Invite**. The message carries the **code** first — typing a code
+into the app is quicker and more reliable than tapping a link, and a link on an iPhone can only
+ever open Safari — and the link as well, for anyone who has not got the app yet. **Codes are not
+case-sensitive**: capitals and spaces are folded away, so `Goa Trip` and `goa-trip` are the same
+room. They type the code and their name, and they are on your map.
 
 Someone opening that link for the first time is also **offered the app on their home screen**,
 so it opens full-screen from then on rather than in a browser tab. On Android that is one tap —
@@ -73,6 +76,15 @@ destination the room is told, *"Priya has arrived"*, and their arrival time is r
 You can also **name the room** — "Sunday drive" instead of `goa-trip` — and the name travels
 round the group the same way the destination does. And if someone pastes the whole invite link
 into the code box, the app pulls the code out of it for them.
+
+## The screen stays awake
+
+While Convoy is open — in a browser tab or as the installed app — it holds a screen wake
+lock, so the phone does not go to sleep mid-drive, the way a maps app behaves. Browsers drop
+that lock the moment the page is hidden and never hand it back on their own, so it is taken
+again every time the app returns to the front, and on any touch, which is also what iOS needs
+in Low Power Mode. There is no switch for it, for the same reason there is no switch for the
+sharing rate.
 
 ## Put it on your phone
 
@@ -265,7 +277,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 534 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 548 checks:
 
 ```bash
 npm install

@@ -274,6 +274,10 @@ async function testTheInviteCarriesTheLink() {
 
   check('the phone\'s own share sheet is used where there is one', !!shared,
         JSON.stringify(shared));
+  check('the code is in the text too, since typing a code beats tapping a link',
+        !!shared && /Code: goa-trip/.test(shared.text), shared && shared.text);
+  check('and it says the code is not case-sensitive',
+        !!shared && /not case-sensitive/.test(shared.text), shared && shared.text);
   check('the link is in the text, which is what WhatsApp on Android reads',
         !!shared && shared.text.indexOf('#r=goa-trip') >= 0, shared && shared.text);
   check('and in the url field as well, for everything that reads that instead',
@@ -321,6 +325,34 @@ async function testTheLinkIsShownWhenNothingElseWorks() {
   check('and it can be closed', card.classList.contains('hidden'));
 }
 
+async function testCodesAreNotCaseSensitive() {
+  // Nobody should have to get the capitals right, so the code is folded down on the way in.
+  const upper = boot();
+  upper.join('Akshay', 'GOA-TRIP');
+  await sleep(20);
+  check('an upper-case code is the same room as a lower-case one',
+        upper.window.Convoy.state.room === 'goa-trip', upper.window.Convoy.state.room);
+
+  const spaced = boot();
+  spaced.join('Akshay', '  Goa Trip  ');
+  await sleep(20);
+  check('and neither do spaces or capitals',
+        spaced.window.Convoy.state.room === 'goa-trip', spaced.window.Convoy.state.room);
+
+  const typed = boot();
+  typed.document.getElementById('inName').value = 'Akshay';
+  const box = typed.document.getElementById('inRoom');
+  box.value = 'gOA-TRiP';
+  box.dispatchEvent(new typed.window.Event('input', { bubbles: true }));
+  typed.document.getElementById('btnGo').click();
+  await sleep(20);
+  check('typing it any way at all lands in the same room',
+        typed.window.Convoy.state.room === 'goa-trip', typed.window.Convoy.state.room);
+  check('and the app keeps the folded form, so the room is one room',
+        typed.document.getElementById('roomChip').textContent === 'goa-trip',
+        typed.document.getElementById('roomChip').textContent);
+}
+
 async function testBothLinkShapesWork() {
   const hash = boot({ setup: (w) => { w.history.replaceState(null, '', '/#r=hash-room'); } });
   await sleep(20);
@@ -357,6 +389,7 @@ async function testBothLinkShapesWork() {
     await testTheInviteCarriesTheLink();
     await testCopyingWhenSharingIsUnavailable();
     await testTheLinkIsShownWhenNothingElseWorks();
+    await testCodesAreNotCaseSensitive();
     await testBothLinkShapesWork();
   } catch (e) { crash(e); }
   finish('app');
