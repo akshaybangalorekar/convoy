@@ -72,8 +72,11 @@ try {
   check('pointing at Safari on an iPhone and Chrome on Android',
         /Open in Safari/.test(install) && /Open in Chrome/.test(install));
   check('a refused location says the same thing', /showOpenInBrowser/.test(install));
-  check('the invite carries the code first, and the link as well',
-        /Code: ' \+ state\.room/.test(app) && /\+ url;/.test(app));
+  check('the invite leads with the tappable link and keeps the code as a fallback',
+        /Join my Convoy group [^']*tap this[^']*' \+ url/.test(app) &&
+        /use the code ' \+ state\.room/.test(app));
+  check('the shared link uses a query string, which chat apps keep',
+        /'\?r=' \+ encodeURIComponent\(state\.room\)/.test(app));
   check('the screen is kept awake while the app is in front',
         /navigator\.wakeLock\.request\('screen'\)/.test(app));
   check('and the lock is taken again on coming back, since the browser drops it',
@@ -187,7 +190,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v16/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v17/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -1369,8 +1369,10 @@
     updateGoLabel();
   }
 
+  // `?r=` rather than `#r=`: the app reads either, but a query string survives chat apps,
+  // link previewers and shorteners more reliably than a fragment does.
   const inviteLink = () => location.origin + location.pathname +
-    '#r=' + encodeURIComponent(state.room);
+    '?r=' + encodeURIComponent(state.room);
 
   // The modern clipboard first, then the old way — which is what still works inside the
   // browsers built into chat apps, where the clipboard API is often blocked.
@@ -1411,7 +1413,9 @@
     // an iPhone can only ever open Safari. The link is still there for anyone who has not
     // got the app yet, and it goes in the `text` as well as the `url`, because WhatsApp on
     // Android reads `text` and can drop a separate `url`.
-    const text = 'Join my Convoy group. Code: ' + state.room + ' (not case-sensitive)\n' + url;
+    const text = 'Join my Convoy group \u2014 tap this:\n' + url +
+                 '\n\nOr open Convoy and use the code ' + state.room +
+                 ' (capitals do not matter).';
 
     try {
       if (navigator.share) {

@@ -22,11 +22,13 @@ Live at **https://akshaybangalorekar.github.io/convoy/**
 
 Open the link, type your name, and press **Start a new group**. You get a code and a map.
 
-To bring someone in, tap **Invite**. The message carries the **code** first — typing a code
-into the app is quicker and more reliable than tapping a link, and a link on an iPhone can only
-ever open Safari — and the link as well, for anyone who has not got the app yet. **Codes are not
-case-sensitive**: capitals and spaces are folded away, so `Goa Trip` and `goa-trip` are the same
-room. They type the code and their name, and they are on your map.
+To bring someone in, tap **Invite**. The message leads with the **link**, because a link can be
+tapped and needs no typing at all: it carries the room code, so the code is filled in for them
+and the only thing they type is their name. The code is repeated underneath as a fallback, for
+anyone the link will not open for — and **codes are not case-sensitive**, so capitals and spaces
+are folded away and `Goa Trip` and `goa-trip` are the same room. The shared link uses a query
+string (`?r=`) rather than a `#` fragment, since chat apps and link previewers keep that more
+reliably.
 
 Someone opening that link for the first time is also **offered the app on their home screen**,
 so it opens full-screen from then on rather than in a browser tab. On Android that is one tap —
@@ -277,7 +279,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 548 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 550 checks:
 
 ```bash
 npm install

@@ -90,7 +90,8 @@ async function testInviteLinkCopy() {
   });
   await api.window.Convoy.share();
   await sleep(10);
-  check('sharing copies an invite link', /#r=goa-trip$/.test(copied), copied);
+  check('sharing copies an invite link', /\?r=goa-trip$/.test(copied), copied);
+  check('with the link itself, so nothing has to be typed', /^https:\/\//.test(copied), copied);
 }
 
 /* ---------- Seeing people ---------- */
@@ -262,7 +263,8 @@ async function testTheInviteCarriesTheLink() {
   api.join('Akshay', 'goa-trip');
   await sleep(20);
 
-  check('the invite link carries the room', /#r=goa-trip$/.test(api.window.Convoy.inviteLink()),
+  check('the invite link carries the room in a query string, which chat apps keep',
+        /\?r=goa-trip$/.test(api.window.Convoy.inviteLink()),
         api.window.Convoy.inviteLink());
 
   let shared = null;
@@ -274,14 +276,15 @@ async function testTheInviteCarriesTheLink() {
 
   check('the phone\'s own share sheet is used where there is one', !!shared,
         JSON.stringify(shared));
-  check('the code is in the text too, since typing a code beats tapping a link',
-        !!shared && /Code: goa-trip/.test(shared.text), shared && shared.text);
-  check('and it says the code is not case-sensitive',
-        !!shared && /not case-sensitive/.test(shared.text), shared && shared.text);
-  check('the link is in the text, which is what WhatsApp on Android reads',
-        !!shared && shared.text.indexOf('#r=goa-trip') >= 0, shared && shared.text);
+  check('the link leads the message, so there is nothing to type',
+        !!shared && shared.text.indexOf('tap this') >= 0 &&
+        shared.text.indexOf('?r=goa-trip') >= 0, shared && shared.text);
+  check('the link is in the text, which is what WhatsApp linkifies and Android reads',
+        !!shared && shared.text.indexOf('?r=goa-trip') >= 0, shared && shared.text);
   check('and in the url field as well, for everything that reads that instead',
-        !!shared && /#r=goa-trip$/.test(shared.url || ''), shared && shared.url);
+        !!shared && /\?r=goa-trip$/.test(shared.url || ''), shared && shared.url);
+  check('with the code kept as the fallback for anyone the link will not open for',
+        !!shared && /code goa-trip/.test(shared.text), shared && shared.text);
 }
 
 async function testCopyingWhenSharingIsUnavailable() {
@@ -318,7 +321,7 @@ async function testTheLinkIsShownWhenNothingElseWorks() {
   check('the link is shown so it can be copied by hand',
         !card.classList.contains('hidden'));
   check('with the link in it',
-        /#r=goa-trip$/.test(api.document.getElementById('shareUrl').value),
+        /\?r=goa-trip$/.test(api.document.getElementById('shareUrl').value),
         api.document.getElementById('shareUrl').value);
 
   api.document.getElementById('btnShareClose').click();
