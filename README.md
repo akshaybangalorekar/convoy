@@ -75,8 +75,11 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
-You can also **name the room** — "Sunday drive" instead of `goa-trip` — and the name travels
-round the group the same way the destination does. And if someone pastes the whole invite link
+You can also **name the room** — "Sunday drive" — and the name travels round the group the same
+way the destination does. A name is only ever a label, though: the chip at the top always shows
+the **code**, because the code is the only thing that puts two phones in the same room, and
+hiding it behind a friendly name is how someone ends up typing the name into the code box and
+landing in a different room altogether. And if someone pastes the whole invite link
 into the code box, the app pulls the code out of it for them.
 
 ## The screen stays awake
@@ -279,7 +282,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 550 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 554 checks:
 
 ```bash
 npm install

@@ -380,16 +380,18 @@ async function testNamingTheRoom() {
   await joinRoom(api);
   const d = api.document;
 
-  check('the chip shows the code until the room is named',
-        text(api, 'roomChip') === 'goa-trip', text(api, 'roomChip'));
+  check('the chip shows the code', text(api, 'roomChip') === 'goa-trip',
+        text(api, 'roomChip'));
 
   const input = d.getElementById('inRoomName');
   input.value = 'Sunday drive';
   input.dispatchEvent(new api.window.Event('change', { bubbles: true }));
   await sleep(20);
 
-  check('the name goes on the chip', text(api, 'roomChip') === 'Sunday drive',
-        text(api, 'roomChip'));
+  check('the code stays on the chip, because that is what joins two phones',
+        text(api, 'roomChip') === 'goa-trip', text(api, 'roomChip'));
+  check('and the name is kept separately, so it is never mistaken for the code',
+        input.value === 'Sunday drive', input.value);
   check('and the room is told', (api.sent('room-name') || {}).name === 'Sunday drive',
         JSON.stringify(api.sent('room-name')));
   check('and it is kept on this phone',
@@ -398,13 +400,15 @@ async function testNamingTheRoom() {
 
   api.recv({ t: 'room-name', id: 'p1', name: 'Beach run', ts: Date.now() + 1000 });
   await sleep(20);
-  check('a newer name from someone else wins', text(api, 'roomChip') === 'Beach run',
-        text(api, 'roomChip'));
+  check('a newer name from someone else wins', api.window.Convoy.state.roomName === 'Beach run',
+        api.window.Convoy.state.roomName);
 
   api.recv({ t: 'room-name', id: 'p2', name: 'Ancient', ts: 1 });
   await sleep(20);
-  check('an older one is ignored', text(api, 'roomChip') === 'Beach run',
-        text(api, 'roomChip'));
+  check('an older one is ignored', api.window.Convoy.state.roomName === 'Beach run',
+        api.window.Convoy.state.roomName);
+  check('and the code is still on the chip through all of it',
+        text(api, 'roomChip') === 'goa-trip', text(api, 'roomChip'));
 }
 
 /* ---------- Tapping a person ---------- */

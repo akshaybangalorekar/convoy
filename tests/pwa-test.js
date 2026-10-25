@@ -104,6 +104,10 @@ try {
   check('sharing is set for battery life, with no switch for it',
         /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
   check('the room can be named', /id="inRoomName"/.test(html) && /function setRoomName/.test(app));
+  check('but the chip always shows the code, never the name',
+        /roomChip'\)\.textContent = state\.room \|\|/.test(app));
+  check('and the code field says it is the thing that joins phones',
+        /puts phones in the same room/.test(html));
   check('the name is shared with the room', /t: 'room-name'/.test(app));
   check('a long press on the map sets the destination',
         /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
@@ -190,7 +194,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v17/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v18/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

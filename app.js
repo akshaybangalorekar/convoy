@@ -1118,7 +1118,11 @@
   }
 
   function renderTop() {
-    $('roomChip').textContent = state.roomName || state.room || '—';
+    // The chip always shows the CODE, never the name. The code is the only thing that puts
+    // two phones in the same room, so hiding it behind a friendly name is how someone ends
+    // up typing the name into the code box and landing in a different room altogether.
+    $('roomChip').textContent = state.room || '—';
+    $('roomChip').title = state.roomName || '';
     if ($('inRoomName')) $('inRoomName').value = state.roomName || '';
   }
 

@@ -51,8 +51,8 @@
     <span class="sheet-chev" aria-hidden="true">›</span>
   </button>
   <div class="sheet-room">
-    <input id="inRoomName" maxlength="32" placeholder="Name this room (optional)"
-           aria-label="Room name" />
+    <input id="inRoomName" maxlength="32" placeholder="Room name — just a label"
+           aria-label="Room name, which is only a label" />
   </div>
 
   <ul id="people"></ul>
@@ -85,7 +85,7 @@
     <label for="inName">Your name</label>
     <input id="inName" maxlength="24" placeholder="Your name" autocomplete="name" />
 
-    <label for="inRoom">Invite code</label>
+    <label for="inRoom">Invite code <span class="hint">— this is what puts phones in the same room</span></label>
     <input id="inRoom" maxlength="32" placeholder="Leave empty to start a new group"
            autocapitalize="none" autocorrect="off" spellcheck="false" />
 
