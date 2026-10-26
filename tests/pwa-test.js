@@ -122,6 +122,8 @@ try {
         /<span>Help<\/span>/.test(html) && !/<span>Settings<\/span>/.test(html));
   check('the settings field is unlabelled, so it does not advertise itself',
         /id="inPin"/.test(html) && !/placeholder[^>]*pin/i.test(html));
+  check('there are no + and - buttons on the map — tapping zooms',
+        !/control\.zoom/.test(app) && !/leaflet-control-zoom/.test(html));
   check('the attribution sits along the bottom edge, not floating over the map',
         /\.leaflet-bottom\.leaflet-right \{\s*bottom: calc\(1px/.test(css));
   check('and the sheet clears it', /bottom: calc\(20px \+ var\(--safe-bottom\)\)/.test(css));
@@ -258,7 +260,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v34/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v35/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -197,10 +197,6 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .dest-text.empty { color: var(--muted); font-weight: 500; }
 .dest-chev { flex: 0 0 auto; color: var(--muted); font-size: 20px; line-height: 1; }
 
-/* Leaflet's controls and its attribution must clear the sheet, not hide behind it. */
-.leaflet-bottom.leaflet-left {
-  bottom: calc(var(--sheet-h, 240px) + var(--sheet-lift) - 4px + var(--safe-bottom));
-}
 /* The attribution sits along the bottom edge of the screen, below the sheet. */
 .leaflet-bottom.leaflet-right {
   bottom: calc(1px + var(--safe-bottom));

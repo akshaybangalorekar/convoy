@@ -79,6 +79,10 @@ faded**, because a colour is the only thing telling one car from another — a g
 a car you cannot name. Someone who has gone quiet is still drawn in their colour; the list is
 what says they are lost.
 
+**There are no zoom buttons.** A tap on the map zooms out and two taps zoom in; pinch works
+too, as it always did. The + and − were the only chrome left in that corner, and they were
+redundant.
+
 **The view keeps everyone in frame.** `fitBounds` zooms in when the cars are bunched together
 and out when they are spread apart, with the zoom capped at 18 so a tight group is pulled
 apart rather than left as one blob. Take the map yourself — drag, zoom, or tap a name — and it
@@ -366,7 +370,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 638 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 639 checks:
 
 ```bash
 npm install
