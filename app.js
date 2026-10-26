@@ -945,6 +945,55 @@
   /* ---------------------------------------------------------------- *
    * Transport
    * ---------------------------------------------------------------- */
+  /* A relay can fail for three very different reasons and they look identical from here:
+     the network blocks the port, the broker is down, or the app is at fault. This opens a
+     plain WebSocket to each relay and says which of those it is — the one question that
+     cannot be answered from inside a connection attempt. */
+  function probeRelay(url, ms) {
+    return new Promise((resolve) => {
+      let done = false;
+      let ws = null;
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        try { if (ws) ws.close(); } catch (e) { /* ignore */ }
+        resolve(result);
+      };
+      try {
+        ws = new WebSocket(url);
+      } catch (e) { resolve('blocked'); return; }
+      const timer = setTimeout(() => finish('no answer'), ms);
+      ws.onopen = () => { clearTimeout(timer); finish('reached'); };
+      ws.onerror = () => { clearTimeout(timer); finish('blocked'); };
+      ws.onclose = () => { clearTimeout(timer); finish('blocked'); };
+    });
+  }
+
+  async function showConnection() {
+    const card = $('connCard');
+    const list = $('connList');
+    if (!card || !list) return;
+    card.classList.remove('hidden');
+    list.innerHTML = CFG.brokers.map((b) =>
+      '<li><span class="rdot"></span>' + esc(b.name) + '<em>checking…</em></li>').join('');
+
+    const results = await Promise.all(CFG.brokers.map((b) => probeRelay(b.url, 6000)));
+    const rows = list.querySelectorAll('li');
+    results.forEach((r, i) => {
+      const li = rows[i];
+      if (!li) return;
+      li.className = r === 'reached' ? 'ok' : 'bad';
+      const em = li.querySelector('em');
+      if (em) em.textContent = r;
+    });
+
+    if (results.indexOf('reached') < 0) {
+      banner('This network is blocking every relay. Try Wi-Fi.');
+    } else if (!client || !client.connected) {
+      connect();          // one of them answers, so try the real thing again
+    }
+  }
+
   function setConn(kind, text) {
     const el = $('connState');
     el.className = 'conn' + (kind === 'live' ? ' live' : '');
@@ -1676,6 +1725,8 @@
       fitAll();
     });
     $('btnClearDest').addEventListener('click', clearDest);
+    $('connState').addEventListener('click', showConnection);
+    $('btnConnClose').addEventListener('click', () => $('connCard').classList.add('hidden'));
     $('destRow').addEventListener('click', () => {
       if (window.ConvoyRoute) window.ConvoyRoute.openSearch();
     });
@@ -1785,6 +1836,7 @@
                   setRoomName, renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,
+                  probeRelay, showConnection,
                   startWatching, stopWatching, haveMyPosition, nudgeForLocation,
                   askWakeLock },
   };

@@ -290,7 +290,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 575 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 581 checks:
 
 ```bash
 npm install
@@ -339,6 +339,10 @@ npm test
   reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
+- **Tap the connection state to find out what the relays are doing.** It opens a plain
+  WebSocket to each relay and reports reached, blocked or no answer — the one question a
+  connection attempt cannot answer, because a blocked port, a dead broker and a bug in the
+  app all look the same from inside one.
 - **A mobile network can block the relay entirely.** The public relays sit on ports 8081,
   8084 and 8884; carriers block everything but 80 and 443. The app now includes one relay on
   443 and, after a few failures, says "relay unreachable" rather than sitting on "connecting"

@@ -28,7 +28,7 @@
 <header id="topbar">
   <div class="card bar">
     <span id="roomChip" class="chip">—</span>
-    <span id="connState" class="conn">connecting</span>
+    <button id="connState" class="conn" aria-label="Connection status">connecting</button>
     <div class="bar-actions">
       <button id="btnInvite" class="pill accent">Invite</button>
       <button id="btnLeave" class="pill">Leave</button>
@@ -126,6 +126,16 @@
       <button id="btnSearchClose" class="pill">Cancel</button>
     </div>
     <ul id="results" class="results"></ul>
+  </div>
+</div>
+
+<!-- What the relays are actually doing. Opened by tapping the connection state. -->
+<div id="connCard" class="overlay hidden">
+  <div class="card join-card">
+    <h1>Connection</h1>
+    <p class="sub">Checking whether this phone can reach each relay at all.</p>
+    <ul id="connList" class="conn-list"></ul>
+    <button id="btnConnClose" class="primary">Done</button>
   </div>
 </div>
 

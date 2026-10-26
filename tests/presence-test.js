@@ -127,6 +127,46 @@ async function testABlockedRelaySaysSo() {
         String(api.notes.length - after));
 }
 
+async function testTheRelayCheckSaysWhichRelayAnswers() {
+  const api = boot();
+  api.ws.mode('open');
+  api.window.Convoy.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  api.document.getElementById('connState').click();
+  await sleep(80);
+  const d = api.document;
+  check('tapping the connection state opens a check',
+        !d.getElementById('connCard').classList.contains('hidden'));
+  const rows = Array.from(d.querySelectorAll('#connList li'));
+  check('it lists every relay', rows.length === api.window.Convoy.CFG.brokers.length,
+        String(rows.length));
+  check('and says each one answered',
+        rows.every((li) => li.className === 'ok' && /reached/.test(li.textContent)),
+        d.getElementById('connList').textContent);
+  check('it probed each relay address',
+        api.ws.calls.length === api.window.Convoy.CFG.brokers.length,
+        JSON.stringify(api.ws.calls));
+}
+
+async function testTheRelayCheckNamesABlockedNetwork() {
+  const api = boot();
+  api.ws.mode('error');
+  api.window.Convoy.join('Akshay', 'goa-trip');
+  await sleep(20);
+
+  api.document.getElementById('connState').click();
+  await sleep(80);
+  const d = api.document;
+  const rows = Array.from(d.querySelectorAll('#connList li'));
+  check('every relay reads blocked',
+        rows.length > 0 && rows.every((li) => li.className === 'bad' && /blocked/.test(li.textContent)),
+        d.getElementById('connList').textContent);
+  check('and it says the network is the problem, not the app',
+        /blocking every relay/.test(d.getElementById('banner').textContent),
+        d.getElementById('banner').textContent);
+}
+
 async function testTheRelayListIncludesPort443() {
   const api = boot();
   const urls = api.window.Convoy.CFG.brokers.map((b) => b.url);
@@ -315,6 +355,8 @@ async function testNewestDestinationWins() {
     await testTheLocationWatchIsArmedAgainOnReturn();
     await testATouchRetriesWhenWeHaveNoPosition();
     await testABlockedRelaySaysSo();
+    await testTheRelayCheckSaysWhichRelayAnswers();
+    await testTheRelayCheckNamesABlockedNetwork();
     await testTheRelayListIncludesPort443();
     await testSomeoneElseAway();
     await testSomeoneGoesQuiet();

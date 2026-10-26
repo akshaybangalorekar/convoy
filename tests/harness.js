@@ -112,6 +112,21 @@ function boot(opts = {}) {
     },
   };
 
+  // A WebSocket that can be told to open, to fail, or to hang — for the relay check.
+  const wsCalls = [];
+  let wsMode = 'open';
+  window.WebSocket = function FakeWebSocket(url) {
+    wsCalls.push(url);
+    const self = this;
+    this.url = url;
+    this.close = () => {};
+    setTimeout(() => {
+      if (wsMode === 'open' && self.onopen) self.onopen();
+      else if (wsMode === 'error' && self.onerror) self.onerror();
+      // 'hang' leaves it alone, so the probe's own timeout decides.
+    }, 1);
+  };
+
   const netCalls = [];
   window.fetch = async (url, o) => {
     netCalls.push({ url, method: (o && o.method) || 'GET' });
@@ -253,6 +268,9 @@ function boot(opts = {}) {
 
     /** The screen wake lock, as the browser would give it to us. */
     wake,
+
+    /** The relay check: what was probed, and how it should answer. */
+    ws: { calls: wsCalls, mode: (m) => { wsMode = m; } },
 
     /** A tap anywhere, which is what unlocks audio in a real browser. */
     touch() { window.dispatchEvent(new window.Event('pointerdown')); },

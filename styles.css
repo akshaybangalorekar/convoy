@@ -79,8 +79,29 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
   background: rgba(120, 120, 128, 0.16); color: var(--text);
   max-width: 44vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.conn { font-size: 12px; color: var(--muted); margin-left: 2px; }
+.conn {
+  appearance: none; border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: 12px; margin-left: 2px;
+  padding: 8px 6px; cursor: pointer;   /* a comfortable target, not a 12px word */
+}
 .conn.live { color: var(--accent); }
+
+/* The relay check */
+.conn-list { list-style: none; margin: 0 0 4px; padding: 0; }
+.conn-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 4px; font-size: 15px; border-top: 1px solid var(--sep);
+}
+.conn-list li:first-child { border-top: 0; }
+.conn-list li em { margin-left: auto; font-style: normal; color: var(--muted); font-size: 14px; }
+.conn-list .rdot {
+  width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--muted);
+}
+.conn-list li.ok .rdot { background: #34c759; }
+.conn-list li.ok em { color: #34c759; }
+.conn-list li.bad .rdot { background: var(--danger); }
+.conn-list li.bad em { color: var(--danger); }
 
 /* ---------- Top bar ---------- */
 #topbar {
