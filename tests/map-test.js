@@ -101,9 +101,9 @@ async function testAutoFit() {
         String(api.calls.fitBounds.length));
 
   api.calls.fitBounds.length = 0;
-  api.document.getElementById('btnRecenter').click();
+  api.window.Convoy._internals.fitAll();
   await sleep(10);
-  check('recentring fits everyone in', api.calls.fitBounds.length === 1,
+  check('fitting everyone in one go does it in one call', api.calls.fitBounds.length === 1,
         String(api.calls.fitBounds.length));
   const o = api.calls.fitBounds[0] || {};
   check('capped, so a bunched-up group zooms in rather than staying wide', o.maxZoom === 18,
@@ -128,10 +128,14 @@ async function testTakingControl() {
   check('and then the map is left alone', api.calls.fitBounds.length === 0,
         String(api.calls.fitBounds.length));
 
-  api.document.getElementById('btnRecenter').click();
+  // The Location button is the way back: it puts the map on you and keeps everyone in
+  // frame, without turning the chasing back on.
+  api.document.getElementById('btnCentre').click();
   await sleep(10);
-  check('the recenter button takes it back', api.window.Convoy.state.autoFit === true);
-  check('and refits at once', api.calls.fitBounds.length === 1, String(api.calls.fitBounds.length));
+  check('the Location button puts the map back on you',
+        api.calls.setView.length > 0, String(api.calls.setView.length));
+  check('without switching the chasing back on',
+        api.window.Convoy.state.autoFit === false);
 }
 
 /* ---------- One tap out, two taps in ---------- */

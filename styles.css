@@ -2,8 +2,6 @@
    grouped-background greys, generous radii, and a bottom sheet. */
 
 :root {
-  /* A small gap between the floating buttons and the top of the sheet. */
-  --sheet-lift: 12px;
   --bg: #f2f2f7;
   --card: rgba(255, 255, 255, 0.86);
   --card-solid: #ffffff;
@@ -219,27 +217,6 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .row-act:active { opacity: 0.5; }
 #people li.removed { opacity: 0.5; }
 
-/* ---------- Recenter ---------- */
-.recenter {
-  position: fixed; z-index: 25; right: 12px;
-  bottom: calc(var(--sheet-h, 240px) + var(--sheet-lift));
-  width: 46px; height: 46px; border-radius: 50%;
-  border: 0; background: var(--card); box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  transition: bottom 0.22s ease;
-}
-.recenter::before {
-  content: ""; position: absolute; inset: 0; margin: auto;
-  width: 17px; height: 17px; border-radius: 50%;
-  border: 2.5px solid var(--accent);
-}
-.recenter::after {
-  content: ""; position: absolute; inset: 0; margin: auto;
-  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
-}
-.recenter:active { opacity: 0.6; }
-body.sheet-collapsed .recenter { bottom: calc(70px + var(--safe-bottom)); }
-
 /* ---------- People sheet ---------- */
 #sheet {
   position: fixed; z-index: 28;
@@ -417,7 +394,7 @@ input:focus { outline: none; border-color: var(--accent); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .banner, .recenter, .sheet-chev { transition: none; }
+  .banner, .sheet-chev { transition: none; }
 }
 
 /* ---------- Offering to install ---------- */

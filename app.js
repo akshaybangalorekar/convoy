@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v37',             // must match VERSION in sw.js; a test holds them together
+    build: 'v38',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1322,7 +1322,7 @@
 
     renderMarkers();
 
-    // Keep the recenter button clear of the sheet.
+    // The sheet's height is what the map has to work around.
     const sheet = $('sheet');
     if (sheet) {
       document.documentElement.style.setProperty('--sheet-h', sheet.offsetHeight + 'px');
@@ -1745,7 +1745,6 @@
     drawDest();
     renderPeople();
     $('sheet').classList.remove('hidden');
-    $('btnRecenter').classList.remove('hidden');
 
     connect();
     startWatching();
@@ -1970,11 +1969,6 @@
         if (state.joined && !state.paused && !haveMyPosition()) startWatching();
       }, { passive: true });
     });
-    $('btnRecenter').addEventListener('click', () => {
-      state.autoFit = true;
-      lastFitAt = 0;
-      fitAll();
-    });
     $('btnClearDest').addEventListener('click', clearDest);
     $('connState').addEventListener('click', showConnection);
     checkForUpdate();
@@ -2033,7 +2027,6 @@
     }
     if (window.ConvoyInstall) window.ConvoyInstall.init();
     $('sheet').classList.add('hidden');
-    $('btnRecenter').classList.add('hidden');
     renderDest();
 
     // The name is the only thing kept: if this phone has been used before, use the name

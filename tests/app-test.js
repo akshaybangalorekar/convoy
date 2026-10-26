@@ -36,8 +36,8 @@ async function testStartAGroup() {
   check('the people sheet is there', !d.getElementById('sheet').classList.contains('hidden'));
   check('you are on your own in the list', text(api, 'peopleCount') === '1 person · no destination',
         text(api, 'peopleCount'));
-  check('the recenter button appears',
-        !d.getElementById('btnRecenter').classList.contains('hidden'));
+  check('and there is no separate recenter button to duplicate it',
+        !d.getElementById('btnRecenter'));
   check('you are given a name without being asked for one',
         /\w+/.test(api.window.Convoy.state.me.name), api.window.Convoy.state.me.name);
 }

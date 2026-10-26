@@ -108,6 +108,10 @@ sheet's header, beside the count. The top of the screen holds only the destinati
 - **Sharing** is the switch: an open eye while you are on the map, a crossed-out one and the
   word **Hidden** when you are not. It says what state you are in rather than what the button
   does, which is what lets it be the same size both ways.
+- **There is no separate recenter button** — Location does that job, and a second circle
+  doing nearly the same thing was one more thing on the map.
+- **There is no separate recenter button** — Location does that job, and a second circle
+  doing nearly the same thing was one more thing on the map.
 - **Location** puts the map back on your own car, at a zoom worked out from how far the
   furthest car is, so the others stay on screen. With no fix yet it asks for one instead of
   jumping to nowhere. Your name is edited by tapping it in the list — your row is the only
@@ -377,7 +381,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 649 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 651 checks:
 
 ```bash
 npm install
