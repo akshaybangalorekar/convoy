@@ -167,11 +167,33 @@ async function testTheRelayCheckNamesABlockedNetwork() {
         d.getElementById('banner').textContent);
 }
 
+async function testAMissingLibraryIsNotABlockedNetwork() {
+  // The relay library comes from a CDN. Without it every attempt throws before it reaches
+  // the network, and the app used to cycle the relays for ever — indistinguishable from a
+  // carrier blocking the ports.
+  const api = boot();
+  api.window.Convoy.CFG.retryMs = 15;
+  api.window.mqtt = undefined;
+  api.window.Convoy.join('Akshay', 'goa-trip');
+  await sleep(40);
+
+  check('a missing relay library is named as such',
+        text(api, 'connState') === 'relay library missing', text(api, 'connState'));
+  check('and it says to reload', /did not load/.test(bannerText(api)), bannerText(api));
+
+  const attempts = api.clients.length;
+  await sleep(120);
+  check('and it stops instead of cycling the relays for ever',
+        api.clients.length === attempts, attempts + ' -> ' + api.clients.length);
+}
+
 async function testTheRelayListIncludesPort443() {
   const api = boot();
   const urls = api.window.Convoy.CFG.brokers.map((b) => b.url);
   check('one relay is on 443, the port mobile networks always allow',
         urls.some((u) => /:443\//.test(u)), JSON.stringify(urls));
+  check('and it is tried first, since outdoors it is the only one that can work',
+        /:443\//.test(urls[0]), urls[0]);
   check('and the others are still there as fallbacks', urls.length >= 4, JSON.stringify(urls));
 }
 
@@ -357,6 +379,7 @@ async function testNewestDestinationWins() {
     await testABlockedRelaySaysSo();
     await testTheRelayCheckSaysWhichRelayAnswers();
     await testTheRelayCheckNamesABlockedNetwork();
+    await testAMissingLibraryIsNotABlockedNetwork();
     await testTheRelayListIncludesPort443();
     await testSomeoneElseAway();
     await testSomeoneGoesQuiet();

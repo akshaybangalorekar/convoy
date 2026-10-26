@@ -135,6 +135,10 @@ try {
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
   check('a relay on 443 is offered, since mobile networks block the usual ports',
         /mqtt\.eclipseprojects\.io:443/.test(app));
+  check('the relay library has a second source, since a CDN can fail on a phone',
+        /cdn\.jsdelivr\.net\/npm\/mqtt/.test(html));
+  check('a missing relay library is named instead of looking like a blocked network',
+        /relay library missing/.test(app));
   check('the shell fetch bypasses the HTTP cache, or updates never land',
         /fetch\(req, \{ cache: 'no-store' \}\)/.test(sw));
   check('the app asks for a new service worker on open and on return',
@@ -216,7 +220,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v22/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v23/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

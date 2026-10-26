@@ -19,21 +19,22 @@
   const CFG = {
     topicPrefix: 'sarvam-convoy/v1',
     // Public, no-signup MQTT brokers over WebSocket. Tried in order.
+    // Ordered by how likely each is to be reachable outdoors: the first listens on 443,
+    // the one port a mobile network always lets through, and the rest sit on
+    // 8081/8084/8884, which carriers routinely block. That is why a laptop on Wi-Fi goes
+    // live while a phone on mobile data never connects.
     brokers: [
+      { name: 'Eclipse', url: 'wss://mqtt.eclipseprojects.io:443/mqtt' },
       { name: 'EMQX', url: 'wss://broker.emqx.io:8084/mqtt' },
       { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
-      // On 443, which is the one port a mobile network will always let through. The
-      // others above sit on 8081/8084/8884, and carriers routinely block those — which
-      // is why a laptop on Wi-Fi goes live while a phone on mobile data never connects.
-      { name: 'Eclipse', url: 'wss://mqtt.eclipseprojects.io:443/mqtt' },
     ],
     retryMs: 1200,            // pause before trying the next relay
     // Chosen for battery life, which matters more on a long drive than a smooth trail of
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v22',             // must match VERSION in sw.js; a test holds them together
+    build: 'v23',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1043,9 +1044,20 @@
     let counted = false;
     const fail = () => { if (counted) return; counted = true; noteRelayFailure(); };
 
+    // The library comes from a CDN. Without it every attempt throws before it reaches the
+    // network — which used to cycle through the relays for ever, looking exactly like a
+    // blocked network. Say so instead.
+    if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
+      fail();
+      setConn('', 'relay library missing');
+      banner('The relay library did not load — reload the app.');
+      return;
+    }
+
     try {
       client = mqtt.connect(b.url, { clientId: state.me.id, clean: true, reconnectPeriod: 0 });
     } catch (e) {
+      fail();
       retry();
       return;
     }

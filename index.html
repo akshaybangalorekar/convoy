@@ -155,6 +155,14 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>
+  /* A CDN can fail on a phone even when the app itself loaded, and then every relay
+     attempt throws before it reaches the network. Try a second source before app.js
+     runs and expects it. */
+  if (!window.mqtt) {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>');
+  }
+</script>
 <script src="route.js"></script>
 <script src="install.js"></script>
 <script src="app.js"></script>

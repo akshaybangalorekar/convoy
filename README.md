@@ -290,7 +290,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 589 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 593 checks:
 
 ```bash
 npm install
@@ -339,6 +339,13 @@ npm test
   reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
+- **A missing relay library used to look like a blocked network.** The MQTT library comes
+  from a CDN; if it did not arrive, every relay attempt threw before reaching the network
+  and the app cycled the relays for ever — the same symptom as a carrier blocking the
+  ports. There is now a second source (jsDelivr) and, if both fail, the app says
+  "relay library missing" rather than pretending to try.
+- **The 443 relay is tried first**, because outdoors on mobile data it is the only one that
+  can work.
 - **Updates can lag on GitHub Pages.** Its files carry a ten-minute HTTP cache, so a phone
   can keep running an older build with nothing looking wrong — which is why the app now
   bypasses that cache for its own files, asks for a new service worker on open and on
