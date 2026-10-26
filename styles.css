@@ -83,8 +83,9 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 .conn {
   appearance: none; border: 0; background: none; color: var(--muted);
-  font: inherit; font-size: 12px; margin-left: 2px;
-  padding: 8px 6px; cursor: pointer;   /* a comfortable target, not a 12px word */
+  font: inherit; font-size: 11px; letter-spacing: 0.04em;
+  padding: 8px 4px; cursor: pointer; flex: 0 0 auto;
+  max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .conn.live { color: var(--accent); }
 
@@ -120,18 +121,27 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 /* The controls all live in one row at the foot of the sheet, leaving the top of the
    screen to the map and the destination. */
-.sheet-controls {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 8px 4px; flex-wrap: nowrap;
+.sheet-controls { display: flex; gap: 6px; padding: 8px 8px 6px; }
+.tb {
+  flex: 1 1 0; min-width: 0;
+  appearance: none; border: 0; border-radius: 12px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 2px 7px;
+  background: rgba(0, 122, 255, 0.11); color: var(--accent);
+  font: inherit; font-size: 10.5px; font-weight: 600;
 }
-.sheet-controls .pill {
-  font-size: 12.5px; padding: 10px 11px; white-space: nowrap; flex: 0 0 auto;
+.tb svg {
+  width: 20px; height: 20px; flex: 0 0 auto;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
-.sheet-controls .conn {
-  padding: 0; margin: 0 2px 0 4px; flex: 0 1 auto; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px;
-}
-.sheet-controls .pill:last-child { margin-left: auto; }
+.tb span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb:active { opacity: 0.6; }
+/* Off the map: the eye closes and the button goes quiet. */
+.tb .ic-off { display: none; }
+.tb.on { background: rgba(120, 120, 128, 0.16); color: var(--muted); }
+.tb.on .ic-on { display: none; }
+.tb.on .ic-off { display: block; }
 
 .dest-row {
   width: 100%; display: flex; align-items: center; padding: 0; overflow: hidden;
@@ -217,8 +227,10 @@ body.sheet-collapsed .recenter { bottom: calc(70px + var(--safe-bottom)); }
   padding: 4px 0 6px;
   max-height: 52vh; display: flex; flex-direction: column;
 }
+.sheet-head-row { display: flex; align-items: center; gap: 4px; padding-right: 12px; }
 .sheet-head {
-  appearance: none; border: 0; background: none; width: 100%;
+  appearance: none; border: 0; background: none;
+  flex: 1 1 auto; min-width: 0;
   display: flex; align-items: center; gap: 8px;
   padding: 9px 14px 7px; text-align: left;
   font-size: 13px; font-weight: 700; letter-spacing: 0.3px;

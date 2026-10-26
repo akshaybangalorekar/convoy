@@ -83,11 +83,16 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
-**Everything lives at the bottom of the screen**, so the map gets the rest: the people, then
-one row of three blue buttons — **Invite**, **Hide my location** and **Settings** — with the
-connection state beside them. The top of the screen holds only the destination. Your name is
-edited in the list itself: your own row is the one with a dashed underline, and nobody else's
-row can be changed.
+**Everything lives at the bottom of the screen**, so the map gets the rest: the people, then a
+row of four equal buttons — **Invite**, **Sharing**, **Name** and **Settings** — each an icon
+over one short word so they all match whatever the state. The connection state sits in the
+sheet's header, beside the count. The top of the screen holds only the destination.
+
+- **Sharing** is the switch: an open eye while you are on the map, a crossed-out one and the
+  word **Hidden** when you are not. It says what state you are in rather than what the button
+  does, which is what lets it be the same size both ways.
+- **Name** jumps to your own row in the list and opens it for editing. Your row is the only
+  editable one — it carries a dashed underline — and nobody else's can be changed.
 
 **There is no code and nothing to set up.** Open the app and you are in the same room as
 everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
@@ -109,6 +114,10 @@ Nobody is in the room until the phone with the pin lets them in.
   pin the same message arrives and draws nothing at all.
 - **Let in** adds them to the allowed list, which is broadcast and remembered, so they stay
   in from then on. **The cross** marks them out, and they are not asked about again.
+- **The list is announced again whenever anyone speaks.** A single broadcast is not enough:
+  it can go out before the approved phone is listening, which leaves it waiting for ever.
+  Every phone that knows the list re-sends it on hearing from someone new, so an approved
+  phone learns even when the master is not around.
 - The phone with the pin is in the room by definition, and anyone else who unlocks with the
   pin joins it.
 
@@ -331,7 +340,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 621 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 645 checks:
 
 ```bash
 npm install

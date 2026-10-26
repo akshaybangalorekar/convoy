@@ -180,13 +180,20 @@ async function testPauseSharing() {
   await sleep(20);
   const shared = () => api.sentAll('pos').length;
 
-  check('the one switch is called Hide my location',
-        text(api, 'btnPause') === 'Hide my location', text(api, 'btnPause'));
+  check('the one switch says you are sharing',
+        text(api, 'pauseLabel') === 'Sharing', text(api, 'pauseLabel'));
+  check('and its icon is the open eye',
+        !api.document.getElementById('btnPause').classList.contains('on'));
 
   api.document.getElementById('btnPause').click();
   await sleep(20);
-  check('and says the location is hidden once it is on',
-        text(api, 'btnPause') === 'Location hidden', text(api, 'btnPause'));
+  check('once off it says you are hidden',
+        text(api, 'pauseLabel') === 'Hidden', text(api, 'pauseLabel'));
+  check('and the eye closes',
+        api.document.getElementById('btnPause').classList.contains('on'));
+  check('and a screen reader is told what tapping will do',
+        /tap to share again/i.test(api.document.getElementById('btnPause').getAttribute('aria-label')),
+        api.document.getElementById('btnPause').getAttribute('aria-label'));
   check('and the room is told, so it is not mistaken for losing us',
         !!api.sent('paused'));
 
@@ -482,6 +489,36 @@ async function testTurningSomeoneAway() {
   check('and they are not asked about again', api.window.Convoy.state.pending.size === 0);
 }
 
+async function testTheListIsAnnouncedAgainWhenSomeoneArrives() {
+  // The one broadcast that carried the approval may have happened before the approved
+  // phone was listening, which left it waiting for ever. Every arrival asks again.
+  const api = boot();
+  await sleep(20);
+  await unlock(api);
+  const before = api.sentAll('allowed').length;
+
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(30);
+  check('a phone that arrives is told who is in',
+        api.sentAll('allowed').length > before,
+        before + ' -> ' + api.sentAll('allowed').length);
+  check('and the list carries the phone with the pin',
+        ((api.sent('allowed') || {}).ids || []).indexOf(api.window.Convoy.state.me.id) >= 0,
+        JSON.stringify(api.sent('allowed')));
+}
+
+async function testAnyPhoneWithTheListPassesItOn() {
+  // So an approved phone learns even when the master is not around.
+  const api = boot();
+  await sleep(20);
+  const before = api.sentAll('allowed').length;
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(30);
+  check('a phone in the room passes the list on to whoever arrives',
+        api.sentAll('allowed').length > before,
+        before + ' -> ' + api.sentAll('allowed').length);
+}
+
 async function testOnceLetInTheyAppearForEveryone() {
   const api = boot();
   await sleep(20);
@@ -621,6 +658,8 @@ async function testBehindAndAhead() {
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
+    await testTheListIsAnnouncedAgainWhenSomeoneArrives();
+    await testAnyPhoneWithTheListPassesItOn();
     await testOnceLetInTheyAppearForEveryone();
     await testTheGearIsJustAVersionAndAField();
     await testAWrongPinDoesNothing();

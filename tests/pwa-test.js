@@ -98,10 +98,16 @@ try {
         /overflow-y: auto/.test(css) && /margin: auto/.test(css));
 
   /* ---------- The later features ---------- */
-  check('the sheet has exactly one switch, and it takes you off the map',
-        /id="btnPause"/.test(html) && /Hide my location/.test(html) &&
+  check('the sheet has one switch, and it takes you off the map',
+        /id="btnPause"/.test(html) && /Hide my location/.test(app) &&
         !/id="btnSaver"/.test(html) && !/id="btnSound"/.test(html) &&
         !/id="btnHere"/.test(html));
+  check('and four equal buttons, each an icon over one short word',
+        /class="tb"/.test(html) &&
+        ['btnInvite', 'btnPause', 'btnEditName', 'btnSettings']
+          .every((id) => new RegExp('id="' + id + '" class="tb"').test(html)));
+  check('the eye closes when you are hidden',
+        /class="ic-off"/.test(html) && /\.tb\.on \.ic-off \{ display: block/.test(css));
   check('sharing is set for battery life, with no switch for it',
         /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
   check('the master pin is not written in the source as digits',
@@ -235,7 +241,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v30/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v31/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

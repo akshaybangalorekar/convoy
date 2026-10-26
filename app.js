@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v30',             // must match VERSION in sw.js; a test holds them together
+    build: 'v31',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -769,8 +769,12 @@
     if (state.removed.has(msg.id)) return;      // taken off the group by the master
 
     if (!state.allowed.has(msg.id)) {
-      // Not in the room. Only the master is shown the request; everyone else sees nothing
-      // at all, which is the whole point.
+      // Not in the room. Whoever is arriving needs the current list: the broadcast that
+      // carried their approval may have gone out before they were listening, and that is
+      // what leaves a phone waiting for ever.
+      announceAllowed();
+      // Only the master is shown the request; everyone else sees nothing at all, which is
+      // the whole point.
       if (state.master && msg.t !== 'bye') askedToJoin(msg);
       return;
     }
@@ -860,8 +864,21 @@
     renderPeople();
   }
 
+  /* Whoever arrives needs the current list of who is in. The single broadcast that carried
+     their approval may have gone out before they were listening, which leaves a phone
+     waiting for ever — so any phone that knows the list passes it on when someone speaks. */
+  let allowedAt = 0;
+  function announceAllowed() {
+    if (!state.allowed.size) return;
+    const now = Date.now();
+    if (now - allowedAt < 5000) return;      // a burst of hellos should not become a storm
+    allowedAt = now;
+    send({ t: 'allowed', ids: Array.from(state.allowed) });
+  }
+
   function onHello(msg) {
     announceJoin(msg.id, msg.name || 'Someone');
+    announceAllowed();
   }
 
   // "My app is going to the background." Sent on the way out, so the group can tell a
@@ -1433,8 +1450,12 @@
     const el = $('btnPause');
     if (!el) return;
     el.classList.toggle('on', !!state.paused);
-    el.textContent = state.paused ? 'Location hidden' : 'Hide my location';
+    // The button is an icon over one short word, so it keeps the same size either way.
+    const label = $('pauseLabel');
+    if (label) label.textContent = state.paused ? 'Hidden' : 'Sharing';
     el.setAttribute('aria-pressed', state.paused ? 'true' : 'false');
+    el.setAttribute('aria-label',
+      state.paused ? 'You are hidden — tap to share again' : 'Hide my location');
   }
 
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
