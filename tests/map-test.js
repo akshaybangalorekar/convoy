@@ -13,26 +13,29 @@ async function testRejoinOnLaunch() {
   const d = api.document;
 
   check('a returning phone rejoins by itself',
-        api.window.Convoy.state.room === 'goa-trip', api.window.Convoy.state.room);
+        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
   check('the join card stays out of the way', d.getElementById('join').classList.contains('hidden'));
   check('you land on the map', !d.getElementById('sheet').classList.contains('hidden'));
-  check('the room code is shown', d.getElementById('roomChip').textContent === 'goa-trip',
-        d.getElementById('roomChip').textContent);
+  check('and the name it kept is used', api.window.Convoy.state.me.name === 'Akshay',
+        api.window.Convoy.state.me.name);
   check('a connection is opened', api.clients.length === 1, String(api.clients.length));
   const c = api.clients[0];
   if (c) c.connect_();
   await sleep(20);
-  check('and it subscribes to the room',
-        c && c.subscribed === 'sarvam-convoy/v1/goa-trip/bus', c && c.subscribed);
+  check('and it subscribes to the one room',
+        c && c.subscribed === 'sarvam-convoy/v1/convoy/bus', c && c.subscribed);
 }
 
 async function testFirstRunAsks() {
   const api = boot();
   await sleep(30);
   const d = api.document;
-  check('a first-time phone sees the join card', !d.getElementById('join').classList.contains('hidden'));
-  check('and is not in a room', api.window.Convoy.state.joined === false);
-  check('and opens no connection', api.clients.length === 0, String(api.clients.length));
+  check('a first-time phone goes straight onto the map',
+        d.getElementById('join').classList.contains('hidden'));
+  check('already in the one room', api.window.Convoy.state.joined === true);
+  check('with a name it did not have to type',
+        !!api.window.Convoy.state.me.name, api.window.Convoy.state.me.name);
+  check('and a connection already open', api.clients.length === 1, String(api.clients.length));
 }
 
 /* ---------- Colours ---------- */

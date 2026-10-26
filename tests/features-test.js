@@ -355,25 +355,6 @@ async function testALongPressWorksWithNoLookup() {
         dest && dest.label);
 }
 
-/* ---------- Pasting the invite link ---------- */
-async function testPastingTheInviteLink() {
-  const api = boot();
-  const box = api.document.getElementById('inRoom');
-  const type = (v) => {
-    box.value = v;
-    box.dispatchEvent(new api.window.Event('input', { bubbles: true }));
-  };
-
-  type('https://akshaybangalorekar.github.io/convoy/#r=ride-7f3k9');
-  check('pasting the whole link fills in the code', box.value === 'ride-7f3k9', box.value);
-
-  type('https://akshaybangalorekar.github.io/convoy/?r=other-room');
-  check('and the query-string shape too', box.value === 'other-room', box.value);
-
-  type('sunny-drive');
-  check('a plain code is left alone', box.value === 'sunny-drive', box.value);
-}
-
 /* ---------- Tapping a person ---------- */
 async function testTappingAPerson() {
   const api = boot();
@@ -441,7 +422,6 @@ async function testBehindAndAhead() {
     await testTheNotificationSound();
     await testALongPressSetsTheDestination();
     await testALongPressWorksWithNoLookup();
-    await testPastingTheInviteLink();
     await testTappingAPerson();
     await testBehindAndAhead();
   } catch (e) { crash(e); }

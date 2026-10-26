@@ -72,11 +72,12 @@ try {
   check('pointing at Safari on an iPhone and Chrome on Android',
         /Open in Safari/.test(install) && /Open in Chrome/.test(install));
   check('a refused location says the same thing', /showOpenInBrowser/.test(install));
-  check('the invite leads with the tappable link and keeps the code as a fallback',
-        /Join my Convoy group [^']*tap this[^']*' \+ url/.test(app) &&
-        /use the code ' \+ state\.room/.test(app));
-  check('the shared link uses a query string, which chat apps keep',
-        /'\?r=' \+ encodeURIComponent\(state\.room\)/.test(app));
+  check('the invite is just the link, because there is no code to send',
+        /Open Convoy and you are on the map with me/.test(app) &&
+        !/state\.room/.test(app.slice(app.indexOf('async function share()'),
+                                      app.indexOf('async function share()') + 700)));
+  check('the shared link is the app address, with nothing appended',
+        /const inviteLink = \(\) => location\.origin \+ location\.pathname;/.test(app));
   check('the screen is kept awake while the app is in front',
         /navigator\.wakeLock\.request\('screen'\)/.test(app));
   check('and the lock is taken again on coming back, since the browser drops it',
@@ -103,11 +104,13 @@ try {
         !/id="btnHere"/.test(html));
   check('sharing is set for battery life, with no switch for it',
         /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
-  check('the chip shows the room code', /roomChip'\)\.textContent = state\.room \|\|/.test(app));
+  check('the chip names the app, since there is one room and no code',
+        /roomChip'\)\.textContent = 'Convoy'/.test(app));
   check('and there is no room-name field at all, since a name only caused confusion',
         !/inRoomName/.test(html) && !/roomName/.test(app));
-  check('and the code field says it is the thing that joins phones',
-        /The code joins phones together/.test(html));
+  check('there is no code field at all', !/id="inRoom"/.test(html));
+  check('and your name is set from the sheet instead',
+        /id="inMyName"/.test(html) && /function setName/.test(app));
   check('the clear button lives on the destination row, not in the search sheet',
         /id="btnClearDest"/.test(html) &&
         html.indexOf('id="btnClearDest"') < html.indexOf('id="search"'));
@@ -121,8 +124,8 @@ try {
   check('and are automatic within fifty metres', /arrivedM: 50/.test(app));
   check('there is no button to press to arrive', !/btnHere/.test(app) &&
         /function checkArrivals/.test(app));
-  check('and the arrival time gives way to arrived once they are there',
-        /peta arrived/.test(app) && /\.peta\.arrived/.test(css));
+  check('and the row is marked arrived once they are there, once, not twice',
+        /tag = 'arrived'/.test(app) && !/peta arrived/.test(app));
   check('out-of-contact people say when they were last heard from',
         /last seen /.test(app) && /function lastSeenOf/.test(app));
   check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
@@ -197,8 +200,7 @@ try {
         JSON.stringify(mf && { id: mf.id, scope: mf.scope, start_url: mf.start_url }));
   check('and an iPhone is told a link opens in Safari rather than the installed app',
         /id="iosNote"/.test(html) && /iosNote/.test(install) && /#iosNote\.hidden/.test(css));
-  check('with the code made copyable, since carrying it across is the one manual step',
-        /id="btnCopyCode"/.test(html) && /btnCopyCode/.test(app));
+
   check('the manifest lists icons', mf && Array.isArray(mf.icons) && mf.icons.length >= 3,
         String(mf && mf.icons && mf.icons.length));
   (mf && mf.icons ? mf.icons : []).forEach((i) => {
@@ -219,7 +221,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v25/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v26/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -23,7 +23,7 @@ Live at **https://akshaybangalorekar.github.io/convoy/**
 Open the link, type your name, and press **Start a new group**. You get a code and a map.
 
 To bring someone in, tap **Invite**. The message leads with the **link**, because a link can be
-tapped and needs no typing at all: it carries the room code, so the code is filled in for them
+tapped and needs no typing at all
 and the only thing they type is their name. The code is repeated underneath as a fallback, for
 anyone the link will not open for — and **codes are not case-sensitive**, so capitals and spaces
 are folded away and `Goa Trip` and `goa-trip` are the same room. The shared link uses a query
@@ -41,7 +41,7 @@ not something we chose.
 appears whenever the app is not already installed on that phone, which includes after someone
 deletes it, and never inside an app that is already on the home screen. "Not now" is remembered.
 
-If someone installs from an invite link, the code they were invited with is kept, so the
+If someone installs from an invite link, they land in the one room, so the
 installed app still offers them the right room rather than starting a new one.
 
 To see it work on one phone, tap **Just looking? Preview with demo cars** on the join screen.
@@ -83,10 +83,14 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
-There is **no room name** — only the code. A name was tried and removed: it is the code that
-puts two phones in the same room, and a friendly label beside it invited people to type the
-name into the code box and land in a different room altogether. One identifier, no ambiguity. And if someone pastes the whole invite link
-into the code box, the app pulls the code out of it for them.
+**There is no code and nothing to set up.** Open the app and you are in the same room as
+everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
+thing anyone needs, and it is taken from the device — an iPhone shows as "iPhone 4a" — so even
+the first launch asks for nothing. You can change it in the sheet.
+
+The trade is worth stating plainly: keeping two separate groups apart requires an identifier,
+so with none there is only ever one room. That suits a group who all know each other, which is
+what this is for. An invite is now just the app's own address.
 
 ## The screen stays awake
 
@@ -119,14 +123,13 @@ than ours:
   than opening a tab. Apple gives a web page no way to do that — there is no manifest field, no
   API, and Universal Links need a real native app — so on an iPhone a link always opens in
   Safari. The join card says so, walks them through adding it and opening it from the home
-  screen, and offers a button to copy the code, since carrying that across is the one manual
-  step an iPhone forces. This is the one place the two phones genuinely cannot be made to
-  behave the same, and it is Apple's rule.
+  screen. This is the one place the two phones genuinely cannot be made to behave the same,
+  and it is Apple's rule. There is nothing to carry across any more, since there is no code.
 - **Installing is one tap on Android and two on an iPhone.** Android hands the app its own
   install prompt, which it fires from its own button. Safari has no such thing — Apple does not
   let a page trigger it — so the card points at the Share button instead. Note that on iOS the
   home-screen app keeps its own storage, separate from Safari, so it starts fresh: after
-  installing, that person needs the room code again (or the link).
+  installing, they simply open the app.
 - **Notifications on an iPhone need the app installed.** In a plain Safari tab iOS gives a page
   no way to notify you at all. Once Convoy is on the home screen it can ask, and then it behaves
   like Android. On Android it works in the tab as well. Vibration is Android only, because
@@ -177,22 +180,19 @@ the background" rather than silence. But that is a happy accident, not a guarant
 Someone brought back from the room's roster shows as **out of contact** until they send
 something. The app does not pretend they are live just because they were here yesterday.
 
-## The room stays open
+## Nobody is dropped
 
-A room is not something the app can close, because there is no server holding it — so
-instead it makes sure it never closes one by accident:
+There is one room and no server holding it, so the app makes sure it never closes by
+accident:
 
-- **Nobody is dropped.** A phone that goes quiet stays on the list as out of contact for as
-  long as the room is open. There is no timer quietly removing people.
+- **Nobody is dropped.** A phone that goes quiet stays on the list as out of contact. There
+  is no timer quietly removing people, and no expiry on the room itself.
 - **Closing the app is not leaving.** Shutting the tab or force-quitting sends the same
   "away" note as backgrounding does, so you look like a phone that went quiet rather than
-  someone who walked out. Only the **Leave** button takes you off the room's roster.
-- **The room is remembered for a week.** Each phone keeps the room — its code, its
-  destination, and everyone who has been in it — and it lapses a week after anyone last used
-  it, so a room in use never closes. Reopen the app inside that week and the whole group is
-  back on the list, marked out of contact until they reappear.
-- The foot of the sheet says where you stand: "Room open for another week", or a countdown
-  once it has been quiet for a while.
+  someone who walked out. Only the **Leave** button takes you off the roster.
+- **The roster is kept on the phone.** Reopening puts the whole group back on the list,
+  marked out of contact until they reappear — so a phone that comes back after an hour
+  rejoins a room that already knows who was in it.
 
 The week is `CFG.roomDays` in `app.js`.
 
@@ -288,7 +288,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 600 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 579 checks:
 
 ```bash
 npm install
@@ -367,8 +367,10 @@ npm test
   8084 and 8884; carriers block everything but 80 and 443. The app now includes one relay on
   443 and, after a few failures, says "relay unreachable" rather than sitting on "connecting"
   for ever. If a phone cannot connect, try Wi-Fi first.
-- **The relay is public.** Anyone who guesses the room code can watch the room. Use a code
-  that is hard to guess and do not post it publicly.
+- **The relay is public, and there is only one room.** Anyone who opens this app, or who
+  subscribes to the same topic on the public broker, sees the same room. That is the price of
+  having no code: there is nothing to guess because there is nothing to protect. Share the app
+  only with people you would show your location to.
 - **Coming back from the background re-arms the location watch.** iOS in particular can
   drop it while the app is away, and without it you are on nobody's map — not even your own.
   It is armed again every time the app returns, and on any touch while you still have no

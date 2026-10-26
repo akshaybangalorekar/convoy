@@ -29,6 +29,11 @@
       { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
     ],
+    // ONE room for everyone. There is no code to type and nothing to set up: open the app
+    // and you are in the same room as everyone else who has it open. The trade is that
+    // there is no way to keep two separate groups apart without an identifier, so this
+    // suits a group who all know each other rather than a public app.
+    room: 'convoy',
     retryMs: 1200,            // pause before trying the next relay
     reconnectMs: 3000,        // pause before reconnecting to one that worked
     keepalive: 30,            // seconds; mobile networks drop idle sockets well before 60
@@ -37,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v25',             // must match VERSION in sw.js; a test holds them together
+    build: 'v26',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -379,16 +384,10 @@
     saveRoom({ members });
   }
 
-  function roomNoteText(ms) {
-    if (!ms || ms <= 0) return '';
-    const days = ms / 86400000;
-    if (days > 6.5) return 'Room open for another week';
-    if (days >= 1) {
-      const d = Math.ceil(days);
-      return 'Room closes in ' + d + (d === 1 ? ' day' : ' days');
-    }
-    const h = Math.max(1, Math.ceil(ms / 3600000));
-    return 'Room closes in ' + h + (h === 1 ? ' hour' : ' hours');
+  // There is one room and it never closes, so there is no lifetime to report. The roster
+  // is still kept on the phone, which is what stops anyone being quietly dropped.
+  function roomNoteText() {
+    return '';
   }
 
   /* ---------------------------------------------------------------- *
@@ -1218,7 +1217,8 @@
     // destination is arriving. Until that happens the arrival time stays on screen — it is
     // the one thing everyone actually watches.
     if (p.arrived || (p.isMe && state.arrived)) {
-      return '<span class="peta arrived">arrived</span>';
+      // The green "arrived" badge on the row already says this.
+      return '';
     }
     const eta = p.isMe ? state.myEta : p.eta;
     if (!eta) return '<span class="peta">—</span>';
@@ -1304,10 +1304,22 @@
   }
 
   function renderTop() {
-    // The chip always shows the CODE, never the name. The code is the only thing that puts
-    // two phones in the same room, so hiding it behind a friendly name is how someone ends
-    // up typing the name into the code box and landing in a different room altogether.
-    $('roomChip').textContent = state.room || '—';
+    // There is one room for everyone, so there is no code to show. The chip names the app.
+    $('roomChip').textContent = 'Convoy';
+    const mine = $('inMyName');
+    if (mine && state.me) mine.value = state.me.name || '';
+  }
+
+  /* Your name is the only thing you can set, and it is set from the sheet: opening the app
+     already puts you on the map, so there is no form to fill in first. */
+  function setName(name) {
+    const clean = String(name || '').trim().slice(0, 24);
+    if (!state.me || !clean || clean === state.me.name) return;
+    state.me.name = clean;
+    try { localStorage.setItem('convoy.name', clean); } catch (e) { /* ignore */ }
+    send({ t: 'hello' });        // so everyone else's list updates
+    renderTop();
+    renderPeople();
   }
 
   // The one switch in the sheet. Internally this is still "paused"; on screen it says what
@@ -1330,6 +1342,23 @@
   }
 
   // Pasting a whole invite link into the code box should just work.
+  /* Opening the app should put you on the map with no questions. A name is the one thing
+     the others need, so if none has been set we take the device's own — an iPhone shows as
+     "iPhone 4a", a laptop as "Mac 3f" — and it can be changed from the sheet. */
+  function deviceName() {
+    const ua = String((typeof navigator !== 'undefined' && navigator.userAgent) || '');
+    if (/iPhone/i.test(ua)) return 'iPhone';
+    if (/iPad/i.test(ua)) return 'iPad';
+    if (/Android/i.test(ua)) return 'Android';
+    if (/Macintosh|Mac OS X/i.test(ua)) return 'Mac';
+    if (/Windows/i.test(ua)) return 'Windows';
+    return 'Phone';
+  }
+
+  function defaultName() {
+    return (deviceName() + ' ' + myId().slice(-2)).slice(0, 24);
+  }
+
   function extractRoomCode(text) {
     const m = String(text || '').match(/[#?&]r=([^&\s]+)/i);
     if (!m) return '';
@@ -1453,10 +1482,6 @@
     }
   }
 
-  function updateGoLabel() {
-    const code = normRoom($('inRoom').value);
-    $('btnGo').textContent = code ? 'Join group' : 'Start a new group';
-  }
 
   function join(name, room) {
     state.me = {
@@ -1552,13 +1577,10 @@
     $('join').classList.remove('hidden');
     $('sheet').classList.add('hidden');
     $('btnRecenter').classList.add('hidden');
-    updateGoLabel();
   }
 
-  // `?r=` rather than `#r=`: the app reads either, but a query string survives chat apps,
-  // link previewers and shorteners more reliably than a fragment does.
-  const inviteLink = () => location.origin + location.pathname +
-    '?r=' + encodeURIComponent(state.room);
+  // No code travels in the link any more: opening the app is joining it.
+  const inviteLink = () => location.origin + location.pathname;
 
   // The modern clipboard first, then the old way — which is what still works inside the
   // browsers built into chat apps, where the clipboard API is often blocked.
@@ -1595,13 +1617,10 @@
 
   async function share() {
     const url = inviteLink();
-    // The code first, because typing a code into the app beats tapping a link — a link on
-    // an iPhone can only ever open Safari. The link is still there for anyone who has not
-    // got the app yet, and it goes in the `text` as well as the `url`, because WhatsApp on
-    // Android reads `text` and can drop a separate `url`.
-    const text = 'Join my Convoy group \u2014 tap this:\n' + url +
-                 '\n\nOr open Convoy and use the code ' + state.room +
-                 ' (capitals do not matter).';
+    // There is no code to send: opening the app is joining it. The link goes in the `text`
+    // as well as the `url`, because WhatsApp on Android reads `text` and can drop a
+    // separate `url`.
+    const text = 'Open Convoy and you are on the map with me:\n' + url;
 
     try {
       if (navigator.share) {
@@ -1696,14 +1715,10 @@
    * ---------------------------------------------------------------- */
   function wire() {
     $('btnGo').addEventListener('click', () => {
-      const name = ($('inName').value || '').trim().slice(0, 24) || 'Someone';
-      const code = normRoom($('inRoom').value);
-      join(name, code || normRoom('trip-' + rand(5)));
+      const name = ($('inName').value || '').trim().slice(0, 24) || defaultName();
+      join(name, CFG.room);
     });
-    $('inRoom').addEventListener('input', updateGoLabel);
-    ['inName', 'inRoom'].forEach((id) => {
-      $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnGo').click(); });
-    });
+    $('inName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnGo').click(); });
 
     $('btnDemo').addEventListener('click', () => {
       const name = ($('inName').value || '').trim().slice(0, 24) || 'You';
@@ -1721,16 +1736,9 @@
       startDemo();
     });
 
+    $('inMyName').addEventListener('change', () => setName($('inMyName').value));
     $('btnInvite').addEventListener('click', share);
     $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
-
-    // Carrying the code from Safari into the installed app is the one manual step an iPhone
-    // forces, so make it a copy and a paste rather than reading it off one screen.
-    $('btnCopyCode').addEventListener('click', async () => {
-      const code = normRoom($('inRoom').value);
-      if (!code) { banner('No code to copy yet'); return; }
-      banner(await copyText(code) ? 'Code copied' : 'Copy the code: ' + code);
-    });
 
     // The one switch in the sheet.
     $('btnPause').addEventListener('click', () => setPaused(!state.paused));
@@ -1739,12 +1747,6 @@
     $('people').addEventListener('click', (e) => {
       const li = e.target && e.target.closest ? e.target.closest('li[data-id]') : null;
       if (li) focusPeer(li.getAttribute('data-id'));
-    });
-
-    // Pasting the whole invite link into the code box should just work.
-    $('inRoom').addEventListener('input', () => {
-      const code = extractRoomCode($('inRoom').value);
-      if (code) { $('inRoom').value = code; updateGoLabel(); }
     });
 
     // Every browser refuses to make a sound until the page has been touched, so the audio
@@ -1852,17 +1854,12 @@
       if (mine && mine.name) savedName = mine.name;
     }
 
-    const room = normRoom(hash || savedRoom || invited);
-    $('inName').value = savedName;
-    $('inRoom').value = room;
-    updateGoLabel();
+    $('inName').value = savedName || defaultName();
 
-    if (savedName && room) {
-      // Opening the app again should land you straight back on the map.
-      join(savedName, room);
-    } else if (room) {
-      toast('Enter your name to join "' + room + '"');
-    }
+    // Opening the app puts you straight on the map. The name is the only thing anyone
+    // needs, and it has a sensible default, so there is nothing to fill in and no code
+    // to type — the first launch included.
+    join(savedName || defaultName(), CFG.room);
   }
 
   window.Convoy = {
@@ -1877,6 +1874,7 @@
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
+                  defaultName, deviceName, setName,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,

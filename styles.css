@@ -102,6 +102,11 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .conn-list li.ok em { color: #34c759; }
 .conn-list li.bad .rdot { background: var(--danger); }
 .conn-list li.bad em { color: var(--danger); }
+
+/* Your own name, below the people it identifies you to. */
+.sheet-name { margin: 10px 0 2px; }
+.sheet-name label { margin-bottom: 4px; }
+.sheet-name input { margin-bottom: 0; font-size: 15px; padding: 10px 12px; }
 .build-line {
   margin: 2px 0 16px; font-size: 12px; color: var(--muted);
   font-variant-numeric: tabular-nums;

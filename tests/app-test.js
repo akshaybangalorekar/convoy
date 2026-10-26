@@ -23,61 +23,52 @@ async function testStartAGroup() {
   const api = boot();
   const d = api.document;
 
-  check('the join card is the first thing you see', !d.getElementById('join').classList.contains('hidden'));
-  check('the people sheet is hidden until you are in a room',
-        d.getElementById('sheet').classList.contains('hidden'));
-  check('the button offers to start a group', text(api, 'btnGo') === 'Start a new group',
-        text(api, 'btnGo'));
-
-  const c = api.join('Akshay', '');
-  await sleep(20);
-
-  check('starting a group puts you on the map',
+  check('opening the app puts you straight on the map',
         d.getElementById('join').classList.contains('hidden'));
-  check('a room code was generated', /^trip-/.test(api.window.Convoy.state.room),
-        api.window.Convoy.state.room);
-  check('the room code is shown at the top',
-        text(api, 'roomChip') === api.window.Convoy.state.room, text(api, 'roomChip'));
-  check('a connection was opened', !!c, String(api.clients.length));
-  check('and it subscribes to the room', c.subscribed === 'sarvam-convoy/v1/' +
-        api.window.Convoy.state.room + '/bus', c.subscribed);
+  check('with no code to type and nothing to set up',
+        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+  check('a connection was opened', api.clients.length > 0, String(api.clients.length));
+  check('and it subscribes to the one room',
+        api.clients[api.clients.length - 1].subscribed === 'sarvam-convoy/v1/convoy/bus',
+        api.clients[api.clients.length - 1].subscribed);
   check('the phone announces itself', !!api.sent('hello'));
-  check('the people sheet appears', !d.getElementById('sheet').classList.contains('hidden'));
+  check('the people sheet is there', !d.getElementById('sheet').classList.contains('hidden'));
   check('you are on your own in the list', text(api, 'peopleCount') === '1 person · no destination',
         text(api, 'peopleCount'));
   check('the recenter button appears',
         !d.getElementById('btnRecenter').classList.contains('hidden'));
+  check('you are given a name without being asked for one',
+        /\w+/.test(api.window.Convoy.state.me.name), api.window.Convoy.state.me.name);
 }
 
-async function testJoinWithACode() {
+async function testYouCanRenameYourself() {
   const api = boot();
-  const d = api.document;
-
-  d.getElementById('inRoom').value = 'goa-trip';
-  d.getElementById('inRoom').dispatchEvent(new api.window.Event('input', { bubbles: true }));
-  check('typing a code turns the button into a join', text(api, 'btnGo') === 'Join group',
-        text(api, 'btnGo'));
-
-  const c = api.join('Akshay', 'goa-trip');
   await sleep(20);
-  check('you join that room', api.window.Convoy.state.room === 'goa-trip');
-  check('and subscribe to it',
-        c.subscribed === 'sarvam-convoy/v1/goa-trip/bus', c.subscribed);
+  const box = api.document.getElementById('inMyName');
+  check('the sheet has your name in it', box && box.value === api.window.Convoy.state.me.name,
+        box && box.value);
+
+  box.value = 'Akshay';
+  box.dispatchEvent(new api.window.Event('change', { bubbles: true }));
+  await sleep(20);
+  check('changing it changes your name', api.window.Convoy.state.me.name === 'Akshay',
+        api.window.Convoy.state.me.name);
+  check('it is remembered for next time',
+        api.window.localStorage.getItem('convoy.name') === 'Akshay',
+        api.window.localStorage.getItem('convoy.name'));
+  check('and the room is told, so their lists update',
+        (api.sent('hello') || {}).t === 'hello');
 }
 
-async function testInviteLink() {
-  const api = boot({ setup: (w) => { w.history.replaceState(null, '', '/#r=ride-7f3k9'); } });
-  const d = api.document;
-  await sleep(10);
-  check('a link pre-fills the code', d.getElementById('inRoom').value === 'ride-7f3k9',
-        d.getElementById('inRoom').value);
-  check('and the button offers to join', text(api, 'btnGo') === 'Join group', text(api, 'btnGo'));
-
-  const c = api.join('Akshay', d.getElementById('inRoom').value);
+async function testAnOldLinkStillWorks() {
+  // Links with a code in them were shared before there was one room. They should still
+  // open the app and land you in it, not break or ask for anything.
+  const api = boot({ setup: (w) => { w.history.replaceState(null, '', '/?r=ride-7f3k9'); } });
   await sleep(20);
-  check('joining by link works', api.window.Convoy.state.room === 'ride-7f3k9');
-  check('the invite carries the room',
-        c.subscribed === 'sarvam-convoy/v1/ride-7f3k9/bus');
+  check('an old invite link still opens the app',
+        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+  check('and puts you on the map with no questions',
+        api.document.getElementById('join').classList.contains('hidden'));
 }
 
 async function testInviteLinkCopy() {
@@ -90,8 +81,8 @@ async function testInviteLinkCopy() {
   });
   await api.window.Convoy.share();
   await sleep(10);
-  check('sharing copies an invite link', /\?r=goa-trip$/.test(copied), copied);
-  check('with the link itself, so nothing has to be typed', /^https:\/\//.test(copied), copied);
+  check('sharing copies the app address', /^https:\/\/[^?]+$/.test(copied), copied);
+  check('with no code in it, because there is nothing to type', !/\?r=/.test(copied), copied);
 }
 
 /* ---------- Seeing people ---------- */
@@ -266,8 +257,8 @@ async function testTheInviteCarriesTheLink() {
   api.join('Akshay', 'goa-trip');
   await sleep(20);
 
-  check('the invite link carries the room in a query string, which chat apps keep',
-        /\?r=goa-trip$/.test(api.window.Convoy.inviteLink()),
+  check('the invite is the app itself, with no code in it',
+        /^https:\/\/[^?]+$/.test(api.window.Convoy.inviteLink()),
         api.window.Convoy.inviteLink());
 
   let shared = null;
@@ -279,15 +270,14 @@ async function testTheInviteCarriesTheLink() {
 
   check('the phone\'s own share sheet is used where there is one', !!shared,
         JSON.stringify(shared));
-  check('the link leads the message, so there is nothing to type',
-        !!shared && shared.text.indexOf('tap this') >= 0 &&
-        shared.text.indexOf('?r=goa-trip') >= 0, shared && shared.text);
-  check('the link is in the text, which is what WhatsApp linkifies and Android reads',
-        !!shared && shared.text.indexOf('?r=goa-trip') >= 0, shared && shared.text);
+  check('the message leads with the link, so there is nothing to type',
+        !!shared && shared.text.indexOf('Open Convoy') >= 0, shared && shared.text);
+  check('and the link is in the text, which is what WhatsApp linkifies',
+        !!shared && shared.text.indexOf('https://') >= 0, shared && shared.text);
   check('and in the url field as well, for everything that reads that instead',
-        !!shared && /\?r=goa-trip$/.test(shared.url || ''), shared && shared.url);
-  check('with the code kept as the fallback for anyone the link will not open for',
-        !!shared && /code goa-trip/.test(shared.text), shared && shared.text);
+        !!shared && /^https:\/\/[^?]+$/.test(shared.url || ''), shared && shared.url);
+  check('with no code in it, because there is nothing to type',
+        !!shared && !/\?r=/.test(shared.text), shared && shared.text);
 }
 
 async function testCopyingWhenSharingIsUnavailable() {
@@ -323,61 +313,25 @@ async function testTheLinkIsShownWhenNothingElseWorks() {
   const card = api.document.getElementById('shareCard');
   check('the link is shown so it can be copied by hand',
         !card.classList.contains('hidden'));
-  check('with the link in it',
-        /\?r=goa-trip$/.test(api.document.getElementById('shareUrl').value),
+  check('with the address in it',
+        /^https:\/\/[^?]+$/.test(api.document.getElementById('shareUrl').value),
         api.document.getElementById('shareUrl').value);
 
   api.document.getElementById('btnShareClose').click();
   check('and it can be closed', card.classList.contains('hidden'));
 }
 
-async function testCodesAreNotCaseSensitive() {
-  // Nobody should have to get the capitals right, so the code is folded down on the way in.
-  const upper = boot();
-  upper.join('Akshay', 'GOA-TRIP');
-  await sleep(20);
-  check('an upper-case code is the same room as a lower-case one',
-        upper.window.Convoy.state.room === 'goa-trip', upper.window.Convoy.state.room);
-
-  const spaced = boot();
-  spaced.join('Akshay', '  Goa Trip  ');
-  await sleep(20);
-  check('and neither do spaces or capitals',
-        spaced.window.Convoy.state.room === 'goa-trip', spaced.window.Convoy.state.room);
-
-  const typed = boot();
-  typed.document.getElementById('inName').value = 'Akshay';
-  const box = typed.document.getElementById('inRoom');
-  box.value = 'gOA-TRiP';
-  box.dispatchEvent(new typed.window.Event('input', { bubbles: true }));
-  typed.document.getElementById('btnGo').click();
-  await sleep(20);
-  check('typing it any way at all lands in the same room',
-        typed.window.Convoy.state.room === 'goa-trip', typed.window.Convoy.state.room);
-  check('and the app keeps the folded form, so the room is one room',
-        typed.document.getElementById('roomChip').textContent === 'goa-trip',
-        typed.document.getElementById('roomChip').textContent);
-}
-
-async function testBothLinkShapesWork() {
-  const hash = boot({ setup: (w) => { w.history.replaceState(null, '', '/#r=hash-room'); } });
-  await sleep(20);
-  check('a link with a hash works', hash.window.Convoy.roomFromUrl() === 'hash-room',
-        hash.window.Convoy.roomFromUrl());
-  check('and fills the code in',
-        hash.document.getElementById('inRoom').value === 'hash-room',
-        hash.document.getElementById('inRoom').value);
-
-  const query = boot({ setup: (w) => { w.history.replaceState(null, '', '/?r=query-room'); } });
-  await sleep(20);
-  check('a link with a query works too, since some chat apps keep only that',
-        query.window.Convoy.roomFromUrl() === 'query-room', query.window.Convoy.roomFromUrl());
-  check('and fills the code in as well',
-        query.document.getElementById('inRoom').value === 'query-room',
-        query.document.getElementById('inRoom').value);
-  check('and the button offers to join',
-        query.document.getElementById('btnGo').textContent === 'Join group',
-        query.document.getElementById('btnGo').textContent);
+async function testOldLinksAreHarmless() {
+  // Links with a code in them were shared before there was one room. Opening one should
+  // still land you on the map, in the one room, asking for nothing.
+  for (const url of ['/#r=hash-room', '/?r=query-room']) {
+    const api = boot({ setup: (w) => { w.history.replaceState(null, '', url); } });
+    await sleep(20);
+    check('a link of any old shape still opens the app (' + url + ')',
+          api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+    check('and puts you straight on the map (' + url + ')',
+          api.document.getElementById('join').classList.contains('hidden'));
+  }
 }
 
 /* ---------- The list reads like a list ---------- */
@@ -426,8 +380,7 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
 (async () => {
   try {
     await testStartAGroup();
-    await testJoinWithACode();
-    await testInviteLink();
+    await testAnOldLinkStillWorks();
     await testInviteLinkCopy();
     await testPeopleAppear();
     await testArrivalTimes();
@@ -437,8 +390,7 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
     await testTheInviteCarriesTheLink();
     await testCopyingWhenSharingIsUnavailable();
     await testTheLinkIsShownWhenNothingElseWorks();
-    await testCodesAreNotCaseSensitive();
-    await testBothLinkShapesWork();
+    await testOldLinksAreHarmless();
     await testACloseCarSaysNextToYou();
     await testTheTagDoesNotRepeatTheName();
     await testTheSheetIsJustPeopleAndOneSwitch();

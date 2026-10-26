@@ -214,6 +214,9 @@ function boot(opts = {}) {
   if (opts.setup) opts.setup(window);
   window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
 
+  // The app joins on load now, so the connection it opened is live without a click.
+  if (clients.length === 1) clients[0].connect_();
+
   const api = {
     window,
     document: window.document,
@@ -243,9 +246,16 @@ function boot(opts = {}) {
     /** Fill in the join card and press the button. */
     join(name, room) {
       const d = window.document;
-      d.getElementById('inName').value = name;
-      d.getElementById('inRoom').value = room || '';
-      d.getElementById('btnGo').click();
+      const el = d.getElementById('inName');
+      if (el) el.value = name;
+      if (room) {
+        // The app has one room and no code, but the plumbing still takes a room, so tests
+        // that care about it drive it directly rather than through a form that no longer
+        // exists.
+        window.Convoy.join(name, room);
+      } else {
+        d.getElementById('btnGo').click();
+      }
       const c = clients[clients.length - 1];
       if (c) c.connect_();
       return c;

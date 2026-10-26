@@ -74,6 +74,15 @@
   function hide() {
     const card = $('installCard');
     if (card) card.classList.add('hidden');
+    const wrap = $('installOverlay');
+    if (wrap) wrap.classList.add('hidden');
+  }
+
+  function show() {
+    const card = $('installCard');
+    if (card) card.classList.remove('hidden');
+    const wrap = $('installOverlay');
+    if (wrap) wrap.classList.remove('hidden');
   }
 
   function setTitle(text) {
@@ -141,7 +150,7 @@
       return;
     }
 
-    card.classList.remove('hidden');
+    show();
   }
 
   function maybeOffer() {
@@ -168,8 +177,7 @@
   // so say it again even if the card was dismissed.
   function showOpenInBrowser() {
     if (!appBrowser()) return;
-    const card = $('installCard');
-    if (card) card.classList.remove('hidden');
+    show();
   }
 
   function init() {

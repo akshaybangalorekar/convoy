@@ -31,8 +31,8 @@ async function testRoomLastsAWeek() {
   check('you are on its roster',
         r && r.members && Object.keys(r.members).length === 1,
         JSON.stringify(r && Object.keys(r.members)));
-  check('the sheet says how long it is open',
-        /another week/.test(api.document.getElementById('roomNote').textContent),
+  check('and nothing is said about closing, because it never does',
+        api.document.getElementById('roomNote').textContent === '',
         api.document.getElementById('roomNote').textContent);
 }
 
@@ -53,14 +53,12 @@ async function testUsingItKeepsItOpen() {
 }
 
 async function testNoteWording() {
+  // One room, and it never closes, so there is no lifetime note to word.
   const api = boot();
   const t = api.window.Convoy._internals.roomNoteText;
-  check('a fresh room is open for another week',
-        t(7 * DAY) === 'Room open for another week', t(7 * DAY));
-  check('two days left', t(2 * DAY) === 'Room closes in 2 days', t(2 * DAY));
-  check('one day left', t(DAY) === 'Room closes in 1 day', t(DAY));
-  check('hours left', t(5 * 3600000) === 'Room closes in 5 hours', t(5 * 3600000));
-  check('a lapsed room says nothing', t(0) === '' && t(-1000) === '', t(0));
+  check('nothing is ever said about the room closing',
+        t(7 * DAY) === '' && t(DAY) === '' && t(0) === '' && t(-1000) === '',
+        JSON.stringify([t(7 * DAY), t(DAY), t(0)]));
 }
 
 async function testLapsedRoomStartsFresh() {
@@ -227,7 +225,7 @@ async function testAForceResetStillLandsInTheRoom() {
         api.document.getElementById('inName').value === 'Akshay',
         api.document.getElementById('inName').value);
   check('and it rejoins without being asked', api.window.Convoy.state.joined === true);
-  check('into the same room', api.window.Convoy.state.room === 'goa-trip',
+  check('into the one room', api.window.Convoy.state.room === 'convoy',
         String(api.window.Convoy.state.room));
   const me = api.window.Convoy.state.me;
   check('with the same identity, so the others see the same person',

@@ -8,7 +8,12 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebK
 
 const card = (api) => api.document.getElementById('installCard');
 const body = (api) => api.document.getElementById('installBody').textContent;
-const shown = (api) => !card(api).classList.contains('hidden');
+// Visible means visible: the card has its own overlay now, and a card inside a hidden
+// overlay is not something anyone can see.
+const shown = (api) => {
+  const wrap = api.document.getElementById('installOverlay');
+  return !card(api).classList.contains('hidden') && !!wrap && !wrap.classList.contains('hidden');
+};
 
 /* ---------- Who gets offered it ---------- */
 async function testTheOfferComesBackIfTheAppIsDeleted() {
@@ -104,17 +109,17 @@ async function testInviteIsRemembered() {
 }
 
 async function testInviteSurvivesInstalling() {
-  // They opened the link once, installed, and the installed app opened at the root
-  // with no code in the address. The code they were invited with is still there.
+  // They opened the link once, installed, and the installed app opened at the root. With
+  // one room for everyone there is no code to carry across, so installing cannot lose it.
   const api = boot({ setup: (w) => {
-    w.localStorage.setItem('convoy.invite', 'goa-trip');
+    w.localStorage.setItem('convoy.invite', 'goa-trip');     // left by an older build
   } });
   await sleep(20);
   const d = api.document;
-  check('the invited room is offered again after installing',
-        d.getElementById('inRoom').value === 'goa-trip', d.getElementById('inRoom').value);
-  check('and the button offers to join rather than to start',
-        d.getElementById('btnGo').textContent === 'Join group', d.getElementById('btnGo').textContent);
+  check('installing cannot lose your place, because there is no code to lose',
+        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+  check('and the app opens straight onto the map',
+        d.getElementById('join').classList.contains('hidden'));
 }
 
 /* ---------- Links shared through a chat land in the app's own browser ---------- */
@@ -241,17 +246,9 @@ async function testTheIPhoneNoteWalksThemThroughIt() {
   check('and says plainly that there is no way round it',
         /no way round it|always opens/.test(note), note);
 
-  // The one manual step is carrying the code across, so that must be a copy.
-  const box = api.document.getElementById('inRoom');
-  check('the code is filled in ready to copy', box.value === 'goa-trip', box.value);
-  let copied = null;
-  api.window.document.execCommand = () => { copied = true; return true; };
-  Object.defineProperty(api.window.navigator, 'clipboard', { configurable: true, value: undefined });
-  api.document.getElementById('btnCopyCode').click();
-  await sleep(20);
-  check('and there is a button to copy it', copied === true);
-  check('which says so', /copied/i.test(api.document.getElementById('banner').textContent),
-        api.document.getElementById('banner').textContent);
+  // There is no code to carry across any more, so the note asks for nothing.
+  check('and asks for no code, since there is none',
+        !/code/i.test(note) || !/paste/i.test(note), note);
 }
 
 async function testAndroidIsToldWhereTheHandOffLands() {

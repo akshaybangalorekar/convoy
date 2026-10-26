@@ -60,14 +60,24 @@
     <button id="btnPause" class="ctl" aria-pressed="false">Hide my location</button>
   </div>
 
+  <div class="sheet-name">
+    <label for="inMyName">Your name</label>
+    <input id="inMyName" maxlength="24" autocomplete="name" />
+  </div>
+
+  <p id="iosNote" class="fine hidden">On an iPhone a link always opens in Safari — there is
+    no way round it. To use it like an app: tap <b>Share</b>, then <b>Add to Home Screen</b>,
+    then open Convoy from your home screen.</p>
+
   <p id="roomNote" class="room-note"></p>
 </section>
 
 <!-- Join -->
-<div id="join" class="overlay">
+<!-- Offered once, on a phone that has never used the app. Hidden until the browser says
+     it can be installed (or, on iOS, until we know it cannot). It has its own overlay
+     because the app opens straight onto the map and the join screen is never shown. -->
+<div id="installOverlay" class="overlay hidden">
  <div class="join-stack">
-  <!-- Offered once, on a phone that has never used the app. Hidden until the
-       browser says it can be installed (or, on iOS, until we know it cannot). -->
   <div id="installCard" class="card install-card hidden">
     <div class="install-head">
       <span class="install-icon" aria-hidden="true"></span>
@@ -75,7 +85,12 @@
     </div>
     <div id="installBody"></div>
   </div>
+ </div>
+</div>
 
+<!-- Shown only after pressing Leave -->
+<div id="join" class="overlay hidden">
+ <div class="join-stack">
   <div class="card join-card">
     <svg class="logo" viewBox="0 0 46 46" aria-hidden="true">
       <defs><linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
@@ -93,19 +108,9 @@
 
     <label for="inName">Your name</label>
     <input id="inName" maxlength="24" autocomplete="name" />
+    <p class="hint-line">So the others know which car is yours. You can change it later.</p>
 
-    <label for="inRoom">Invite code</label>
-    <input id="inRoom" maxlength="32"
-           autocapitalize="none" autocorrect="off" spellcheck="false" />
-    <p class="hint-line">The code joins phones together — capitals do not matter. Leave it
-      empty to start a new group.</p>
-
-    <button id="btnGo" class="primary">Start a new group</button>
-
-    <p id="iosNote" class="fine hidden">On an iPhone a link like this one always opens here
-      in Safari — there is no way round it. To use the app instead: tap <b>Share</b>, then
-      <b>Add to Home Screen</b>, then open Convoy from your home screen and paste the code
-      in. <button id="btnCopyCode" class="linkish">Copy the code</button></p>
+    <button id="btnGo" class="primary">Open the map</button>
 
     <button id="btnDemo" class="linkish">Just looking? Preview with demo cars</button>
   </div>
