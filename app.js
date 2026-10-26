@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v38',             // must match VERSION in sw.js; a test holds them together
+    build: 'v39',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -871,7 +871,9 @@
   // The master's list of who is out, which every phone honours.
   function onRemoved(msg) {
     if (!Array.isArray(msg.ids)) return;
-    setRemoved(msg.ids.map(String).slice(0, 200));
+    const ids = msg.ids.map(String).slice(0, 200);
+    setRemoved(ids);
+    ids.forEach((id) => { if (state.peers.has(id)) removePeer(id); });
     renderPeople();
   }
 
@@ -1291,13 +1293,8 @@
     if (inRoom) {
       if (me) rows.push(rowFor(me, null));
       Array.from(state.peers.values())
-        .filter((p) => state.master || !state.removed.has(p.id))
-        .sort((a, b) => {
-          const ar = state.removed.has(a.id) ? 1 : 0;
-          const br = state.removed.has(b.id) ? 1 : 0;
-          if (ar !== br) return ar - br;      // removed people sink to the bottom
-          return (a.name || '').localeCompare(b.name || '');
-        })
+        .filter((p) => !state.removed.has(p.id))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
         .forEach((p) => rows.push(rowFor(p, me)));
     }
     const people = rows.length;
@@ -1407,9 +1404,8 @@
     // Only the phone with the pin sees the control, and never on itself.
     let act = '';
     if (state.master && !p.isMe) {
-      act = state.removed.has(p.id)
-        ? '<button class="row-act add" data-add="' + esc(p.id) + '" aria-label="Add back">+</button>'
-        : '<button class="row-act" data-remove="' + esc(p.id) + '" aria-label="Remove">&#215;</button>';
+      act = '<button class="row-act" data-remove="' + esc(p.id) +
+            '" aria-label="Remove from the group">&#215;</button>';
     }
     const inner = p.isMe
       ? '<input class="myname" maxlength="24" aria-label="Your name" value="' +
@@ -1521,22 +1517,20 @@
     saveRoom({ removed: Array.from(state.removed) });
   }
 
+  /* The cross is the whole action: the person comes off the group, off the list and off
+     the map, and their name goes with them. They are also taken off the allowed list and
+     remembered as removed, so they cannot put themselves back. */
   function removePerson(id) {
     if (!state.master || !id || (state.me && id === state.me.id)) return;
-    const p = state.peers.get(id);
-    const name = p ? p.name : 'Someone';
+    id = String(id);
+    state.allowed.delete(id);
     state.removed.add(id);
-    setRemoved(Array.from(state.removed));
+    state.pending.delete(id);
+    removePeer(id);            // the row and the car on the map
+    forgetMember(id);          // and the roster, so a reopened app does not bring them back
+    saveRoom({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+    send({ t: 'allowed', ids: Array.from(state.allowed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
-    renderPeople();
-  }
-
-  function addPerson(id) {
-    if (!state.master || !id) return;
-    state.removed.delete(id);
-    setRemoved(Array.from(state.removed));
-    send({ t: 'removed', ids: Array.from(state.removed) });
-    const p = state.peers.get(id);
     renderPeople();
   }
 
@@ -1950,8 +1944,6 @@
       if (no) { keepOut(no.getAttribute('data-no')); return; }
       const rm = near ? near.closest('[data-remove]') : null;
       if (rm) { removePerson(rm.getAttribute('data-remove')); return; }
-      const ad = near ? near.closest('[data-add]') : null;
-      if (ad) { addPerson(ad.getAttribute('data-add')); return; }
       const li = near ? near.closest('li[data-id]') : null;
       if (li) focusPeer(li.getAttribute('data-id'));
     });
@@ -2059,7 +2051,7 @@
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
-                  defaultName, deviceName, setName, pinHash, removePerson, addPerson,
+                  defaultName, deviceName, setName, pinHash, removePerson,
                   centreOnMe,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,

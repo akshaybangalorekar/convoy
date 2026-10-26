@@ -130,6 +130,13 @@ try {
         /Map data &copy;/.test(html) && /openstreetmap\.org\/copyright/.test(html));
   check('and the sheet is the bottom-most thing, flush to the edge',
         /bottom: 0;/.test(css) && /border-radius: 16px 16px 0 0/.test(css));
+  check('there is no floating recenter button, since Location does that job',
+        !/id="btnRecenter"/.test(html) && !/\.recenter/.test(css));
+  check('removing someone is one action, with no add-back control',
+        !/data-add/.test(app) && !/function addPerson/.test(app) &&
+        /data-remove/.test(app));
+  check('and nobody keeps a row for someone who has been removed',
+        /\.filter\(\(p\) => !state\.removed\.has\(p\.id\)\)/.test(app));
   check('there is no room code and no bar at the top',
         !/roomChip/.test(html) && !/class="bar"/.test(html));
   check('and there is no room-name field at all, since a name only caused confusion',
@@ -263,7 +270,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v38/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v39/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

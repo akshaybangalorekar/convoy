@@ -368,7 +368,7 @@ async function testTheRightPinUnlocksOnlyThisPhone() {
         (d.getElementById('people').innerHTML.match(/data-remove/g) || []).length === 1);
 }
 
-async function testTheMasterCanRemoveAndAddBack() {
+async function testTheMasterCanRemoveSomeoneForGood() {
   const api = boot();
   const d = api.document;
   api.recv(pos('p1', 'Priya', -33.87, 151.21));
@@ -376,27 +376,33 @@ async function testTheMasterCanRemoveAndAddBack() {
   await sleep(20);
   await unlock(api);
 
+  check('the master sees a cross on everyone but themselves',
+        (d.getElementById('people').innerHTML.match(/data-remove/g) || []).length === 2,
+        d.getElementById('people').innerHTML.slice(0, 160));
+  check('and there is no second control on a row',
+        !/data-add/.test(d.getElementById('people').innerHTML));
+
   d.querySelector('[data-remove="p1"]').click();
   await sleep(20);
-  check('the master still sees them, so they can be put back',
-        /Priya/.test(d.getElementById('people').textContent),
-        d.getElementById('people').textContent);
-  check('marked as removed',
-        d.querySelector('li[data-id="p1"]').classList.contains('removed'));
-  check('and the group is told',
-        ((api.sent('removed') || {}).ids || []).indexOf('p1') >= 0,
+  check('the name goes off the list entirely',
+        !/Priya/.test(text(api, 'people')), text(api, 'people'));
+  check('and off the map', !api.window.Convoy.state.peers.has('p1'));
+  const roster = JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}');
+  check('and off the roster, so reopening does not bring them back',
+        !roster.members || !roster.members.p1, JSON.stringify(roster.members));
+  check('and they are no longer allowed in',
+        !api.window.Convoy.state.allowed.has('p1'));
+  check('and the group is told both things',
+        ((api.sent('removed') || {}).ids || []).indexOf('p1') >= 0 &&
+        ((api.sent('allowed') || {}).ids || []).indexOf('p1') < 0,
         JSON.stringify(api.sent('removed')));
 
   api.recv(pos('p1', 'Priya', -33.87, 151.21));      // they keep sending
   await sleep(20);
-  check('their messages are ignored from then on',
-        api.window.Convoy.state.removed.has('p1'));
-
-  d.querySelector('[data-add="p1"]').click();
-  await sleep(20);
-  check('and the master can put them back',
-        !api.window.Convoy.state.removed.has('p1'),
-        String(api.window.Convoy.state.removed.size));
+  check('and they cannot put themselves back',
+        !/Priya/.test(text(api, 'people')), text(api, 'people'));
+  check('while everyone else is untouched', /Rahul/.test(text(api, 'people')),
+        text(api, 'people'));
 }
 
 async function testEveryoneElseStopsSeeingThem() {
@@ -665,7 +671,7 @@ async function testBehindAndAhead() {
     await testTheGearIsJustAVersionAndAField();
     await testAWrongPinDoesNothing();
     await testTheRightPinUnlocksOnlyThisPhone();
-    await testTheMasterCanRemoveAndAddBack();
+    await testTheMasterCanRemoveSomeoneForGood();
     await testEveryoneElseStopsSeeingThem();
     await testTheNotificationSound();
     await testALongPressSetsTheDestination();

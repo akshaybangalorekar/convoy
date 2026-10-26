@@ -163,10 +163,12 @@ Everyone already in the room can still be removed by the master:
   line in Help with a link to the copyright page.
 - **Typing the pin in that field** unlocks the master on that phone, and it stays unlocked —
   it is remembered, so it is asked once.
-- **A master sees a cross on every other person.** Tapping it removes them: they disappear
-  from everyone's list, their messages are ignored from then on, and the removal is broadcast
-  and remembered, so it survives a restart. Tapping the cross on a removed person puts them
-  back. There is no other difference between a master phone and any other.
+- **A master sees a cross on every other person, and that is the whole action.** Tapping it
+  takes them off the group, off the list, off the map and off the roster, name and all — the
+  cross is not the first of two steps, and there is no add-back control beside it. They are
+  also struck off the allowed list and remembered as removed, so they cannot put themselves
+  back. The removal is broadcast, so it happens on every phone and survives a restart.
+  There is no other difference between a master phone and any other.
 
 Two honest limits. **The pin is obfuscated, not secure**: what the code holds is a hash of it,
 so the digits do not appear in the source, but a four-digit pin can be brute-forced instantly
@@ -381,7 +383,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 651 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 657 checks:
 
 ```bash
 npm install
