@@ -80,9 +80,10 @@
 
     <button id="btnSettings" class="tb">
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="3.1" />
-        <path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.2 5.2l1.8 1.8M17 17l1.8 1.8M18.8 5.2L17 7M7 17l-1.8 1.8" />
-      </svg><span>Settings</span>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9.4a2.6 2.6 0 1 1 3.5 2.4c-.7.3-1 .9-1 1.6v.4" />
+        <circle cx="12" cy="17.1" r="0.95" fill="currentColor" stroke="none" />
+      </svg><span>Help</span>
     </button>
   </div>
 
@@ -123,11 +124,19 @@
 <!-- The gear: a version, and a field that says nothing about what it is for. -->
 <div id="settingsCard" class="overlay hidden">
   <div class="card join-card">
-    <h1>Settings</h1>
-    <p class="sub" id="settingsVersion">Version</p>
-    <input id="inPin" maxlength="12" inputmode="numeric" autocomplete="off" />
+    <h1>Help</h1>
+    <ul class="help-list">
+      <li>Tap the map once to zoom out, twice to zoom in.</li>
+      <li>Tap the connection word to check the signal.</li>
+      <li>Tap the destination bar to set where you are going.</li>
+      <li>Tap a name to follow that car.</li>
+      <li><b>Invite</b> sends the link to anyone.</li>
+    </ul>
+    <p class="build-line" id="settingsVersion">Version</p>
     <p id="pinNote" class="hint-line hidden"></p>
     <button id="btnSettingsClose" class="primary">Done</button>
+    <input id="inPin" class="pin-field" maxlength="12" inputmode="numeric"
+           autocomplete="off" aria-label="Unlock" />
   </div>
 </div>
 

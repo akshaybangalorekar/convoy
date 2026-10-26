@@ -84,7 +84,7 @@ destination the room is told, *"Priya has arrived"*, and their arrival time is r
 "arrived" — nobody has to press anything.
 
 **Everything lives at the bottom of the screen**, so the map gets the rest: the people, then a
-row of four equal buttons — **Invite**, **Sharing**, **Name** and **Settings** — each an icon
+row of four equal buttons — **Invite**, **Sharing**, **Name** and **Help** — each an icon
 over one short word so they all match whatever the state. The connection state sits in the
 sheet's header, beside the count. The top of the screen holds only the destination.
 
@@ -131,8 +131,10 @@ the phone that has the pin — nothing can approve it otherwise.
 
 Everyone already in the room can still be removed by the master:
 
-- **Settings** is a blue button in the row at the foot of the sheet. It shows the version and
-  an empty field that does not say what it is for.
+- **Help** is a blue button in the row at the foot of the sheet. It carries five short lines —
+  zoom, checking the signal, setting the destination, following a car, inviting — then the
+  version, and at the very bottom a plain unlabelled field. That field is the pin. It is a
+  faint line rather than a labelled input, so it advertises nothing.
 - **Typing the pin in that field** unlocks the master on that phone, and it stays unlocked —
   it is remembered, so it is asked once.
 - **A master sees a cross on every other person.** Tapping it removes them: they disappear
@@ -353,7 +355,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 632 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 634 checks:
 
 ```bash
 npm install

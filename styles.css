@@ -107,6 +107,32 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .conn-list li.bad em { color: var(--danger); }
 
 /* Your own name, below the people it identifies you to. */
+/* Help: five short lines, nothing to read twice. */
+.help-list {
+  list-style: none; margin: 0 0 18px; padding: 0;
+}
+.help-list li {
+  position: relative; padding: 7px 0 7px 20px;
+  font-size: 15px; line-height: 1.45; color: var(--ink-2);
+  border-top: 1px solid var(--sep);
+}
+.help-list li:first-child { border-top: 0; }
+.help-list li::before {
+  content: ""; position: absolute; left: 5px; top: 15px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  opacity: 0.6;
+}
+.help-list b { color: var(--text); font-weight: 600; }
+
+/* Deliberately quiet: a plain line at the very bottom, no label, no hint. */
+.pin-field {
+  margin: 4px 0 0; padding: 7px 2px;
+  border: 0; border-bottom: 1px solid var(--sep);
+  border-radius: 0; background: none;
+  font-size: 13px; text-align: center; color: var(--muted);
+}
+.pin-field:focus { outline: none; border-bottom-color: var(--accent); }
+
 .build-line {
   margin: 2px 0 16px; font-size: 12px; color: var(--muted);
   font-variant-numeric: tabular-nums;

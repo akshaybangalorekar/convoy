@@ -114,6 +114,12 @@ try {
         !/1981/.test(app) && /masterHash: 0x[0-9a-f]+/.test(app));
   check('and it is compared as a hash, not as text',
         /function pinHash/.test(app) && /pinHash\(pin\) !== CFG\.masterHash/.test(app));
+  check('the help card is five short lines, then the version, then a quiet field',
+        /class="help-list"/.test(html) &&
+        (html.match(/<li>Tap |<li><b>Invite<\/b>/g) || []).length === 5,
+        String((html.match(/<li>Tap |<li><b>Invite<\/b>/g) || []).length));
+  check('and the button says Help, not Settings',
+        /<span>Help<\/span>/.test(html) && !/<span>Settings<\/span>/.test(html));
   check('the settings field is unlabelled, so it does not advertise itself',
         /id="inPin"/.test(html) && !/placeholder[^>]*pin/i.test(html));
   check('the attribution sits along the bottom edge, not floating over the map',
@@ -248,7 +254,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v32/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v33/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 
