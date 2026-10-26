@@ -31,9 +31,8 @@ async function testRoomLastsAWeek() {
   check('you are on its roster',
         r && r.members && Object.keys(r.members).length === 1,
         JSON.stringify(r && Object.keys(r.members)));
-  check('and nothing is said about closing, because it never does',
-        api.document.getElementById('roomNote').textContent === '',
-        api.document.getElementById('roomNote').textContent);
+  check('and the sheet says nothing about a room at all',
+        !api.document.getElementById('roomNote'));
 }
 
 async function testUsingItKeepsItOpen() {
@@ -55,10 +54,8 @@ async function testUsingItKeepsItOpen() {
 async function testNoteWording() {
   // One room, and it never closes, so there is no lifetime note to word.
   const api = boot();
-  const t = api.window.Convoy._internals.roomNoteText;
-  check('nothing is ever said about the room closing',
-        t(7 * DAY) === '' && t(DAY) === '' && t(0) === '' && t(-1000) === '',
-        JSON.stringify([t(7 * DAY), t(DAY), t(0)]));
+  check('there is no room-lifetime note in the app at all',
+        api.window.Convoy._internals.roomNoteText === undefined);
 }
 
 async function testLapsedRoomStartsFresh() {
@@ -71,9 +68,7 @@ async function testLapsedRoomStartsFresh() {
   check('someone is in the room', api.window.Convoy.state.peers.size === 1);
 
   write(api, 'goa-trip', { expiresAt: Date.now() - 1000 });   // a week with nobody using it
-  api.window.Convoy.leave();
-  await sleep(20);
-  api.join('Akshay', 'goa-trip');
+  api.join('Akshay', 'goa-trip');                             // reopening the app
   await sleep(30);
 
   check('a lapsed room starts fresh', api.window.Convoy.state.peers.size === 0,
@@ -159,8 +154,6 @@ async function testRosterComesBack() {
 
   // close the app and open it again
   const baseline = api.notes.length;
-  api.window.Convoy.leave();
-  await sleep(20);
   api.join('Akshay', 'goa-trip');
   await sleep(30);
 
@@ -193,9 +186,7 @@ async function testOneIdentityPerDevice() {
   const api = boot();
   api.join('Akshay', 'goa-trip');
   const first = api.window.Convoy.state.me.id;
-  api.window.Convoy.leave();
-  await sleep(20);
-  api.join('Akshay', 'goa-trip');
+  api.join('Akshay', 'goa-trip');        // reopening the app, since there is no Leave
   await sleep(20);
   check('reopening keeps the same identity', api.window.Convoy.state.me.id === first,
         first + ' vs ' + api.window.Convoy.state.me.id);
@@ -211,27 +202,24 @@ async function testAForceResetStillLandsInTheRoom() {
   // name. Even if the name went missing, the room's own roster has it, because we put
   // ourselves in it when we joined.
   const api = boot({ setup: (w) => {
-    w.localStorage.setItem('convoy.room', 'goa-trip');
     w.localStorage.setItem('convoy.me', 'c-abc123');
-    w.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
-      code: 'goa-trip', startedAt: Date.now() - 1000,
+    w.localStorage.setItem('convoy.room.convoy', JSON.stringify({
+      code: 'convoy', startedAt: Date.now() - 1000,
       expiresAt: Date.now() + 86400000, updatedAt: Date.now(),
       members: { 'c-abc123': { name: 'Akshay', lastSeen: Date.now() - 1000 } },
     }));
   } });
   await sleep(30);
 
-  check('a phone that lost its name still knows it from the room',
-        api.document.getElementById('inName').value === 'Akshay',
-        api.document.getElementById('inName').value);
+  check('a phone that lost its name still knows it from the roster',
+        api.window.Convoy.state.me.name === 'Akshay', api.window.Convoy.state.me.name);
   check('and it rejoins without being asked', api.window.Convoy.state.joined === true);
   check('into the one room', api.window.Convoy.state.room === 'convoy',
         String(api.window.Convoy.state.room));
   const me = api.window.Convoy.state.me;
   check('with the same identity, so the others see the same person',
         !!me && me.id === 'c-abc123', me && me.id);
-  check('and the join screen is gone',
-        api.document.getElementById('join').classList.contains('hidden'));
+  check('and there is no join screen to come back to', !api.document.getElementById('join'));
 }
 
 (async () => {

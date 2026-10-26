@@ -161,7 +161,7 @@ which:
 | **live** | Sending positions | They are publishing |
 | **app in the background** | Their phone put the app away | They *told us* on the way out |
 | **out of contact** | Nothing has arrived for a while | We are *inferring* from silence |
-| **left** | They pressed Leave | They told us |
+| **left** | They sent a goodbye | They told us |
 
 When someone's app is put away, the phone sends one last note on the way out, so the group
 sees "app in the background" instead of guessing. When it comes back it says so, pushes its
@@ -187,9 +187,9 @@ accident:
 
 - **Nobody is dropped.** A phone that goes quiet stays on the list as out of contact. There
   is no timer quietly removing people, and no expiry on the room itself.
-- **Closing the app is not leaving.** Shutting the tab or force-quitting sends the same
-  "away" note as backgrounding does, so you look like a phone that went quiet rather than
-  someone who walked out. Only the **Leave** button takes you off the roster.
+- **There is no Leave button, and nothing to leave.** Closing the tab or force-quitting
+  sends the same "away" note as backgrounding does, so you look like a phone that went quiet
+  rather than someone who walked out. Nobody can remove themselves or anyone else.
 - **The roster is kept on the phone.** Reopening puts the whole group back on the list,
   marked out of contact until they reappear — so a phone that comes back after an hour
   rejoins a room that already knows who was in it.
@@ -304,12 +304,12 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
-- `tests/room-test.js` — the room's life: that it lasts a week, that using it pushes the
-  week out, that a phone quiet for an hour is still in the room, that closing the app is not
-  treated as leaving, that Leave is, and that the whole group comes back with the room.
+- `tests/room-test.js` — the roster behind the one room: that it is kept on the phone, that
+  using the app keeps it current, that a phone quiet for an hour is still on it, that closing
+  the app is not leaving, and that the whole group comes back when you reopen.
 - `tests/install-test.js` — who gets offered the install and who does not, the browser's own
   prompt being fired from our button, dismissing it being remembered, the iOS instructions
-  where there is no prompt to fire, an invite code surviving the install, and a link opened
+  where there is no prompt to fire, installing not losing your place, and a link opened
   inside a chat app being spotted and answered with the right advice for each phone.
 - `tests/features-test.js` — last-seen times, arrival announcements and their reset, that
   arriving is automatic and has no button, the sharing rate and that there is no switch for it,

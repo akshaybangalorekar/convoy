@@ -14,7 +14,7 @@ async function testRejoinOnLaunch() {
 
   check('a returning phone rejoins by itself',
         api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
-  check('the join card stays out of the way', d.getElementById('join').classList.contains('hidden'));
+  check('there is no join screen at all', !d.getElementById('join'));
   check('you land on the map', !d.getElementById('sheet').classList.contains('hidden'));
   check('and the name it kept is used', api.window.Convoy.state.me.name === 'Akshay',
         api.window.Convoy.state.me.name);
@@ -31,7 +31,8 @@ async function testFirstRunAsks() {
   await sleep(30);
   const d = api.document;
   check('a first-time phone goes straight onto the map',
-        d.getElementById('join').classList.contains('hidden'));
+        api.window.Convoy.state.joined === true &&
+        !d.getElementById('sheet').classList.contains('hidden'));
   check('already in the one room', api.window.Convoy.state.joined === true);
   check('with a name it did not have to type',
         !!api.window.Convoy.state.me.name, api.window.Convoy.state.me.name);

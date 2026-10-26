@@ -99,13 +99,14 @@ async function testIOSGetsInstructions() {
 
 /* ---------- An invite link survives installing ---------- */
 async function testInviteIsRemembered() {
+  // A link with a code in it is just a link now: opening it opens the app.
   const api = boot({ setup: (w) => {
     w.history.replaceState(null, '', '/#r=ride-7f3k9');
   } });
   await sleep(20);
-  check('opening a link remembers the code',
-        api.window.localStorage.getItem('convoy.invite') === 'ride-7f3k9',
-        String(api.window.localStorage.getItem('convoy.invite')));
+  check('opening an old invite link just opens the app',
+        api.window.Convoy.state.joined === true &&
+        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
 }
 
 async function testInviteSurvivesInstalling() {
@@ -119,7 +120,7 @@ async function testInviteSurvivesInstalling() {
   check('installing cannot lose your place, because there is no code to lose',
         api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
   check('and the app opens straight onto the map',
-        d.getElementById('join').classList.contains('hidden'));
+        api.window.Convoy.state.joined === true);
 }
 
 /* ---------- Links shared through a chat land in the app's own browser ---------- */

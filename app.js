@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v26',             // must match VERSION in sw.js; a test holds them together
+    build: 'v27',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -386,10 +386,6 @@
 
   // There is one room and it never closes, so there is no lifetime to report. The roster
   // is still kept on the phone, which is what stops anyone being quietly dropped.
-  function roomNoteText() {
-    return '';
-  }
-
   /* ---------------------------------------------------------------- *
    * Colours: unique per person, and the same on every phone
    * ---------------------------------------------------------------- */
@@ -1204,9 +1200,6 @@
   }
 
   function renderRoomNote() {
-    const el = $('roomNote');
-    if (!el) return;
-    el.textContent = state.joined ? roomNoteText(state.roomExpires - Date.now()) : '';
   }
 
   function etaCell(p) {
@@ -1278,7 +1271,7 @@
     }
     // "You you": never let the tag repeat the name it sits beside.
     if (p.isMe && meta && String(p.name).toLowerCase() === meta.toLowerCase()) meta = '';
-    if (p.arrived && !p.isMe) tag = 'arrived';
+    if (p.arrived && !p.isMe) { tag = 'arrived'; meta = ''; }
     return '<li data-id="' + esc(p.id) + '" class="' +
       (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') +
       (kind === 'paused' ? 'paused ' : '') + '">' +
@@ -1305,7 +1298,6 @@
 
   function renderTop() {
     // There is one room for everyone, so there is no code to show. The chip names the app.
-    $('roomChip').textContent = 'Convoy';
     const mine = $('inMyName');
     if (mine && state.me) mine.value = state.me.name || '';
   }
@@ -1496,6 +1488,10 @@
     state.away = false;
     state.focused = '';
 
+    // A fresh session: anyone on the map belongs to the one before it.
+    state.peers.forEach((p) => { if (p._marker) map.removeLayer(p._marker); });
+    state.peers = new Map();
+
     // Restore the destination this phone last knew for this room, so a returning phone
     // can put it straight back on the air without asking anybody.
     const saved = loadDest(room);
@@ -1540,7 +1536,6 @@
     renderDest();
     drawDest();
     renderPeople();
-    $('join').classList.add('hidden');
     $('sheet').classList.remove('hidden');
     $('btnRecenter').classList.remove('hidden');
 
@@ -1549,34 +1544,6 @@
     startTimers();
     askWakeLock();
     askToNotify();
-  }
-
-  function leave() {
-    if (state.joined && client && client.connected) send({ t: 'bye' });
-    if (client) { try { client.end(true); } catch (e) {} client = null; }
-    stopTimers();
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    state.peers.forEach((p) => { if (p._marker) map.removeLayer(p._marker); });
-    state.peers.clear();
-    state.seen = new Set();
-    state.joined = false;
-    state.away = false;
-    state.me = null;
-    state.dest = null;
-    state.destTs = 0;
-    state.myEta = null;
-    state.roomExpires = 0;      // the room itself is left alone; this is just our session
-    if (myLine) { map.removeLayer(myLine); myLine = null; }
-    if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-    state.autoFit = true;
-    try { localStorage.removeItem(LS.room); } catch (e) {}
-
-    renderTop();
-    renderDest();
-    renderPeople();
-    $('join').classList.remove('hidden');
-    $('sheet').classList.add('hidden');
-    $('btnRecenter').classList.add('hidden');
   }
 
   // No code travels in the link any more: opening the app is joining it.
@@ -1714,29 +1681,6 @@
    * Wiring
    * ---------------------------------------------------------------- */
   function wire() {
-    $('btnGo').addEventListener('click', () => {
-      const name = ($('inName').value || '').trim().slice(0, 24) || defaultName();
-      join(name, CFG.room);
-    });
-    $('inName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnGo').click(); });
-
-    $('btnDemo').addEventListener('click', () => {
-      const name = ($('inName').value || '').trim().slice(0, 24) || 'You';
-      state.me = {
-        id: 'me-' + rand(6), name, color: PALETTE[0],
-        lat: null, lng: null, spd: null, hdg: null, acc: null,
-        ts: Date.now(), isMe: true, _first: true,
-      };
-      state.joined = true;
-      state.room = 'demo';
-      renderTop();
-      $('join').classList.add('hidden');
-      $('sheet').classList.remove('hidden');
-      $('btnRecenter').classList.remove('hidden');
-      startDemo();
-    });
-
-    $('inMyName').addEventListener('change', () => setName($('inMyName').value));
     $('btnInvite').addEventListener('click', share);
     $('btnShareClose').addEventListener('click', () => $('shareCard').classList.add('hidden'));
 
@@ -1762,7 +1706,6 @@
         if (state.joined && !state.paused && !haveMyPosition()) startWatching();
       }, { passive: true });
     });
-    $('btnLeave').addEventListener('click', () => { stopDemo(); leave(); });
     $('btnRecenter').addEventListener('click', () => {
       state.autoFit = true;
       lastFitAt = 0;
@@ -1829,32 +1772,17 @@
     $('btnRecenter').classList.add('hidden');
     renderDest();
 
-    // A room in the link, or the one we were in last time.
-    const hash = roomFromUrl();
-    let savedRoom = '';
+    // The name is the only thing kept: if this phone has been used before, use the name
+    // that was set on it, and otherwise fall back to the roster, which has it too.
     let savedName = '';
-    let invited = '';
     try {
-      savedRoom = localStorage.getItem(LS.room) || '';
       savedName = localStorage.getItem(LS.name) || '';
-      invited = localStorage.getItem(LS.invite) || '';
-      // An invite link is worth keeping. If they install the app from the link, the
-      // installed app opens at the app root and the link's code would be lost.
-      if (hash) {
-        invited = normRoom(hash);
-        localStorage.setItem(LS.invite, invited);
-      }
     } catch (e) { /* ignore */ }
-
-    // If the name went missing but the room did not, the room's own roster has it — we
-    // put ourselves in it when we joined. Nothing else is needed to come back.
     if (!savedName) {
-      const rec = loadRoom(normRoom(savedRoom || invited));
+      const rec = loadRoom(CFG.room);
       const mine = rec && rec.members && rec.members[myId()];
       if (mine && mine.name) savedName = mine.name;
     }
-
-    $('inName').value = savedName || defaultName();
 
     // Opening the app puts you straight on the map. The name is the only thing anyone
     // needs, and it has a sensible default, so there is nothing to fill in and no code
@@ -1863,13 +1791,13 @@
   }
 
   window.Convoy = {
-    CFG, state, esc, toast, setDest, clearDest, join, leave, share, copyText, inviteLink,
+    CFG, state, esc, toast, setDest, clearDest, join, share, copyText, inviteLink,
     map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom, roomFromUrl,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
                   presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest, allPeople,
                   handleTap, wireTapZoom, tap,
-                  loadRoom, saveRoom, rememberMember, forgetMember, roomNoteText,
+                  loadRoom, saveRoom, rememberMember, forgetMember,
                   roomLifeMs,
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,

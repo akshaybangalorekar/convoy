@@ -104,8 +104,8 @@ try {
         !/id="btnHere"/.test(html));
   check('sharing is set for battery life, with no switch for it',
         /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
-  check('the chip names the app, since there is one room and no code',
-        /roomChip'\)\.textContent = 'Convoy'/.test(app));
+  check('there is no room code anywhere in the bar',
+        !/roomChip/.test(html) && /bar-name/.test(html));
   check('and there is no room-name field at all, since a name only caused confusion',
         !/inRoomName/.test(html) && !/roomName/.test(app));
   check('there is no code field at all', !/id="inRoom"/.test(html));
@@ -114,8 +114,8 @@ try {
   check('the clear button lives on the destination row, not in the search sheet',
         /id="btnClearDest"/.test(html) &&
         html.indexOf('id="btnClearDest"') < html.indexOf('id="search"'));
-  check('and the join form has one hint instead of a wall of fine print',
-        /class="hint-line"/.test(html) && !/class="fine"/.test(html));
+  check('there is no join form at all, and no Leave button',
+        !/id="join"/.test(html) && !/btnLeave/.test(html) && !/id="btnGo"/.test(html));
   check('a long press on the map sets the destination',
         /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
   check('and looks up what is there', /function reverse/.test(read('route.js')) &&
@@ -221,7 +221,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v26/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v27/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

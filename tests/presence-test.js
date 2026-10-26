@@ -442,9 +442,10 @@ async function testDestinationSurvivesRestart() {
   check('inside the room record, so it lapses with the room',
         /expiresAt/.test(raw || ''), String(raw));
 
-  api.window.Convoy.leave();
-  await sleep(20);
-  api.join('Akshay', 'goa-trip');
+  // There is no Leave to press, so reopening is the only way the app ever restarts.
+  api.window.Convoy.state.dest = null;
+  api.window.Convoy.state.destTs = 0;
+  api.window.Convoy.join('Akshay', 'goa-trip');
   await sleep(30);
   check('and comes back when you rejoin',
         api.window.Convoy.state.dest && api.window.Convoy.state.dest.label === 'Bondi',

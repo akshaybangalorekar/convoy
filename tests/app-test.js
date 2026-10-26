@@ -24,7 +24,8 @@ async function testStartAGroup() {
   const d = api.document;
 
   check('opening the app puts you straight on the map',
-        d.getElementById('join').classList.contains('hidden'));
+        api.window.Convoy.state.joined === true &&
+        !d.getElementById('sheet').classList.contains('hidden'));
   check('with no code to type and nothing to set up',
         api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
   check('a connection was opened', api.clients.length > 0, String(api.clients.length));
@@ -68,7 +69,7 @@ async function testAnOldLinkStillWorks() {
   check('an old invite link still opens the app',
         api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
   check('and puts you on the map with no questions',
-        api.document.getElementById('join').classList.contains('hidden'));
+        api.window.Convoy.state.joined === true);
 }
 
 async function testInviteLinkCopy() {
@@ -231,26 +232,6 @@ async function testNotifications() {
 }
 
 /* ---------- Leaving ---------- */
-async function testLeave() {
-  const api = boot();
-  const d = api.document;
-  api.join('Akshay', 'goa-trip');
-  api.fix(15.5, 73.8);
-  await sleep(20);
-  api.recv(pos('p1', 'Priya', 15.51, 73.81));
-  await sleep(20);
-
-  d.getElementById('btnLeave').click();
-  await sleep(20);
-
-  check('leaving says goodbye to the room', !!api.sent('bye'));
-  check('the join card comes back', !d.getElementById('join').classList.contains('hidden'));
-  check('the sheet goes away', d.getElementById('sheet').classList.contains('hidden'));
-  check('the room is cleared', api.window.Convoy.state.room === null ||
-        api.window.Convoy.state.joined === false);
-  check('the map is cleared of people', api.window.Convoy.state.peers.size === 0);
-}
-
 /* ---------- Inviting, on both kinds of phone ---------- */
 async function testTheInviteCarriesTheLink() {
   const api = boot();
@@ -330,7 +311,7 @@ async function testOldLinksAreHarmless() {
     check('a link of any old shape still opens the app (' + url + ')',
           api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
     check('and puts you straight on the map (' + url + ')',
-          api.document.getElementById('join').classList.contains('hidden'));
+          api.window.Convoy.state.joined === true);
   }
 }
 
@@ -386,7 +367,6 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
     await testArrivalTimes();
     await testDestinationShared();
     await testNotifications();
-    await testLeave();
     await testTheInviteCarriesTheLink();
     await testCopyingWhenSharingIsUnavailable();
     await testTheLinkIsShownWhenNothingElseWorks();
