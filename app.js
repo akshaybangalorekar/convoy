@@ -34,6 +34,10 @@
     // there is no way to keep two separate groups apart without an identifier, so this
     // suits a group who all know each other rather than a public app.
     room: 'convoy',
+    // The master pin is not written here as a number: what is compared is a hash of it,
+    // so the digits do not appear in the source. This keeps honest people honest; it is
+    // not security, since anyone reading this file can find a way round it in a minute.
+    masterHash: 0x44169612,
     retryMs: 1200,            // pause before trying the next relay
     reconnectMs: 3000,        // pause before reconnecting to one that worked
     keepalive: 30,            // seconds; mobile networks drop idle sockets well before 60
@@ -42,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v27',             // must match VERSION in sw.js; a test holds them together
+    build: 'v28',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -86,6 +90,8 @@
     paused: false,        // hidden from the map: deliberately not sharing our position
     arrived: false,       // we have reached the destination (or said we have)
     focused: '',          // the car whose name is showing because it was tapped
+    master: false,        // this phone has the pin, so it can add and remove people
+    removed: new Set(),   // ids the master has taken off the group
   };
 
   let map = null;
@@ -754,6 +760,7 @@
     // Any word at all from someone is proof they were still there just now — and for
     // anyone new, it is what puts them on the list. Leaving is the one exception: we do
     // not want to add someone just to remove them.
+    if (state.removed.has(msg.id)) return;      // taken off the group by the master
     if (msg.t !== 'bye') ensurePeer(msg);
 
     switch (msg.t) {
@@ -768,6 +775,7 @@
       case 'paused':     onPaused(msg); return;
       case 'sharing':    onSharing(msg); return;
       case 'arrived':    onArrived(msg); return;
+      case 'removed':    onRemoved(msg); return;
       default: return;
     }
   }
@@ -781,6 +789,13 @@
     if (rec && rec.members && rec.members[id]) return false;
     notify(name + ' joined', 'They can see the map and set the destination.');
     return true;
+  }
+
+  // The master's list of who is out, which every phone honours.
+  function onRemoved(msg) {
+    if (!Array.isArray(msg.ids)) return;
+    setRemoved(msg.ids.map(String).slice(0, 200));
+    renderPeople();
   }
 
   function onHello(msg) {
@@ -1177,7 +1192,13 @@
 
     if (me) rows.push(rowFor(me, null));
     Array.from(state.peers.values())
-      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .filter((p) => state.master || !state.removed.has(p.id))
+      .sort((a, b) => {
+        const ar = state.removed.has(a.id) ? 1 : 0;
+        const br = state.removed.has(b.id) ? 1 : 0;
+        if (ar !== br) return ar - br;      // removed people sink to the bottom
+        return (a.name || '').localeCompare(b.name || '');
+      })
       .forEach((p) => rows.push(rowFor(p, me)));
 
     $('peopleCount').textContent = rows.length + (rows.length === 1 ? ' person' : ' people') +
@@ -1214,7 +1235,7 @@
       return '';
     }
     const eta = p.isMe ? state.myEta : p.eta;
-    if (!eta) return '<span class="peta">—</span>';
+    if (!eta) return '';      // no time yet is not worth a dash on every row
     const arrive = eta.ts + eta.dur * 1000;
     return '<span class="peta"><b>' + esc(fmtClock(arrive)) + '</b>' +
            esc(fmtDist(eta.dist)) + '</span>';
@@ -1272,14 +1293,22 @@
     // "You you": never let the tag repeat the name it sits beside.
     if (p.isMe && meta && String(p.name).toLowerCase() === meta.toLowerCase()) meta = '';
     if (p.arrived && !p.isMe) { tag = 'arrived'; meta = ''; }
+    // Only the phone with the pin sees the control, and never on itself.
+    let act = '';
+    if (state.master && !p.isMe) {
+      act = state.removed.has(p.id)
+        ? '<button class="row-act add" data-add="' + esc(p.id) + '" aria-label="Add back">+</button>'
+        : '<button class="row-act" data-remove="' + esc(p.id) + '" aria-label="Remove">&#215;</button>';
+    }
     return '<li data-id="' + esc(p.id) + '" class="' +
       (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') +
-      (kind === 'paused' ? 'paused ' : '') + '">' +
+      (kind === 'paused' ? 'paused ' : '') +
+      (state.removed.has(p.id) ? 'removed ' : '') + '">' +
       '<span class="pdot" style="background:' + p.color + '"></span>' +
       '<span class="pname">' + esc(p.name) +
         (meta ? '<span class="tag">' + esc(meta) + '</span>' : '') + '</span>' +
       (tag ? '<span class="ptag">' + esc(tag) + '</span>' : '') +
-      etaCell(p) +
+      etaCell(p) + act +
     '</li>';
   }
 
@@ -1337,6 +1366,46 @@
   /* Opening the app should put you on the map with no questions. A name is the one thing
      the others need, so if none has been set we take the device's own — an iPhone shows as
      "iPhone 4a", a laptop as "Mac 3f" — and it can be changed from the sheet. */
+  // FNV-1a over a salted string: a hash, so the pin itself is nowhere in the source.
+  function pinHash(text) {
+    let h = 0x811c9dc5;
+    const s = 'convoy:' + String(text || '');
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;   // 32-bit multiply: * would lose precision
+    }
+    return h >>> 0;
+  }
+
+  /* Only the phone that has the pin can take someone off the group. The removal is
+     broadcast and remembered by every phone, so a removed person is ignored from then on
+     — but they can still receive, because there is no server to stop them. */
+  function setRemoved(ids) {
+    state.removed = new Set(ids);
+    saveRoom({ removed: Array.from(state.removed) });
+  }
+
+  function removePerson(id) {
+    if (!state.master || !id || (state.me && id === state.me.id)) return;
+    const p = state.peers.get(id);
+    const name = p ? p.name : 'Someone';
+    state.removed.add(id);
+    setRemoved(Array.from(state.removed));
+    send({ t: 'removed', ids: Array.from(state.removed) });
+    banner(name + ' removed from the group');
+    renderPeople();
+  }
+
+  function addPerson(id) {
+    if (!state.master || !id) return;
+    state.removed.delete(id);
+    setRemoved(Array.from(state.removed));
+    send({ t: 'removed', ids: Array.from(state.removed) });
+    const p = state.peers.get(id);
+    banner((p ? p.name : 'They') + ' added back');
+    renderPeople();
+  }
+
   function deviceName() {
     const ua = String((typeof navigator !== 'undefined' && navigator.userAgent) || '');
     if (/iPhone/i.test(ua)) return 'iPhone';
@@ -1487,6 +1556,7 @@
     state.seen = new Set();
     state.away = false;
     state.focused = '';
+    try { state.master = localStorage.getItem('convoy.master') === '1'; } catch (e) { /* ignore */ }
 
     // A fresh session: anyone on the map belongs to the one before it.
     state.peers.forEach((p) => { if (p._marker) map.removeLayer(p._marker); });
@@ -1504,6 +1574,7 @@
     // vanishes just because they were quiet.
     const rec = loadRoom(room);
     state.roomExpires = rec ? rec.expiresAt : 0;
+    state.removed = new Set((rec && Array.isArray(rec.removed)) ? rec.removed.map(String) : []);
     // A name the room was given last time, and nobody has arrived yet.
     state.arrived = false;
     if (rec && rec.members) {
@@ -1687,9 +1758,44 @@
     // The one switch in the sheet.
     $('btnPause').addEventListener('click', () => setPaused(!state.paused));
 
-    // Tapping someone brings the map to them.
+    // The gear: a version, and a field that does not say what it is for.
+    $('btnSettings').addEventListener('click', () => {
+      $('settingsVersion').textContent = 'Version ' + CFG.build;
+      $('inPin').value = '';
+      const note = $('pinNote');
+      if (state.master) {
+        note.textContent = 'This phone can add and remove people.';
+        note.classList.remove('hidden');
+      } else {
+        note.classList.add('hidden');
+      }
+      $('settingsCard').classList.remove('hidden');
+    });
+    $('btnSettingsClose').addEventListener('click',
+      () => $('settingsCard').classList.add('hidden'));
+    $('inPin').addEventListener('change', () => {
+      const pin = $('inPin').value;
+      if (!pin) return;
+      $('inPin').value = '';
+      if (pinHash(pin) !== CFG.masterHash) { banner('Not recognised'); return; }
+      state.master = true;
+      try { localStorage.setItem('convoy.master', '1'); } catch (e) { /* ignore */ }
+      const note = $('pinNote');
+      note.textContent = 'This phone can add and remove people.';
+      note.classList.remove('hidden');
+      banner('Unlocked on this phone');
+      renderPeople();
+    });
+
+    // Tapping someone brings the map to them; the master's crosses and pluses come first.
     $('people').addEventListener('click', (e) => {
-      const li = e.target && e.target.closest ? e.target.closest('li[data-id]') : null;
+      const node = e.target;
+      const near = node && node.closest ? node : null;
+      const rm = near ? near.closest('[data-remove]') : null;
+      if (rm) { removePerson(rm.getAttribute('data-remove')); return; }
+      const ad = near ? near.closest('[data-add]') : null;
+      if (ad) { addPerson(ad.getAttribute('data-add')); return; }
+      const li = near ? near.closest('li[data-id]') : null;
       if (li) focusPeer(li.getAttribute('data-id'));
     });
 
@@ -1802,7 +1908,7 @@
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
-                  defaultName, deviceName, setName,
+                  defaultName, deviceName, setName, pinHash, removePerson, addPerson,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,

@@ -92,6 +92,27 @@ The trade is worth stating plainly: keeping two separate groups apart requires a
 so with none there is only ever one room. That suits a group who all know each other, which is
 what this is for. An invite is now just the app's own address.
 
+## The pin: who can remove people
+
+Everyone who opens the app is in the group. The one thing only the master phone can do is
+take someone off it.
+
+- **The gear** sits in the bottom-left corner, above the zoom buttons. It shows the version
+  and an empty field that does not say what it is for.
+- **Typing the pin in that field** unlocks the master on that phone, and it stays unlocked —
+  it is remembered, so it is asked once.
+- **A master sees a cross on every other person.** Tapping it removes them: they disappear
+  from everyone's list, their messages are ignored from then on, and the removal is broadcast
+  and remembered, so it survives a restart. Tapping the cross on a removed person puts them
+  back. There is no other difference between a master phone and any other.
+
+Two honest limits. **The pin is obfuscated, not secure**: what the code holds is a hash of it,
+so the digits do not appear in the source, but a four-digit pin can be brute-forced instantly
+and anyone who reads the code can find a way round it. It keeps honest people honest. And
+**a removed person can still watch**: there is no server to cut them off, so removal means
+every honest phone ignores them — it cannot stop them receiving. Both are consequences of
+there being no server, which is the same reason the app is free and needs no sign-up.
+
 ## The screen stays awake
 
 While Convoy is open — in a browser tab or as the installed app — it holds a screen wake
@@ -288,7 +309,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 579 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 597 checks:
 
 ```bash
 npm install

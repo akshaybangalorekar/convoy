@@ -104,6 +104,12 @@ try {
         !/id="btnHere"/.test(html));
   check('sharing is set for battery life, with no switch for it',
         /publishMs: 30000/.test(app) && !/saverPublishMs/.test(app));
+  check('the master pin is not written in the source as digits',
+        !/1981/.test(app) && /masterHash: 0x[0-9a-f]+/.test(app));
+  check('and it is compared as a hash, not as text',
+        /function pinHash/.test(app) && /pinHash\(pin\) !== CFG\.masterHash/.test(app));
+  check('the settings field is unlabelled, so it does not advertise itself',
+        /id="inPin"/.test(html) && !/placeholder[^>]*pin/i.test(html));
   check('there is no room code anywhere in the bar',
         !/roomChip/.test(html) && /bar-name/.test(html));
   check('and there is no room-name field at all, since a name only caused confusion',
@@ -221,7 +227,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v27/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v28/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

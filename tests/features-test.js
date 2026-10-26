@@ -295,6 +295,120 @@ async function testItIsFineWithNoWakeLockApi() {
   check('and nothing was asked for', api.wake.requested === 0, String(api.wake.requested));
 }
 
+/* ---------- The gear, and the pin that unlocks it ---------- */
+function unlock(api) {
+  const d = api.document;
+  d.getElementById('btnSettings').click();
+  const pin = d.getElementById('inPin');
+  pin.value = '1981';
+  pin.dispatchEvent(new api.window.Event('change', { bubbles: true }));
+  return sleep(20);
+}
+
+async function testTheGearIsJustAVersionAndAField() {
+  const api = boot();
+  const d = api.document;
+  check('there is a settings button in the corner', !!d.getElementById('btnSettings'));
+
+  d.getElementById('btnSettings').click();
+  await sleep(10);
+  check('it opens', !d.getElementById('settingsCard').classList.contains('hidden'));
+  check('and shows the version',
+        /Version v\d+/.test(d.getElementById('settingsVersion').textContent),
+        d.getElementById('settingsVersion').textContent);
+
+  const pin = d.getElementById('inPin');
+  check('with an empty field that says nothing about what it is for',
+        pin.value === '' && !pin.getAttribute('placeholder'),
+        pin.getAttribute('placeholder') || '(no placeholder)');
+  check('and no visible word for it on the card',
+        !/pin/i.test(d.getElementById('settingsCard').textContent),
+        d.getElementById('settingsCard').textContent.slice(0, 120));
+}
+
+async function testAWrongPinDoesNothing() {
+  const api = boot();
+  const d = api.document;
+  d.getElementById('btnSettings').click();
+  const pin = d.getElementById('inPin');
+  pin.value = '1982';
+  pin.dispatchEvent(new api.window.Event('change', { bubbles: true }));
+  await sleep(20);
+
+  check('a wrong pin unlocks nothing', api.window.Convoy.state.master === false);
+  check('and the field is cleared again', pin.value === '');
+  check('and no crosses appear anywhere',
+        !/data-remove/.test(d.getElementById('people').innerHTML));
+}
+
+async function testTheRightPinUnlocksOnlyThisPhone() {
+  const api = boot();
+  const d = api.document;
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));
+  await sleep(20);
+  check('an ordinary phone has no control on anyone',
+        !/data-remove/.test(d.getElementById('people').innerHTML));
+
+  await unlock(api);
+  check('the pin unlocks this phone', api.window.Convoy.state.master === true);
+  check('and is remembered, so it is asked once',
+        api.window.localStorage.getItem('convoy.master') === '1');
+  check('the crosses appear on other people',
+        /data-remove="p1"/.test(d.getElementById('people').innerHTML),
+        d.getElementById('people').innerHTML.slice(0, 160));
+  check('but never on yourself',
+        (d.getElementById('people').innerHTML.match(/data-remove/g) || []).length === 1);
+}
+
+async function testTheMasterCanRemoveAndAddBack() {
+  const api = boot();
+  const d = api.document;
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));
+  api.recv(pos('p2', 'Rahul', -33.88, 151.22));
+  await sleep(20);
+  await unlock(api);
+
+  d.querySelector('[data-remove="p1"]').click();
+  await sleep(20);
+  check('the master still sees them, so they can be put back',
+        /Priya/.test(d.getElementById('people').textContent),
+        d.getElementById('people').textContent);
+  check('marked as removed',
+        d.querySelector('li[data-id="p1"]').classList.contains('removed'));
+  check('and the group is told',
+        ((api.sent('removed') || {}).ids || []).indexOf('p1') >= 0,
+        JSON.stringify(api.sent('removed')));
+
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));      // they keep sending
+  await sleep(20);
+  check('their messages are ignored from then on',
+        api.window.Convoy.state.removed.has('p1'));
+
+  d.querySelector('[data-add="p1"]').click();
+  await sleep(20);
+  check('and the master can put them back',
+        !api.window.Convoy.state.removed.has('p1'),
+        String(api.window.Convoy.state.removed.size));
+}
+
+async function testEveryoneElseStopsSeeingThem() {
+  const api = boot();
+  const d = api.document;
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));
+  await sleep(20);
+  api.recv({ t: 'removed', id: 'master', ids: ['p1'] });
+  await sleep(20);
+
+  check('a removed person disappears for everyone else',
+        !/Priya/.test(d.getElementById('people').textContent),
+        d.getElementById('people').textContent);
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));
+  await sleep(20);
+  check('and cannot put themselves back',
+        !/Priya/.test(d.getElementById('people').textContent),
+        d.getElementById('people').textContent);
+}
+
 /* ---------- Sound ---------- */
 async function testTheNotificationSound() {
   const api = boot();
@@ -419,6 +533,11 @@ async function testBehindAndAhead() {
     await testTheScreenLockIsTakenAgainOnReturn();
     await testATouchRetriesARefusedScreenLock();
     await testItIsFineWithNoWakeLockApi();
+    await testTheGearIsJustAVersionAndAField();
+    await testAWrongPinDoesNothing();
+    await testTheRightPinUnlocksOnlyThisPhone();
+    await testTheMasterCanRemoveAndAddBack();
+    await testEveryoneElseStopsSeeingThem();
     await testTheNotificationSound();
     await testALongPressSetsTheDestination();
     await testALongPressWorksWithNoLookup();

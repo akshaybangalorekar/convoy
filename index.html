@@ -46,6 +46,13 @@
 </header>
 
 <button id="btnRecenter" class="recenter" aria-label="Show everyone"></button>
+<button id="btnSettings" class="gear" aria-label="Settings">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.7" />
+    <path d="M12 2.2v2.6M12 19.2v2.6M2.2 12h2.6M19.2 12h2.6M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"
+          stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none" />
+  </svg>
+</button>
 
 <!-- Everyone, and when they arrive -->
 <section id="sheet" class="card">
@@ -95,6 +102,17 @@
       <button id="btnSearchClose" class="pill">Cancel</button>
     </div>
     <ul id="results" class="results"></ul>
+  </div>
+</div>
+
+<!-- The gear: a version, and a field that says nothing about what it is for. -->
+<div id="settingsCard" class="overlay hidden">
+  <div class="card join-card">
+    <h1>Settings</h1>
+    <p class="sub" id="settingsVersion">Version</p>
+    <input id="inPin" maxlength="12" inputmode="numeric" autocomplete="off" />
+    <p id="pinNote" class="hint-line hidden"></p>
+    <button id="btnSettingsClose" class="primary">Done</button>
   </div>
 </div>
 
