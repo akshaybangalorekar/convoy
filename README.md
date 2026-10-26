@@ -99,15 +99,17 @@ destination the room is told, *"Priya has arrived"*, and their arrival time is r
 "arrived" — nobody has to press anything.
 
 **Everything lives at the bottom of the screen**, so the map gets the rest: the people, then a
-row of four equal buttons — **Invite**, **Sharing**, **Name** and **Help** — each an icon
+row of four equal buttons — **Invite**, **Sharing**, **Location** and **Help** — each an icon
 over one short word so they all match whatever the state. The connection state sits in the
 sheet's header, beside the count. The top of the screen holds only the destination.
 
 - **Sharing** is the switch: an open eye while you are on the map, a crossed-out one and the
   word **Hidden** when you are not. It says what state you are in rather than what the button
   does, which is what lets it be the same size both ways.
-- **Name** jumps to your own row in the list and opens it for editing. Your row is the only
-  editable one — it carries a dashed underline — and nobody else's can be changed.
+- **Location** puts the map back on your own car, at a zoom worked out from how far the
+  furthest car is, so the others stay on screen. With no fix yet it asks for one instead of
+  jumping to nowhere. Your name is edited by tapping it in the list — your row is the only
+  editable one, and it carries a dashed underline.
 
 **There is no code and nothing to set up.** Open the app and you are in the same room as
 everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
@@ -370,7 +372,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 639 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 644 checks:
 
 ```bash
 npm install

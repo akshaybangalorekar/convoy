@@ -22,6 +22,7 @@ function layer() {
   o.on = (ev, fn) => { o._handlers[ev] = fn; return o; };
   o.fire = (ev) => { if (o._handlers[ev]) o._handlers[ev](); };
   o.getZoom = () => 13;
+  o.getBoundsZoom = () => 15;
   o.getPane = () => ({ style: {} });
   o.getContainer = () => ({ addEventListener: () => {} });
   o.getElement = () => null;

@@ -206,6 +206,40 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- Centring on yourself ---------- */
+async function testCentreOnMeKeepsEveryoneInFrame() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-37.90, 145.05);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -37.95, 145.10));      // about 6 km away
+  await sleep(20);
+
+  const before = api.calls.setView.length;
+  api.document.getElementById('btnCentre').click();
+  await sleep(20);
+
+  const last = api.calls.setView[api.calls.setView.length - 1];
+  check('the map is put on your own car', api.calls.setView.length > before &&
+        last && last[0][0] === -37.90 && last[0][1] === 145.05,
+        JSON.stringify(last && last[0]));
+  check('at a zoom that still holds the others', typeof last[1] === 'number' &&
+        last[1] > 8 && last[1] <= 18, String(last && last[1]));
+  check('and it stops chasing everyone afterwards',
+        api.window.Convoy.state.autoFit === false);
+}
+
+async function testCentreOnMeWithNoPositionJustAsksForOne() {
+  const api = boot();
+  await sleep(20);
+  const before = api.calls.setView.length;
+  api.document.getElementById('btnCentre').click();
+  await sleep(20);
+  check('with no fix yet it asks for one instead of jumping to nowhere',
+        api.calls.setView.length === before, String(api.calls.setView.length));
+  check('and the location watch is running', api.geo.started > 0, String(api.geo.started));
+}
+
 /* ---------- Names on the map ---------- */
 // Every name at once collides into one unreadable stack when cars are close, so the map
 // names your own car, the nearest one, and whichever car you have tapped.
@@ -268,6 +302,8 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testCentreOnMeKeepsEveryoneInFrame();
+    await testCentreOnMeWithNoPositionJustAsksForOne();
     await testOnlySomeCarsCarryAName();
     await testTappingACarNamesIt();
   } catch (e) { crash(e); }

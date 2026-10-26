@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v35',             // must match VERSION in sw.js; a test holds them together
+    build: 'v36',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1470,6 +1470,26 @@
       state.paused ? 'You are hidden — tap to share again' : 'Hide my location');
   }
 
+  /* Put yourself in the middle without losing sight of anyone: the zoom comes from how far
+     the furthest car is, so the others stay on screen as far as they can. */
+  function centreOnMe() {
+    const me = state.me;
+    if (!me) return;
+    if (me.lat == null) { startWatching(); return; }      // nothing to centre on yet
+    state.autoFit = false;
+    const at = [me.lat, me.lng];
+    const others = allPeople().filter((p) => p !== me);
+    if (!others.length) { map.setView(at, 16, { animate: true }); return; }
+
+    const far = Math.max(50, others.reduce((m, p) => Math.max(m, haversine(me, p)), 0));
+    const dLat = far / 111320;
+    const dLng = dLat / Math.max(0.2, Math.cos((me.lat * Math.PI) / 180));
+    const bounds = L.latLngBounds([me.lat - dLat, me.lng - dLng],
+                                  [me.lat + dLat, me.lng + dLng]);
+    const zoom = map.getBoundsZoom ? map.getBoundsZoom(bounds) : 15;
+    map.setView(at, Math.min(zoom, 18), { animate: true });
+  }
+
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
   function focusPeer(id) {
     const p = state.peers.get(id);
@@ -1915,6 +1935,8 @@
       renderPeople();
     });
 
+    $('btnCentre').addEventListener('click', centreOnMe);
+
     // Tapping someone brings the map to them; the master's crosses and pluses come first.
     $('people').addEventListener('change', (e) => {
       const inp = e.target;
@@ -2045,6 +2067,7 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson, addPerson,
+                  centreOnMe,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,

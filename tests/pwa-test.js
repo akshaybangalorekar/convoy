@@ -104,7 +104,7 @@ try {
         !/id="btnHere"/.test(html));
   check('and four equal buttons, each an icon over one short word',
         /class="tb"/.test(html) &&
-        ['btnInvite', 'btnPause', 'btnEditName', 'btnSettings']
+        ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings']
           .every((id) => new RegExp('id="' + id + '" class="tb"').test(html)));
   check('the eye closes when you are hidden',
         /class="ic-off"/.test(html) && /\.tb\.on \.ic-off \{ display: block/.test(css));
@@ -260,7 +260,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v35/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v36/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 
