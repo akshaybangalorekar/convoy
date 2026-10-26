@@ -102,6 +102,10 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .conn-list li.ok em { color: #34c759; }
 .conn-list li.bad .rdot { background: var(--danger); }
 .conn-list li.bad em { color: var(--danger); }
+.build-line {
+  margin: 2px 0 16px; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---------- Top bar ---------- */
 #topbar {

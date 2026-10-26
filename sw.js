@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = 'convoy-v21';
+const VERSION = 'convoy-v22';
 const TILE_CACHE = 'convoy-tiles-v1';
 const MAX_TILES = 400;          // ~6 MB, roughly one afternoon of driving
 
@@ -99,7 +99,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cache = await caches.open(VERSION);
       try {
-        const res = await fetch(req);
+        // no-store, or "network-first" is a lie: GitHub Pages sets a ten-minute HTTP
+        // cache, and going through it is how a phone ends up running last week's code
+        // while a fresh laptop runs today's.
+        const res = await fetch(req, { cache: 'no-store' });
         if (res && res.ok) await cache.put(req, res.clone());
         return res;
       } catch (e) {

@@ -135,6 +135,17 @@ try {
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
   check('a relay on 443 is offered, since mobile networks block the usual ports',
         /mqtt\.eclipseprojects\.io:443/.test(app));
+  check('the shell fetch bypasses the HTTP cache, or updates never land',
+        /fetch\(req, \{ cache: 'no-store' \}\)/.test(sw));
+  check('the app asks for a new service worker on open and on return',
+        /function checkForUpdate/.test(app) && /checkForUpdate\(\);/.test(app));
+  check('and the build it is running is shown, so a stale copy is visible',
+        /id="connBuild"/.test(html) && /build: 'v/.test(app));
+  check('the build number in the app matches the shell version', (() => {
+    const a = /build: '(v\d+)'/.exec(app);
+    const b = /convoy-(v\d+)'/.exec(sw);
+    return !!a && !!b && a[1] === b[1];
+  })(), 'app ' + (/build: '(v\d+)'/.exec(app) || [])[1] + ' / sw ' + (/convoy-(v\d+)'/.exec(sw) || [])[1]);
   check('and the connection state can be tapped to check the relays',
         /id="connCard"/.test(html) && /function probeRelay/.test(app));
   check('and a relay that cannot be reached says so instead of pretending',
@@ -205,7 +216,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v21/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v22/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

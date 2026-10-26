@@ -33,6 +33,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
+    build: 'v22',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -977,6 +978,9 @@
     list.innerHTML = CFG.brokers.map((b) =>
       '<li><span class="rdot"></span>' + esc(b.name) + '<em>checking…</em></li>').join('');
 
+    const buildLine = $('connBuild');
+    if (buildLine) buildLine.textContent = 'Build ' + CFG.build + ' · ' + CFG.brokers.length + ' relays';
+
     const results = await Promise.all(CFG.brokers.map((b) => probeRelay(b.url, 6000)));
     const rows = list.querySelectorAll('li');
     results.forEach((r, i) => {
@@ -998,6 +1002,19 @@
     const el = $('connState');
     el.className = 'conn' + (kind === 'live' ? ' live' : '');
     el.textContent = text;
+  }
+
+  /* GitHub Pages serves its files with a ten-minute cache, so a phone can sit on old code
+     for a while without anything looking wrong. Ask for a new service worker explicitly
+     when the app opens and whenever it comes back to the front. */
+  function checkForUpdate() {
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = navigator.serviceWorker.getRegistration;
+      if (!reg) return;
+      reg.call(navigator.serviceWorker).then((r) => { if (r && r.update) r.update(); })
+        .catch(() => {});
+    } catch (e) { /* ignore */ }
   }
 
   let connFailures = 0;
@@ -1726,6 +1743,7 @@
     });
     $('btnClearDest').addEventListener('click', clearDest);
     $('connState').addEventListener('click', showConnection);
+    checkForUpdate();
     $('btnConnClose').addEventListener('click', () => $('connCard').classList.add('hidden'));
     $('destRow').addEventListener('click', () => {
       if (window.ConvoyRoute) window.ConvoyRoute.openSearch();
@@ -1746,6 +1764,7 @@
       // The screen lock is dropped while we are hidden, and the location watch is often
       // lost too. Both are taken again every time we come back.
       askWakeLock();
+      checkForUpdate();
       startWatching();
       if (!haveMyPosition()) setTimeout(nudgeForLocation, 2500);
       if (state.away) {
@@ -1836,7 +1855,7 @@
                   setRoomName, renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,
-                  probeRelay, showConnection,
+                  probeRelay, showConnection, checkForUpdate,
                   startWatching, stopWatching, haveMyPosition, nudgeForLocation,
                   askWakeLock },
   };
