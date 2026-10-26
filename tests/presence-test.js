@@ -197,6 +197,56 @@ async function testTheRelayListIncludesPort443() {
   check('and the others are still there as fallbacks', urls.length >= 4, JSON.stringify(urls));
 }
 
+/* ---------- Someone whose location is switched off ---------- */
+async function testSomeoneWithNoLocationStillAppears() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-37.90, 145.05);
+  await sleep(20);
+
+  // A laptop with location switched off says hello and never sends a position.
+  api.recv({ t: 'hello', id: 'laptop', name: 'Laptop', ts: Date.now() });
+  await sleep(30);
+
+  check('someone who only says hello is on the list', /Laptop/.test(list(api)), list(api));
+  check('and is named as not sharing their location',
+        /not sharing their location/.test(list(api)), list(api));
+  check('they were announced too', /Laptop joined/.test(notes(api)), notes(api));
+  check('and they are not called out of contact', !/out of contact/.test(list(api)), list(api));
+
+  const p = api.window.Convoy.state.peers.get('laptop');
+  check('they are a real person in the room, just without a position',
+        !!p && p.lat === null, p ? String(p.lat) : 'no peer');
+
+  // Quiet for a while is different from never having a position.
+  api.window.Convoy.CFG.staleMs = 10;
+  await sleep(40);
+  api.window.Convoy._internals.renderPeople();
+  check('once they go quiet it does say out of contact',
+        /out of contact/.test(list(api)), list(api));
+
+  api.window.Convoy.CFG.staleMs = 90000;      // back to normal before the hello
+  api.recv({ t: 'hello', id: 'laptop', name: 'Laptop', ts: Date.now() });
+  await sleep(20);
+  api.window.Convoy._internals.renderPeople();
+  check('and a hello brings them back to "not sharing"',
+        /not sharing their location/.test(list(api)), list(api));
+}
+
+async function testAPhoneWithNoLocationStillSaysHello() {
+  const api = boot();
+  api.window.Convoy.CFG.publishMs = 20;
+  api.join('Akshay', 'goa-trip');            // no fix is ever delivered
+  await sleep(30);
+  const before = api.sentAll('hello').length;
+  await sleep(90);
+  const after = api.sentAll('hello').length;
+
+  check('a phone with no location keeps saying hello', after > before, before + ' -> ' + after);
+  check('and never publishes a position it does not have',
+        api.sentAll('pos').length === 0, String(api.sentAll('pos').length));
+}
+
 /* ---------- A connection that keeps dropping ---------- */
 async function testTheClientIdIsUniquePerAttempt() {
   const api = boot();
@@ -445,6 +495,8 @@ async function testNewestDestinationWins() {
     await testTheRelayCheckSaysWhichRelayAnswers();
     await testTheRelayCheckNamesABlockedNetwork();
     await testAMissingLibraryIsNotABlockedNetwork();
+    await testSomeoneWithNoLocationStillAppears();
+    await testAPhoneWithNoLocationStillSaysHello();
     await testTheClientIdIsUniquePerAttempt();
     await testAFlappingRelayIsAbandoned();
     await testARelayThatHeldIsKept();

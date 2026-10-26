@@ -288,7 +288,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 591 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 600 checks:
 
 ```bash
 npm install
@@ -337,6 +337,11 @@ npm test
   reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
+- **A phone whose location is switched off still appears on everyone's list.** Until this,
+  a person was only added to the list when they sent a *position*, so a laptop with location
+  off got a "joined" notification and was then invisible — it could see everyone and nobody
+  could see it. Anyone we hear from at all goes on the list now, reads "not sharing their
+  location", and says hello every thirty seconds so it does not age into "out of contact".
 - **A relay that keeps dropping is abandoned after two quick drops.** A connection that held
   for a minute and then ended is not a flap, so it is kept. The keepalive is 30 seconds
   because mobile networks drop idle sockets well before MQTT's default minute, and each

@@ -37,7 +37,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v24',             // must match VERSION in sw.js; a test holds them together
+    build: 'v25',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -298,9 +298,11 @@
     if (p.isMe) return 'me';
     // They told us they are not sharing, so say that rather than guessing from silence.
     if (p.paused) return 'paused';
-    // Someone brought back from the room's roster has no position yet, so we have not
-    // actually heard from them this session — out of contact until they say something.
-    if (p.lat == null) return 'lost';
+    if (p.lat == null) {
+      // Heard from them, but they have no position to give: a phone with location
+      // switched off. That is not being out of contact, and saying so would be wrong.
+      return (Date.now() - (p.lastSeen || 0) > CFG.staleMs) ? 'lost' : 'noloc';
+    }
     if (p.away) return (Date.now() - (p.awayAt || 0) > CFG.awayMs) ? 'lost' : 'away';
     return isStale(p) ? 'lost' : 'live';
   }
@@ -686,8 +688,15 @@
   // even if we have not moved since the last time we sent it.
   function publishNow(force) {
     const me = state.me;
-    if (!me || me.lat == null) return;
+    if (!me) return;
     if (state.paused) return;          // deliberately not sharing
+    if (me.lat == null) {
+      // Nothing to place on the map — but a phone whose location is switched off is still
+      // in the room, and staying quiet would age it into "out of contact" while it sits
+      // there. sendState() has already said hello, so only the periodic tick does this.
+      if (!force) send({ t: 'hello' });
+      return;
+    }
     const last = state.lastSentFix;
     if (!force && last && haversine(last, me) < CFG.minMoveM &&
         Date.now() - state.lastPublish < CFG.publishMs) return;
@@ -714,14 +723,43 @@
     if (state.arrived) send({ t: 'arrived', on: true });
   }
 
+  /* A phone whose location is switched off has no position to give, but it is still in the
+     room — it says hello, it can read the destination, it can set one. Positions are only
+     one thing a person can tell us, so anyone we hear from at all goes on the list. Until
+     this, a laptop with location off got a "joined" notification and then never appeared. */
+  function ensurePeer(msg) {
+    let p = state.peers.get(msg.id);
+    if (!p) {
+      p = {
+        id: msg.id, name: (msg.name || 'Someone').slice(0, 24),
+        color: colorFor(msg.id), lat: null, lng: null,
+        spd: null, hdg: null, acc: null, ts: Date.now(),
+        eta: null, isMe: false, demo: false,
+        away: false, awayAt: 0, presence: 'live',
+        lastSeen: Date.now(), paused: false, arrived: false,
+      };
+      state.peers.set(msg.id, p);
+      refreshColors();
+      // A first word from someone is also a join, whether or not they ever send a fix.
+      announceJoin(msg.id, p.name);
+      rememberMember(msg.id, p.name, p.ts);
+      p.savedAt = Date.now();
+      renderPeople();
+    }
+    if (msg.name) p.name = String(msg.name).slice(0, 24);
+    p.lastSeen = Date.now();
+    return p;
+  }
+
   function onMessage(topic, payload) {
     let msg;
     try { msg = JSON.parse(payload.toString()); } catch (e) { return; }
     if (!msg || !msg.id || (state.me && msg.id === state.me.id)) return;
 
-    // Any word at all from someone is proof they were still there just now.
-    const who = state.peers.get(msg.id);
-    if (who) who.lastSeen = Date.now();
+    // Any word at all from someone is proof they were still there just now — and for
+    // anyone new, it is what puts them on the list. Leaving is the one exception: we do
+    // not want to add someone just to remove them.
+    if (msg.t !== 'bye') ensurePeer(msg);
 
     switch (msg.t) {
       case 'hello':      onHello(msg); return;
@@ -786,32 +824,14 @@
 
   function onPos(msg) {
     if (typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
-    let p = state.peers.get(msg.id);
-    if (!p) {
-      p = {
-        id: msg.id, name: (msg.name || 'Someone').slice(0, 24),
-        color: colorFor(msg.id), lat: msg.lat, lng: msg.lng,
-        spd: msg.spd, hdg: msg.hdg, acc: msg.acc, ts: msg.ts || Date.now(),
-        eta: null, isMe: false, demo: false,
-        away: false, awayAt: 0, presence: 'live',
-        lastSeen: Date.now(), paused: false, arrived: false,
-      };
-      state.peers.set(msg.id, p);
-      refreshColors();
-      // A position from someone new is also a join, for clients that skip hello.
-      announceJoin(msg.id, p.name);
-      rememberMember(msg.id, p.name, p.ts);
+    const p = state.peers.get(msg.id) || ensurePeer(msg);
+    p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
+    p.acc = msg.acc; p.ts = msg.ts || Date.now();
+    p.away = false; p.awayAt = 0;
+    // Keep the roster's last-seen roughly current without writing on every fix.
+    if (!p.savedAt || Date.now() - p.savedAt > 300000) {
       p.savedAt = Date.now();
-    } else {
-      p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
-      p.acc = msg.acc; p.ts = msg.ts || Date.now();
-      p.away = false; p.awayAt = 0;
-      if (msg.name) p.name = msg.name.slice(0, 24);
-      // Keep the roster's last-seen roughly current without writing on every fix.
-      if (!p.savedAt || Date.now() - p.savedAt > 300000) {
-        p.savedAt = Date.now();
-        rememberMember(msg.id, p.name, p.ts);
-      }
+      rememberMember(msg.id, p.name, p.ts);
     }
     updateMarker(p);
     renderPeople();
@@ -1244,6 +1264,8 @@
     } else if (kind === 'paused') {
       meta = 'location hidden';
       tag = 'hidden';
+    } else if (kind === 'noloc') {
+      meta = 'not sharing their location';
     } else if (p.lat == null) {
       const seen = lastSeenOf(p);
       meta = seen ? 'out of contact · last seen ' + fmtAgo(seen) : 'out of contact';
