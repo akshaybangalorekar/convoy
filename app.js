@@ -23,7 +23,12 @@
       { name: 'EMQX', url: 'wss://broker.emqx.io:8084/mqtt' },
       { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
+      // On 443, which is the one port a mobile network will always let through. The
+      // others above sit on 8081/8084/8884, and carriers routinely block those — which
+      // is why a laptop on Wi-Fi goes live while a phone on mobile data never connects.
+      { name: 'Eclipse', url: 'wss://mqtt.eclipseprojects.io:443/mqtt' },
     ],
+    retryMs: 1200,            // pause before trying the next relay
     // Chosen for battery life, which matters more on a long drive than a smooth trail of
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
@@ -946,10 +951,31 @@
     el.textContent = text;
   }
 
+  let connFailures = 0;
+  let toldAboutRelay = false;
+
+  /* A phone on mobile data very often cannot reach any of these relays: they listen on
+     ports 8081, 8084 and 8884, and carriers block everything but 80 and 443. Sitting on
+     "connecting" for ever tells nobody anything, so after a few failures the app says
+     what it thinks is happening. */
+  function noteRelayFailure() {
+    connFailures++;
+    if (connFailures < 3) return;
+    setConn('', 'relay unreachable');
+    if (toldAboutRelay) return;
+    toldAboutRelay = true;
+    banner('Cannot reach the relay from this network — mobile data often blocks it. Try Wi-Fi.');
+  }
+
+  const connLabel = (whileTrying) =>
+    (connFailures >= 3 ? 'relay unreachable' : whileTrying);
+
   function connect() {
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
-    setConn('', 'connecting');
+    setConn('', connLabel('connecting'));
     let settled = false;
+    let counted = false;
+    const fail = () => { if (counted) return; counted = true; noteRelayFailure(); };
 
     try {
       client = mqtt.connect(b.url, { clientId: state.me.id, clean: true, reconnectPeriod: 0 });
@@ -960,25 +986,27 @@
 
     client.on('connect', () => {
       settled = true;
+      connFailures = 0;
+      toldAboutRelay = false;
       setConn('live', 'live');
       client.subscribe(state.topic, { qos: 0 }, () => {});
       sendState();          // push everything we know, so nobody has to hold it for us
       refreshRoute();
     });
     client.on('message', onMessage);
-    client.on('error', () => { if (!settled) retry(); });
+    client.on('error', () => { if (!settled) { fail(); retry(); } });
     client.on('close', () => {
       setConn('', 'offline');
-      if (!settled) retry();
+      if (!settled) { fail(); retry(); }
       else scheduleReconnect();
     });
   }
 
   function retry() {
     brokerIdx++;
-    setConn('', 'trying another relay');
+    setConn('', connLabel('trying another relay'));
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, 1200);
+    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, CFG.retryMs);
   }
 
   function scheduleReconnect() {
@@ -1756,7 +1784,7 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   setRoomName, renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
-                  renderMarkers, labelledIds, nearestPeer, nearText,
+                  renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,
                   startWatching, stopWatching, haveMyPosition, nudgeForLocation,
                   askWakeLock },
   };

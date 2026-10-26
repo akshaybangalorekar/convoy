@@ -226,7 +226,7 @@ makes a server unnecessary here rather than merely absent.
 | Piece | What it does |
 |---|---|
 | **Leaflet + OpenStreetMap** | Draws the map and the cars. Free, no API key. |
-| **MQTT over WebSocket** | One topic per room carries positions, the destination and arrival times. |
+| **MQTT over WebSocket** | One topic per room carries positions, the destination and arrival times. Four public relays, tried in turn — and one of them listens on port 443, because mobile networks routinely block the 8081/8084/8884 the others use. That is why a laptop on Wi-Fi can go live while a phone on mobile data never connects. |
 | **Photon / Nominatim** | Place search. Photon is asked first, always — it is quick and has no rate limit. A street address (a query starting with a number) that comes back without a postcode is then looked up through Nominatim, which keeps the suburb and postcode that Photon often drops; the quick answer shows first and the fuller one swaps in when it lands. Both free, no key. Results are reassembled from the parts each service returns: number and street, then the suburb, then state and postcode, so `92 mimosa road` reads `92 Mimosa Road, Carnegie, Victoria 3163`. Whatever is more local than the city wins. The search leans towards where the phone is, and Nominatim calls are spaced a second apart. **If the country restriction hides everything, the question is asked again without it** — a preference must never be the reason for "nothing found". |
 | **FOSSGIS OSRM** | The car route from you to the destination, which gives your arrival time. Free, no key. |
 | **Notifications API** | The system ping, with an on-screen banner and vibration as well. |
@@ -290,7 +290,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 570 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 575 checks:
 
 ```bash
 npm install
@@ -339,6 +339,10 @@ npm test
   reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
+- **A mobile network can block the relay entirely.** The public relays sit on ports 8081,
+  8084 and 8884; carriers block everything but 80 and 443. The app now includes one relay on
+  443 and, after a few failures, says "relay unreachable" rather than sitting on "connecting"
+  for ever. If a phone cannot connect, try Wi-Fi first.
 - **The relay is public.** Anyone who guesses the room code can watch the room. Use a code
   that is hard to guess and do not post it publicly.
 - **Coming back from the background re-arms the location watch.** iOS in particular can

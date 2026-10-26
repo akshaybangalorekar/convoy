@@ -133,6 +133,10 @@ try {
   check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
   check('pasting the invite link into the code box works', /function extractRoomCode/.test(app));
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
+  check('a relay on 443 is offered, since mobile networks block the usual ports',
+        /mqtt\.eclipseprojects\.io:443/.test(app));
+  check('and a relay that cannot be reached says so instead of pretending',
+        /relay unreachable/.test(app) && /mobile data often blocks it/.test(app));
   check('the location watch is armed again on coming back',
         /startWatching\(\);/.test(app) && /geoWatch = navigator\.geolocation\.watchPosition/.test(app));
   check('and a touch retries while we have no position', /haveMyPosition/.test(app));
@@ -199,7 +203,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v19/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v20/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

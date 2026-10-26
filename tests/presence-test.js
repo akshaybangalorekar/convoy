@@ -16,6 +16,8 @@ const routeFetch = (url) => {
 
 const list = (api) => api.document.getElementById('people').textContent;
 const notes = (api) => api.notes.map((n) => n.title).join(' | ');
+const text = (api, id) => api.document.getElementById(id).textContent;
+const bannerText = (api) => api.document.getElementById('banner').textContent;
 
 function setVisibility(api, value) {
   Object.defineProperty(api.document, 'visibilityState', {
@@ -92,6 +94,45 @@ async function testATouchRetriesWhenWeHaveNoPosition() {
         api.geo.started === after, after + ' -> ' + api.geo.started);
   check('and our row stops saying it is waiting', !/waiting for your location/.test(list(api)),
         list(api));
+}
+
+/* ---------- When the relay cannot be reached at all ---------- */
+async function testABlockedRelaySaysSo() {
+  // A phone on mobile data often cannot reach these relays at all, because they listen on
+  // ports 8081/8084/8884 and carriers block everything but 80 and 443.
+  const api = boot();
+  api.window.Convoy.CFG.retryMs = 15;
+  api.window.Convoy.join('Akshay', 'goa-trip');
+  await sleep(20);
+  check('it starts out saying it is connecting',
+        /connecting|offline/.test(text(api, 'connState')), text(api, 'connState'));
+
+  for (let i = 0; i < 6; i++) {
+    const c = api.clients[api.clients.length - 1];
+    if (c && !c.connected) c._emit('error');
+    await sleep(40);
+  }
+
+  check('after a few failures it stops pretending to connect',
+        text(api, 'connState') === 'relay unreachable', text(api, 'connState'));
+  check('and says why, once', /Cannot reach the relay/.test(bannerText(api)), bannerText(api));
+
+  const after = api.notes.length;
+  for (let i = 0; i < 4; i++) {
+    const c = api.clients[api.clients.length - 1];
+    if (c && !c.connected) c._emit('error');
+    await sleep(40);
+  }
+  check('without nagging on every retry', api.notes.length === after,
+        String(api.notes.length - after));
+}
+
+async function testTheRelayListIncludesPort443() {
+  const api = boot();
+  const urls = api.window.Convoy.CFG.brokers.map((b) => b.url);
+  check('one relay is on 443, the port mobile networks always allow',
+        urls.some((u) => /:443\//.test(u)), JSON.stringify(urls));
+  check('and the others are still there as fallbacks', urls.length >= 4, JSON.stringify(urls));
 }
 
 /* ---------- Someone else going away, and coming back ---------- */
@@ -273,6 +314,8 @@ async function testNewestDestinationWins() {
     await testWeAnnounceGoingAway();
     await testTheLocationWatchIsArmedAgainOnReturn();
     await testATouchRetriesWhenWeHaveNoPosition();
+    await testABlockedRelaySaysSo();
+    await testTheRelayListIncludesPort443();
     await testSomeoneElseAway();
     await testSomeoneGoesQuiet();
     await testBackgroundedTooLongCountsAsLost();
