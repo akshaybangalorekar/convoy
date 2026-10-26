@@ -216,7 +216,11 @@ try {
         /prefers-color-scheme/.test(css));
   check('the people list is a bottom sheet', /#sheet \{/.test(css));
   check('cards are used for the chrome', /\.card \{/.test(css));
-  check('markers are drawn as coloured dots', /\.mk \.dot/.test(css));
+  check('markers are cars in the person\'s own colour', /\.mk \.car/.test(css));
+  check('and nothing on the map is ever greyed or faded out',
+        !/\.mk\.stale/.test(css) && !/\.mk[^}]*grayscale/.test(css));
+  check('the group zooms in when the cars are close and out when they are spread',
+        /maxZoom: 18/.test(app) && /fitBounds/.test(app));
   check('controls do not select their text on a long press',
         /-webkit-user-select: none/.test(css));
 
@@ -254,7 +258,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v33/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v34/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

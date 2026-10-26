@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v33',             // must match VERSION in sw.js; a test holds them together
+    build: 'v34',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -567,10 +567,23 @@
     return ids;
   }
 
+  /* A car rather than a dot, in the person's own colour and turned to face the way they
+     are heading. Nothing on the map is ever grey: a colour is how you tell one car from
+     another, and greying one out takes that away. */
   function makeIcon(p, showLabel) {
+    const hdg = typeof p.hdg === 'number' ? Math.round(p.hdg) : 0;
     const html =
       '<div class="mk' + (p.isMe ? ' me' : '') + '" style="color:' + p.color + '">' +
-        '<span class="dot"></span>' +
+        '<svg class="car" viewBox="0 0 24 24" aria-hidden="true">' +
+          '<g transform="rotate(' + hdg + ' 12 12)">' +
+            '<rect x="7" y="2.6" width="10" height="18.8" rx="3.4" ' +
+              'fill="currentColor" stroke="#fff" stroke-width="1.7" />' +
+            '<rect x="9.1" y="6" width="5.8" height="4.1" rx="1.3" ' +
+              'fill="#fff" opacity="0.9" />' +
+            '<rect x="9.1" y="14.6" width="5.8" height="3.6" rx="1.3" ' +
+              'fill="#fff" opacity="0.55" />' +
+          '</g>' +
+        '</svg>' +
         (showLabel ? '<span class="lbl">' + esc(p.name) + '</span>' : '') +
       '</div>';
     return L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
@@ -599,8 +612,10 @@
     allPeople().forEach((p) => {
       if (!p._marker) return;
       const want = labels.has(p.id);
-      if (p._labelled === want) return;
+      const hdg = typeof p.hdg === 'number' ? Math.round(p.hdg) : 0;
+      if (p._labelled === want && p._hdg === hdg) return;
       p._labelled = want;
+      p._hdg = hdg;
       p._marker.setIcon(makeIcon(p, want));
       const el = p._marker.getElement();
       if (el) el.classList.toggle('stale', !p.isMe && isStale(p));
@@ -639,10 +654,12 @@
     const people = allPeople();
     if (!people.length) return;
     lastAutoView = Date.now();
-    if (people.length === 1) { map.setView([people[0].lat, people[0].lng], 15); return; }
+    if (people.length === 1) { map.setView([people[0].lat, people[0].lng], 16); return; }
     const bounds = L.latLngBounds(people.map((p) => [p.lat, p.lng]));
     if (state.dest) bounds.extend([state.dest.lat, state.dest.lng]);
-    map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16, animate: true });
+    // fitBounds already zooms in when the cars are close and out when they are spread
+    // out; maxZoom is what decides how far in it is allowed to go for a tight group.
+    map.fitBounds(bounds, { padding: [64, 64], maxZoom: 18, animate: true });
   }
 
   // Keep everyone in frame by default; the moment you take control, stop moving.
@@ -909,6 +926,7 @@
   function onPos(msg) {
     if (typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
     const p = state.peers.get(msg.id) || ensurePeer(msg);
+    if (typeof msg.hdg === 'number') p.hdg = msg.hdg;
     p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
     p.acc = msg.acc; p.ts = msg.ts || Date.now();
     p.away = false; p.awayAt = 0;

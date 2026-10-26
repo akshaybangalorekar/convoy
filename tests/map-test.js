@@ -106,7 +106,7 @@ async function testAutoFit() {
   check('recentring fits everyone in', api.calls.fitBounds.length === 1,
         String(api.calls.fitBounds.length));
   const o = api.calls.fitBounds[0] || {};
-  check('capped, so a bunched-up group zooms in rather than staying wide', o.maxZoom === 16,
+  check('capped, so a bunched-up group zooms in rather than staying wide', o.maxZoom === 18,
         JSON.stringify(o));
   check('with a margin round the edges', Array.isArray(o.padding), JSON.stringify(o));
 }
@@ -232,8 +232,13 @@ async function testOnlySomeCarsCarryAName() {
   check('but not the ones further off, where the names would collide',
         !named(api, 'p2') && !named(api, 'p3'),
         iconHtml(api, 'p2') + ' || ' + iconHtml(api, 'p3'));
-  check('every car is still drawn as a dot',
-        ['me', 'p1', 'p2', 'p3'].every((id) => /class="dot"/.test(iconHtml(api, id))));
+  check('every car is still drawn, as a car',
+        ['me', 'p1', 'p2', 'p3'].every((id) => /class="car"/.test(iconHtml(api, id))),
+        iconHtml(api, 'p2'));
+  check('in its own colour, never grey',
+        ['me', 'p1', 'p2', 'p3'].every((id) => !/grey|gray|#808080/i.test(iconHtml(api, id))));
+  check('and turned to face the way it is going',
+        /rotate\(90 12 12\)/.test(iconHtml(api, 'p1')), iconHtml(api, 'p1'));
 }
 
 async function testTappingACarNamesIt() {

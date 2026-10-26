@@ -73,6 +73,17 @@ sharing less often can never make anyone look lost. Nor is there a button to say
 arrived — coming within 50 m of the destination does it, and until then everyone keeps seeing
 your arrival time.
 
+**Every car on the map is a car**, not a dot: a small body in that person's own colour with
+a white outline, turned to face the way they are heading. **Nothing on the map is ever grey or
+faded**, because a colour is the only thing telling one car from another — a greyed-out car is
+a car you cannot name. Someone who has gone quiet is still drawn in their colour; the list is
+what says they are lost.
+
+**The view keeps everyone in frame.** `fitBounds` zooms in when the cars are bunched together
+and out when they are spread apart, with the zoom capped at 18 so a tight group is pulled
+apart rather than left as one blob. Take the map yourself — drag, zoom, or tap a name — and it
+stops chasing.
+
 **Names on the map** are shown for your own car, the nearest one, and whichever car you have
 tapped. Every name at once collides into an unreadable stack the moment cars are close, which
 is exactly when the map matters; the dots always show everyone, and tapping a car names it and
@@ -355,7 +366,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 634 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 638 checks:
 
 ```bash
 npm install

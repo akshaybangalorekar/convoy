@@ -280,8 +280,8 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 /* Gone quiet or gone away: the circle goes grey and the row says why. The name stays
    readable — dimming the whole row made it hard to see who it was. */
 #people li.away .pdot, #people li.lost .pdot { filter: grayscale(1); opacity: 0.55; }
+/* The map never does this: a grey car is a car you cannot tell apart from the others. */
 #people li.away .pname, #people li.lost .pname { color: var(--muted); }
-.mk.stale { opacity: 0.45; }
 
 /* Your own name, editable in place: text until you touch it. */
 .myname {
@@ -396,16 +396,16 @@ input:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- Map markers ---------- */
 .mk { position: relative; }
-.mk .dot {
+/* A car, centred on the position it stands for. */
+.mk .car {
   position: absolute; top: 0; left: 0;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: currentColor; border: 3px solid #fff;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  width: 22px; height: 22px; overflow: visible;
   transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 2.5px rgba(0, 0, 0, 0.45));
 }
-.mk.me .dot { width: 20px; height: 20px; }
+.mk.me .car { width: 26px; height: 26px; }
 .mk .lbl {
-  position: absolute; top: 11px; left: 0; transform: translateX(-50%);
+  position: absolute; top: 13px; left: 0; transform: translateX(-50%);
   padding: 2px 7px; border-radius: 7px; white-space: nowrap;
   background: rgba(0, 0, 0, 0.62); color: #fff;
   font-size: 12px; font-weight: 600;
