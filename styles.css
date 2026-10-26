@@ -178,6 +178,13 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
   color: var(--muted); cursor: pointer;
 }
 .row-act.add { color: var(--accent); font-weight: 700; }
+/* Someone asking to be let in, and only a master ever sees this. */
+#people li.asking { background: rgba(0, 122, 255, 0.08); border-radius: 12px; }
+#people li.asking .pdot { background: var(--accent); opacity: 0.55; }
+.row-act.yes {
+  color: var(--accent); font-weight: 700; font-size: 12.5px;
+  border: 1px solid var(--accent); border-radius: 980px; padding: 6px 11px;
+}
 .row-act:active { opacity: 0.5; }
 #people li.removed { opacity: 0.5; }
 

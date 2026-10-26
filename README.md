@@ -98,10 +98,26 @@ The trade is worth stating plainly: keeping two separate groups apart requires a
 so with none there is only ever one room. That suits a group who all know each other, which is
 what this is for. An invite is now just the app's own address.
 
-## The pin: who can remove people
+## The pin: who gets in, and who gets out
 
-Everyone who opens the app is in the group. The one thing only the master phone can do is
-take someone off it.
+Nobody is in the room until the phone with the pin lets them in.
+
+- **Opening the app puts you in the waiting room**, not the room: you see "waiting for
+  someone to let you in" and nothing else — not the people, not the destination.
+- **The request goes to everyone, and only the master sees it.** It appears at the top of
+  the list as *"Priya wants to join"* with **Let in** and a cross. On a phone without the
+  pin the same message arrives and draws nothing at all.
+- **Let in** adds them to the allowed list, which is broadcast and remembered, so they stay
+  in from then on. **The cross** marks them out, and they are not asked about again.
+- The phone with the pin is in the room by definition, and anyone else who unlocks with the
+  pin joins it.
+
+The cost of this is worth being clear about: **the master's phone has to be open** for
+anyone new to get in. There is no server to hold a pending request, so a request made while
+the master is away waits until they open the app. And a brand-new group has to start with
+the phone that has the pin — nothing can approve it otherwise.
+
+Everyone already in the room can still be removed by the master:
 
 - **Settings** is a blue button in the row at the foot of the sheet. It shows the version and
   an empty field that does not say what it is for.
@@ -315,7 +331,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 605 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 621 checks:
 
 ```bash
 npm install

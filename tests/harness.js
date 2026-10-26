@@ -214,7 +214,13 @@ function boot(opts = {}) {
   if (opts.setup) opts.setup(window);
   window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
 
-  // The app joins on load now, so the connection it opened is live without a click.
+  // The app joins on load now, so the connection it opened is live without a click. A test
+  // that wants to watch the waiting state starts it outside the room.
+  const booted = window.Convoy && window.Convoy.state;
+  if (booted && booted.me && !(opts.outside)) {
+    booted.allowed.add(booted.me.id);
+    window.Convoy._internals.renderPeople();
+  }
   if (clients.length === 1) clients[0].connect_();
 
   const api = {
@@ -248,13 +254,15 @@ function boot(opts = {}) {
       const d = window.document;
       const el = d.getElementById('inName');
       if (el) el.value = name;
-      if (room) {
-        // The app has one room and no code, but the plumbing still takes a room, so tests
-        // that care about it drive it directly rather than through a form that no longer
-        // exists.
-        window.Convoy.join(name, room);
-      } else {
-        d.getElementById('btnGo').click();
+      // The app has one room and no code, but the plumbing still takes a room, so tests
+      // that care about it drive it directly rather than through a form that no longer
+      // exists.
+      window.Convoy.join(name, room || window.Convoy.CFG.room);
+      // You are in the room you just joined, and the list has to be told.
+      const me = window.Convoy.state.me;
+      if (me) {
+        window.Convoy.state.allowed.add(me.id);
+        window.Convoy._internals.renderPeople();
       }
       const c = clients[clients.length - 1];
       if (c) c.connect_();
@@ -286,7 +294,12 @@ function boot(opts = {}) {
     touch() { window.dispatchEvent(new window.Event('pointerdown')); },
 
     /** Feed a message into the room, as if another phone sent it. */
-    recv(msg) {
+    recv(msg, opts) {
+      // The room only shows people the master has let in, so a message in a test means
+      // "someone already in the group" unless the test says otherwise.
+      if (msg && msg.id && !(opts && opts.asStranger)) {
+        window.Convoy.state.allowed.add(String(msg.id));
+      }
       const c = clients[clients.length - 1];
       if (c) c._emit('message', 'x', Buffer.from(JSON.stringify(msg)));
     },

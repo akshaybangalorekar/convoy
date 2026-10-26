@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v29',             // must match VERSION in sw.js; a test holds them together
+    build: 'v30',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -92,6 +92,8 @@
     focused: '',          // the car whose name is showing because it was tapped
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
+    allowed: new Set(),   // ids the master has let in; nobody else is in the room
+    pending: new Map(),   // people asking to be let in — only a master ever fills this
   };
 
   let map = null;
@@ -710,6 +712,7 @@
   // phone re-pushes its own state, so the room rebuilds itself from the people in it.
   function sendState() {
     send({ t: 'hello' });
+    if (state.allowed.size) send({ t: 'allowed', ids: Array.from(state.allowed) });
     publishNow(true);
     if (state.dest) {
       send({ t: 'dest', lat: state.dest.lat, lng: state.dest.lng,
@@ -757,10 +760,24 @@
     try { msg = JSON.parse(payload.toString()); } catch (e) { return; }
     if (!msg || !msg.id || (state.me && msg.id === state.me.id)) return;
 
+    // Who is in the room is decided by the phone with the pin, so the two messages that
+    // carry that decision are honoured from anyone — they are how a newcomer learns it has
+    // been let in.
+    if (msg.t === 'allowed') { onAllowed(msg); return; }
+    if (msg.t === 'removed') { onRemoved(msg); return; }
+
+    if (state.removed.has(msg.id)) return;      // taken off the group by the master
+
+    if (!state.allowed.has(msg.id)) {
+      // Not in the room. Only the master is shown the request; everyone else sees nothing
+      // at all, which is the whole point.
+      if (state.master && msg.t !== 'bye') askedToJoin(msg);
+      return;
+    }
+
     // Any word at all from someone is proof they were still there just now — and for
     // anyone new, it is what puts them on the list. Leaving is the one exception: we do
     // not want to add someone just to remove them.
-    if (state.removed.has(msg.id)) return;      // taken off the group by the master
     if (msg.t !== 'bye') ensurePeer(msg);
 
     switch (msg.t) {
@@ -775,7 +792,6 @@
       case 'paused':     onPaused(msg); return;
       case 'sharing':    onSharing(msg); return;
       case 'arrived':    onArrived(msg); return;
-      case 'removed':    onRemoved(msg); return;
       default: return;
     }
   }
@@ -789,6 +805,52 @@
     if (rec && rec.members && rec.members[id]) return false;
     notify(name + ' joined', 'They can see the map and set the destination.');
     return true;
+  }
+
+  // The master's list of who is in. Every phone keeps it, so a phone that was let in stays
+  // let in, and a newcomer finds out the moment the decision reaches it.
+  function onAllowed(msg) {
+    if (!Array.isArray(msg.ids)) return;
+    const before = state.allowed.size;
+    msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
+    saveRoom({ allowed: Array.from(state.allowed) });
+    state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
+    if (state.allowed.size !== before) renderPeople();
+    else renderPeople();
+  }
+
+  // Someone is asking. Only a master ever gets this far.
+  function askedToJoin(msg) {
+    if (!state.me || state.removed.has(msg.id)) return;
+    const had = state.pending.get(msg.id);
+    state.pending.set(msg.id, {
+      id: msg.id, name: (msg.name || (had && had.name) || 'Someone').slice(0, 24),
+      at: Date.now(),
+    });
+    if (!had) banner((msg.name || 'Someone') + ' wants to join');
+    renderPeople();
+  }
+
+  function letIn(id) {
+    if (!state.master || !id) return;
+    state.allowed.add(String(id));
+    saveRoom({ allowed: Array.from(state.allowed) });
+    send({ t: 'allowed', ids: Array.from(state.allowed) });
+    const req = state.pending.get(String(id));
+    state.pending.delete(String(id));
+    banner((req ? req.name : 'They') + ' is in');
+    renderPeople();
+  }
+
+  function keepOut(id) {
+    if (!state.master || !id) return;
+    const req = state.pending.get(String(id));
+    state.pending.delete(String(id));
+    state.removed.add(String(id));
+    saveRoom({ removed: Array.from(state.removed) });
+    send({ t: 'removed', ids: Array.from(state.removed) });
+    banner((req ? req.name : 'They') + ' will not be asked again');
+    renderPeople();
   }
 
   // The master's list of who is out, which every phone honours.
@@ -1185,30 +1247,53 @@
   /* ---------------------------------------------------------------- *
    * Rendering
    * ---------------------------------------------------------------- */
+  // Someone asking to be let in. Only a master ever has one of these to draw.
+  function pendingRow(r) {
+    return '<li class="asking">' +
+      '<span class="pdot"></span>' +
+      '<span class="pname">' + esc(r.name) +
+        '<span class="tag">wants to join</span></span>' +
+      '<button class="row-act yes" data-yes="' + esc(r.id) + '">Let in</button>' +
+      '<button class="row-act" data-no="' + esc(r.id) + '" aria-label="Do not let in">&#215;</button>' +
+    '</li>';
+  }
+
   function renderPeople() {
     const ul = $('people');
     const me = state.me;
     const rows = [];
+    const inRoom = !!(me && state.allowed.has(me.id));
 
-    if (me) rows.push(rowFor(me, null));
-    Array.from(state.peers.values())
-      .filter((p) => state.master || !state.removed.has(p.id))
-      .sort((a, b) => {
-        const ar = state.removed.has(a.id) ? 1 : 0;
-        const br = state.removed.has(b.id) ? 1 : 0;
-        if (ar !== br) return ar - br;      // removed people sink to the bottom
-        return (a.name || '').localeCompare(b.name || '');
-      })
-      .forEach((p) => rows.push(rowFor(p, me)));
+    if (inRoom) {
+      if (me) rows.push(rowFor(me, null));
+      Array.from(state.peers.values())
+        .filter((p) => state.master || !state.removed.has(p.id))
+        .sort((a, b) => {
+          const ar = state.removed.has(a.id) ? 1 : 0;
+          const br = state.removed.has(b.id) ? 1 : 0;
+          if (ar !== br) return ar - br;      // removed people sink to the bottom
+          return (a.name || '').localeCompare(b.name || '');
+        })
+        .forEach((p) => rows.push(rowFor(p, me)));
+    }
+    const people = rows.length;
+    // Requests come first: they are the only thing anyone has to act on.
+    if (state.master) state.pending.forEach((r) => rows.unshift(pendingRow(r)));
 
-    $('peopleCount').textContent = rows.length + (rows.length === 1 ? ' person' : ' people') +
-      (state.dest ? '' : ' · no destination');
+    $('peopleCount').textContent = inRoom
+      ? people + (people === 1 ? ' person' : ' people') +
+        (state.dest ? '' : ' · no destination')
+      : 'waiting to be let in';
 
     const el = document.activeElement;
     const editing = !!(el && el.classList && el.classList.contains('myname'));
     if (!editing) {
-      ul.innerHTML = rows.length ? rows.join('')
-        : '<li class="empty">Waiting for others to join…</li>';
+      if (!inRoom) {
+        ul.innerHTML = '<li class="empty">Waiting for someone to let you in…</li>';
+      } else {
+        ul.innerHTML = rows.length ? rows.join('')
+          : '<li class="empty">Waiting for others to join…</li>';
+      }
     }
 
     renderMarkers();
@@ -1574,6 +1659,11 @@
     const rec = loadRoom(room);
     state.roomExpires = rec ? rec.expiresAt : 0;
     state.removed = new Set((rec && Array.isArray(rec.removed)) ? rec.removed.map(String) : []);
+    state.allowed = new Set((rec && Array.isArray(rec.allowed)) ? rec.allowed.map(String) : []);
+    state.pending = new Map();
+    // The phone holding the pin is in the room by definition; everyone else waits to be
+    // let in by it.
+    if (state.master) state.allowed.add(state.me.id);
     // A name the room was given last time, and nobody has arrived yet.
     state.arrived = false;
     if (rec && rec.members) {
@@ -1779,6 +1869,11 @@
       if (pinHash(pin) !== CFG.masterHash) { banner('Not recognised'); return; }
       state.master = true;
       try { localStorage.setItem('convoy.master', '1'); } catch (e) { /* ignore */ }
+      if (state.me) {
+        state.allowed.add(state.me.id);
+        saveRoom({ allowed: Array.from(state.allowed) });
+        send({ t: 'allowed', ids: Array.from(state.allowed) });
+      }
       const note = $('pinNote');
       note.textContent = 'This phone can add and remove people.';
       note.classList.remove('hidden');
@@ -1794,6 +1889,10 @@
     $('people').addEventListener('click', (e) => {
       const node = e.target;
       const near = node && node.closest ? node : null;
+      const yes = near ? near.closest('[data-yes]') : null;
+      if (yes) { letIn(yes.getAttribute('data-yes')); return; }
+      const no = near ? near.closest('[data-no]') : null;
+      if (no) { keepOut(no.getAttribute('data-no')); return; }
       const rm = near ? near.closest('[data-remove]') : null;
       if (rm) { removePerson(rm.getAttribute('data-remove')); return; }
       const ad = near ? near.closest('[data-add]') : null;
@@ -1912,6 +2011,7 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson, addPerson,
+                  letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,

@@ -409,6 +409,90 @@ async function testEveryoneElseStopsSeeingThem() {
         d.getElementById('people').textContent);
 }
 
+/* ---------- Letting people in ---------- */
+async function testAPhoneOutsideTheRoomWaits() {
+  const api = boot({ outside: true });
+  await sleep(20);
+  const d = api.document;
+  check('a phone that has not been let in is told to wait',
+        /Waiting for someone to let you in/.test(d.getElementById('people').textContent),
+        d.getElementById('people').textContent);
+  check('and the count says so too',
+        /waiting/.test(text(api, 'peopleCount')), text(api, 'peopleCount'));
+  check('and nobody else is on its list',
+        !/Priya/.test(d.getElementById('people').textContent));
+}
+
+async function testAStrangerIsInvisibleWithoutThePin() {
+  const api = boot();
+  await sleep(20);
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(20);
+
+  check('someone who has not been let in never reaches the list',
+        !/Priya/.test(text(api, 'people')), text(api, 'people'));
+  check('and there is nothing to approve on a phone without the pin',
+        !/data-yes/.test(api.document.getElementById('people').innerHTML));
+  check('and the request is not even kept',
+        api.window.Convoy.state.pending.size === 0,
+        String(api.window.Convoy.state.pending.size));
+}
+
+async function testTheMasterIsAskedByName() {
+  const api = boot();
+  const d = api.document;
+  await sleep(20);
+  await unlock(api);
+
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(20);
+
+  check('the master is shown the request, by name',
+        /Priya/.test(text(api, 'people')) && /wants to join/.test(text(api, 'people')),
+        text(api, 'people'));
+  check('with a button to let them in',
+        /data-yes="newbie"/.test(d.getElementById('people').innerHTML));
+  check('and they are not in the room yet',
+        !api.window.Convoy.state.allowed.has('newbie'));
+
+  d.querySelector('[data-yes="newbie"]').click();
+  await sleep(20);
+  check('letting them in adds them', api.window.Convoy.state.allowed.has('newbie'));
+  check('and tells every phone',
+        ((api.sent('allowed') || {}).ids || []).indexOf('newbie') >= 0,
+        JSON.stringify(api.sent('allowed')));
+  check('and the request goes away', api.window.Convoy.state.pending.size === 0);
+}
+
+async function testTurningSomeoneAway() {
+  const api = boot();
+  const d = api.document;
+  await sleep(20);
+  await unlock(api);
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(20);
+
+  d.querySelector('[data-no="newbie"]').click();
+  await sleep(20);
+  check('turning them away marks them out', api.window.Convoy.state.removed.has('newbie'));
+  check('and stops the request', api.window.Convoy.state.pending.size === 0);
+
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  await sleep(20);
+  check('and they are not asked about again', api.window.Convoy.state.pending.size === 0);
+}
+
+async function testOnceLetInTheyAppearForEveryone() {
+  const api = boot();
+  await sleep(20);
+  api.recv({ t: 'allowed', id: 'master', ids: ['newbie'] });
+  await sleep(20);
+  api.recv(pos('newbie', 'Priya', -33.87, 151.21));
+  await sleep(20);
+  check('someone who has been let in appears for everyone',
+        /Priya/.test(text(api, 'people')), text(api, 'people'));
+}
+
 /* ---------- Sound ---------- */
 async function testTheNotificationSound() {
   const api = boot();
@@ -533,6 +617,11 @@ async function testBehindAndAhead() {
     await testTheScreenLockIsTakenAgainOnReturn();
     await testATouchRetriesARefusedScreenLock();
     await testItIsFineWithNoWakeLockApi();
+    await testAPhoneOutsideTheRoomWaits();
+    await testAStrangerIsInvisibleWithoutThePin();
+    await testTheMasterIsAskedByName();
+    await testTurningSomeoneAway();
+    await testOnceLetInTheyAppearForEveryone();
     await testTheGearIsJustAVersionAndAField();
     await testAWrongPinDoesNothing();
     await testTheRightPinUnlocksOnlyThisPhone();
