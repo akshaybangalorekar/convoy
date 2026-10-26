@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v39',             // must match VERSION in sw.js; a test holds them together
+    build: 'v41',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -90,6 +90,7 @@
     paused: false,        // hidden from the map: deliberately not sharing our position
     arrived: false,       // we have reached the destination (or said we have)
     focused: '',          // the car whose name is showing because it was tapped
+    headingUp: true,      // turn the map so the way you are going is up
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
     allowed: new Set(),   // ids the master has let in; nobody else is in the room
@@ -441,7 +442,11 @@
     map = L.map('map', {
       zoomControl: false,
       attributionControl: false,   // the credit lives in Help, not over the map
-      rotate: false,
+      // Only does anything if the rotate plugin loaded; Leaflet ignores what it does not
+      // know, so without the plugin this is a plain north-up map.
+      rotate: true,
+      rotateControl: false,        // we show our own badge instead
+      touchRotate: false,
       doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1258,6 +1263,32 @@
     publishNow();
     if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
     maybeAutoView();
+    applyHeading();
+  }
+
+  /* The map is turned so the way you are going is up, the way a sat-nav does it — but only
+     while the view is following you. Once you have taken the map yourself it is left alone.
+     The badge in the corner says which way that is, and turns it off. */
+  const canRotate = () => !!(map && typeof map.setBearing === 'function');
+
+  function applyHeading() {
+    const me = state.me;
+    const hdg = me && typeof me.hdg === 'number' && isFinite(me.hdg) ? me.hdg : null;
+    const el = $('btnHeading');
+    if (el) {
+      const on = hdg != null;
+      el.classList.toggle('hidden', !on);
+      el.classList.toggle('up', !!(on && state.headingUp));
+      if (on) $('headingText').textContent = compass(hdg);
+    }
+    if (!canRotate()) return;
+    if (hdg == null || !state.headingUp || !state.autoFit) {
+      if (map.getBearing && map.getBearing() !== 0) map.setBearing(0);
+      return;
+    }
+    // Bearing is the other way round from a heading: turning the map by the negative of
+    // where you are going puts that direction at the top.
+    map.setBearing(-hdg);
   }
 
   function onGeoError(err) {
@@ -1929,6 +1960,10 @@
     });
 
     $('btnCentre').addEventListener('click', centreOnMe);
+    $('btnHeading').addEventListener('click', () => {
+      state.headingUp = !state.headingUp;
+      applyHeading();
+    });
 
     // Tapping someone brings the map to them; the master's crosses and pluses come first.
     $('people').addEventListener('change', (e) => {
@@ -2052,7 +2087,7 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
-                  centreOnMe,
+                  centreOnMe, applyHeading, canRotate,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,

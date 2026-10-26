@@ -80,6 +80,18 @@ faded**, because a colour is the only thing telling one car from another — a g
 a car you cannot name. Someone who has gone quiet is still drawn in their colour; the list is
 what says they are lost.
 
+**The map turns so the way you are going is up**, the way a sat-nav does, and a small badge in
+the bottom-left corner says which way that is — **NE**, **SW**, **N**, **E**. Tapping the badge
+turns the rotation off and puts the map back north-up; tapping again turns it on. It only turns
+while the view is following you, so once you have dragged or zoomed the map yourself it is left
+exactly where you put it.
+
+Rotation is not something Leaflet does on its own: it needs `leaflet-rotate`, pinned and
+hash-checked like Leaflet itself. Everything that touches it is guarded — if that script never
+loads, the map is simply north-up as before and nothing breaks. The sign is worth knowing: the
+plugin turns the map clockwise by the bearing, so the bearing is set to the negative of the
+heading to put that heading at the top. That was measured, not guessed.
+
 **There are no zoom buttons.** A tap on the map zooms out and two taps zoom in; pinch works
 too, as it always did. The + and − were the only chrome left in that corner, and they were
 redundant.
@@ -384,7 +396,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 664 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 675 checks:
 
 ```bash
 npm install

@@ -23,6 +23,11 @@ function layer() {
   o.fire = (ev) => { if (o._handlers[ev]) o._handlers[ev](); };
   o.getZoom = () => 13;
   o.getBoundsZoom = () => 15;
+  // The rotate plugin adds these to a real Leaflet map; the stub does too, so the code
+  // path is exercised.
+  o._bearing = 0;
+  o.setBearing = (deg) => { o._bearing = deg; return o; };
+  o.getBearing = () => o._bearing;
   o.getPane = () => ({ style: {} });
   o.getContainer = () => ({ addEventListener: () => {} });
   o.getElement = () => null;

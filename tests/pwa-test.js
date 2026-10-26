@@ -26,8 +26,14 @@ try {
     check(f + ' is gone', !exists(f));
     check(f + ' is not loaded', html.indexOf(f) < 0 && sw.indexOf(f) < 0);
   });
-  check('the map rotation plugin is gone', html.indexOf('leaflet-rotate') < 0 &&
-        sw.indexOf('leaflet-rotate') < 0);
+  check('the map rotation plugin is loaded, pinned and hash-checked',
+        /leaflet-rotate@0\.2\.8/.test(html) &&
+        /integrity="sha384-[A-Za-z0-9+/=]+"/.test(html.split('leaflet-rotate')[0].split('<script').pop() +
+                                                 html.slice(html.indexOf('leaflet-rotate')).slice(0, 400)));
+  check('and it is precached with the rest of the shell',
+        sw.indexOf('leaflet-rotate') >= 0);
+  check('everything that uses it is guarded, so a missing plugin is a north-up map',
+        /const canRotate = /.test(app) && /typeof map\.setBearing === 'function'/.test(app));
   ['navbanner', 'offlineBar', 'btnFit', 'btnFollow', 'btnNames', 'micSwitch', 'a2hs']
     .forEach((gone) => {
       check('the old ' + gone + ' control is gone', html.indexOf(gone) < 0);
@@ -270,7 +276,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v40/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v41/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

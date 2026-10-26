@@ -23,6 +23,9 @@
 <body>
 
 <div id="map" aria-label="Map"></div>
+<button id="btnHeading" class="heading hidden" aria-label="Your direction">
+  <span id="headingText">N</span>
+</button>
 
 <!-- Top: who you are with, and where you are all heading -->
 <header id="topbar">
@@ -168,6 +171,11 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Lets the map be turned so your heading is up. Everything that uses it is guarded, so
+     if this never loads the map is simply north-up, as it was before. -->
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"
+        integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG"
+        crossorigin="anonymous"></script>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
   /* A CDN can fail on a phone even when the app itself loaded, and then every relay

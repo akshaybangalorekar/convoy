@@ -210,6 +210,89 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- Heading up, and the direction badge ---------- */
+async function testTheBadgeSaysWhichWayYouAreGoing() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  const d = api.document;
+  await sleep(20);
+  check('with no heading there is no badge',
+        d.getElementById('btnHeading').classList.contains('hidden'));
+
+  api.fix(-33.86, 151.2, { heading: 45 });
+  await sleep(20);
+  check('a heading shows the badge', !d.getElementById('btnHeading').classList.contains('hidden'));
+  check('and it reads NE', d.getElementById('headingText').textContent === 'NE',
+        d.getElementById('headingText').textContent);
+
+  api.fix(-33.861, 151.2, { heading: 90 });
+  await sleep(20);
+  check('turning east changes it to E', d.getElementById('headingText').textContent === 'E',
+        d.getElementById('headingText').textContent);
+
+  api.fix(-33.862, 151.2, { heading: 225 });
+  await sleep(20);
+  check('and south-west reads SW', d.getElementById('headingText').textContent === 'SW',
+        d.getElementById('headingText').textContent);
+
+  api.fix(-33.863, 151.2, { heading: 200 });
+  await sleep(20);
+  check('while 200 degrees is nearer south', d.getElementById('headingText').textContent === 'S',
+        d.getElementById('headingText').textContent);
+}
+
+async function testTheMapTurnsSoYourHeadingIsUp() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  api.fix(-33.86, 151.2, { heading: 90 });
+  await sleep(20);
+
+  const map = api.window.Convoy.map();
+  check('the map is turned against the heading, so your direction is up',
+        map.getBearing() === -90, String(map.getBearing()));
+
+  api.document.getElementById('btnHeading').click();
+  await sleep(20);
+  check('tapping the badge turns it off', api.window.Convoy.state.headingUp === false);
+  check('and puts the map back north-up', map.getBearing() === 0, String(map.getBearing()));
+  check('the badge shows it is off',
+        !api.document.getElementById('btnHeading').classList.contains('up'));
+
+  api.document.getElementById('btnHeading').click();
+  await sleep(20);
+  check('and tapping again turns it back on', map.getBearing() === -90, String(map.getBearing()));
+}
+
+async function testTheMapIsLeftAloneOnceYouTakeIt() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  api.fix(-33.86, 151.2, { heading: 90 });
+  await sleep(20);
+  api.mapFire('dragstart');
+  api.fix(-33.861, 151.2, { heading: 90 });
+  await sleep(20);
+  check('once you have moved the map yourself it is not turned under you',
+        api.window.Convoy.map().getBearing() === 0,
+        String(api.window.Convoy.map().getBearing()));
+}
+
+async function testAMissingPluginIsJustANorthUpMap() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const map = api.window.Convoy.map();
+  map.setBearing = undefined;          // as if the plugin never loaded
+  api.fix(-33.86, 151.2, { heading: 90 });
+  await sleep(20);
+  check('a map without the plugin still shows the badge',
+        api.document.getElementById('headingText').textContent === 'NE' ||
+        api.document.getElementById('headingText').textContent === 'E',
+        api.document.getElementById('headingText').textContent);
+  check('and nothing is broken', api.window.Convoy.state.joined === true);
+}
+
 /* ---------- Centring on yourself ---------- */
 async function testCentreOnMeKeepsEveryoneInFrame() {
   const api = boot();
@@ -306,6 +389,10 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testTheBadgeSaysWhichWayYouAreGoing();
+    await testTheMapTurnsSoYourHeadingIsUp();
+    await testTheMapIsLeftAloneOnceYouTakeIt();
+    await testAMissingPluginIsJustANorthUpMap();
     await testCentreOnMeKeepsEveryoneInFrame();
     await testCentreOnMeWithNoPositionJustAsksForOne();
     await testOnlySomeCarsCarryAName();

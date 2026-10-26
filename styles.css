@@ -215,6 +215,21 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 .row-act:active { opacity: 0.5; }
 
+/* Your direction, bottom left, where the zoom buttons used to be. */
+.heading {
+  position: fixed; z-index: 26; left: 12px;
+  bottom: calc(var(--sheet-h, 240px) + 12px);
+  min-width: 44px; height: 34px; padding: 0 10px;
+  border: 0; border-radius: 980px; cursor: pointer;
+  background: var(--card); color: var(--text);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+}
+.heading.hidden { display: none; }
+.heading.up { background: var(--accent); color: var(--accent-text); }
+.heading:active { opacity: 0.65; }
+
 /* ---------- People sheet ---------- */
 #sheet {
   position: fixed; z-index: 28;
