@@ -376,8 +376,6 @@ input:focus { outline: none; border-color: var(--accent); }
 label .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); }
 
 /* ---------- Naming the room, and the switches in the sheet ---------- */
-.sheet-room { margin: 2px 0 8px; }
-.sheet-room input { margin-bottom: 0; font-size: 15px; padding: 10px 12px; }
 
 .sheet-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .ctl {

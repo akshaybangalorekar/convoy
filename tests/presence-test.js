@@ -197,6 +197,71 @@ async function testTheRelayListIncludesPort443() {
   check('and the others are still there as fallbacks', urls.length >= 4, JSON.stringify(urls));
 }
 
+/* ---------- A connection that keeps dropping ---------- */
+async function testTheClientIdIsUniquePerAttempt() {
+  const api = boot();
+  api.window.Convoy.CFG.retryMs = 10;
+  api.window.Convoy.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const c1 = api.clients[0];
+  check('the keepalive is short enough for a mobile network',
+        c1.opts.keepalive === 30, String(c1.opts.keepalive));
+
+  c1._emit('error');
+  await sleep(60);
+  const c2 = api.clients[api.clients.length - 1];
+  check('each attempt gets its own client id, so two copies cannot kick each other off',
+        c1.opts.clientId && c2.opts.clientId && c1.opts.clientId !== c2.opts.clientId,
+        c1.opts.clientId + ' vs ' + c2.opts.clientId);
+  check('but it still starts from this device',
+        String(c1.opts.clientId).indexOf(api.window.Convoy.state.me.id) === 0,
+        c1.opts.clientId);
+}
+
+async function testAFlappingRelayIsAbandoned() {
+  const api = boot();
+  const C = api.window.Convoy;
+  C.CFG.retryMs = 10;
+  C.CFG.reconnectMs = 10;
+  C.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const first = api.clients[0].url;
+
+  // Connect, then drop straight away — twice.
+  for (let i = 0; i < 2; i++) {
+    const c = api.clients[api.clients.length - 1];
+    c.connect_();
+    await sleep(5);
+    c._emit('close');
+    await sleep(40);
+  }
+  const now = api.clients[api.clients.length - 1].url;
+  check('after two quick drops it tries a different relay', now !== first,
+        first + ' -> ' + now);
+}
+
+async function testARelayThatHeldIsKept() {
+  const api = boot();
+  const C = api.window.Convoy;
+  C.CFG.retryMs = 10;
+  C.CFG.reconnectMs = 10;
+  C.CFG.stableMs = 5;             // pretend five milliseconds counts as "held"
+  C.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const first = api.clients[0].url;
+
+  for (let i = 0; i < 3; i++) {
+    const c = api.clients[api.clients.length - 1];
+    c.connect_();
+    await sleep(15);              // longer than stableMs
+    c._emit('close');
+    await sleep(40);
+  }
+  check('a relay that held for a while is kept, not abandoned',
+        api.clients[api.clients.length - 1].url === first,
+        first + ' -> ' + api.clients[api.clients.length - 1].url);
+}
+
 /* ---------- Someone else going away, and coming back ---------- */
 async function testSomeoneElseAway() {
   const api = boot();
@@ -380,6 +445,9 @@ async function testNewestDestinationWins() {
     await testTheRelayCheckSaysWhichRelayAnswers();
     await testTheRelayCheckNamesABlockedNetwork();
     await testAMissingLibraryIsNotABlockedNetwork();
+    await testTheClientIdIsUniquePerAttempt();
+    await testAFlappingRelayIsAbandoned();
+    await testARelayThatHeldIsKept();
     await testTheRelayListIncludesPort443();
     await testSomeoneElseAway();
     await testSomeoneGoesQuiet();

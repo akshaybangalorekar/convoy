@@ -409,19 +409,17 @@ async function testTheTagDoesNotRepeatTheName() {
         text(named, 'people'));
 }
 
-async function testThePeopleComeBeforeTheRoomName() {
+async function testTheSheetIsJustPeopleAndOneSwitch() {
   const api = boot();
   api.join('Akshay', 'goa-trip');
   await sleep(20);
   const sheet = api.document.getElementById('sheet');
-  const order = Array.from(sheet.querySelectorAll('ul, .sheet-controls, .sheet-room'))
+  const order = Array.from(sheet.querySelectorAll('ul, .sheet-controls'))
     .map((el) => el.id || el.className);
-  const listAt = order.indexOf('people');
-  const roomAt = order.findIndex((c) => /sheet-room/.test(c));
-  check('the people list comes before the optional room name',
-        listAt >= 0 && roomAt >= 0 && listAt < roomAt, JSON.stringify(order));
-  check('and the switch sits between them', order.indexOf('sheet-controls') > listAt &&
-        order.indexOf('sheet-controls') < roomAt, JSON.stringify(order));
+  check('the sheet is the people, then the one switch',
+        order[0] === 'people' && order[1] === 'sheet-controls', JSON.stringify(order));
+  check('and there is no room-name field to be confused by',
+        !api.document.getElementById('inRoomName'));
 }
 
 /* ---------- Run ---------- */
@@ -443,7 +441,7 @@ async function testThePeopleComeBeforeTheRoomName() {
     await testBothLinkShapesWork();
     await testACloseCarSaysNextToYou();
     await testTheTagDoesNotRepeatTheName();
-    await testThePeopleComeBeforeTheRoomName();
+    await testTheSheetIsJustPeopleAndOneSwitch();
   } catch (e) { crash(e); }
   finish('app');
 })();

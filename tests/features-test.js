@@ -374,43 +374,6 @@ async function testPastingTheInviteLink() {
   check('a plain code is left alone', box.value === 'sunny-drive', box.value);
 }
 
-/* ---------- Naming the room ---------- */
-async function testNamingTheRoom() {
-  const api = boot();
-  await joinRoom(api);
-  const d = api.document;
-
-  check('the chip shows the code', text(api, 'roomChip') === 'goa-trip',
-        text(api, 'roomChip'));
-
-  const input = d.getElementById('inRoomName');
-  input.value = 'Sunday drive';
-  input.dispatchEvent(new api.window.Event('change', { bubbles: true }));
-  await sleep(20);
-
-  check('the code stays on the chip, because that is what joins two phones',
-        text(api, 'roomChip') === 'goa-trip', text(api, 'roomChip'));
-  check('and the name is kept separately, so it is never mistaken for the code',
-        input.value === 'Sunday drive', input.value);
-  check('and the room is told', (api.sent('room-name') || {}).name === 'Sunday drive',
-        JSON.stringify(api.sent('room-name')));
-  check('and it is kept on this phone',
-        /Sunday drive/.test(api.window.localStorage.getItem('convoy.room.goa-trip') || ''),
-        api.window.localStorage.getItem('convoy.room.goa-trip'));
-
-  api.recv({ t: 'room-name', id: 'p1', name: 'Beach run', ts: Date.now() + 1000 });
-  await sleep(20);
-  check('a newer name from someone else wins', api.window.Convoy.state.roomName === 'Beach run',
-        api.window.Convoy.state.roomName);
-
-  api.recv({ t: 'room-name', id: 'p2', name: 'Ancient', ts: 1 });
-  await sleep(20);
-  check('an older one is ignored', api.window.Convoy.state.roomName === 'Beach run',
-        api.window.Convoy.state.roomName);
-  check('and the code is still on the chip through all of it',
-        text(api, 'roomChip') === 'goa-trip', text(api, 'roomChip'));
-}
-
 /* ---------- Tapping a person ---------- */
 async function testTappingAPerson() {
   const api = boot();
@@ -479,7 +442,6 @@ async function testBehindAndAhead() {
     await testALongPressSetsTheDestination();
     await testALongPressWorksWithNoLookup();
     await testPastingTheInviteLink();
-    await testNamingTheRoom();
     await testTappingAPerson();
     await testBehindAndAhead();
   } catch (e) { crash(e); }

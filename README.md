@@ -83,11 +83,9 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
-You can also **name the room** — "Sunday drive" — and the name travels round the group the same
-way the destination does. A name is only ever a label, though: the chip at the top always shows
-the **code**, because the code is the only thing that puts two phones in the same room, and
-hiding it behind a friendly name is how someone ends up typing the name into the code box and
-landing in a different room altogether. And if someone pastes the whole invite link
+There is **no room name** — only the code. A name was tried and removed: it is the code that
+puts two phones in the same room, and a friendly label beside it invited people to type the
+name into the code box and land in a different room altogether. One identifier, no ambiguity. And if someone pastes the whole invite link
 into the code box, the app pulls the code out of it for them.
 
 ## The screen stays awake
@@ -290,7 +288,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 593 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 591 checks:
 
 ```bash
 npm install
@@ -339,6 +337,12 @@ npm test
   reports "out of contact" rather than claiming to know which.
 - **Arrival times come from a public routing service.** If it is busy or the phone has no
   signal, that person shows a dash until it recovers.
+- **A relay that keeps dropping is abandoned after two quick drops.** A connection that held
+  for a minute and then ended is not a flap, so it is kept. The keepalive is 30 seconds
+  because mobile networks drop idle sockets well before MQTT's default minute, and each
+  attempt uses its own client id — two copies of the app on one phone share a device id, and
+  a broker kicks the older session when a second client arrives with the same one, which
+  looks exactly like a connection that keeps dropping.
 - **A missing relay library used to look like a blocked network.** The MQTT library comes
   from a CDN; if it did not arrive, every relay attempt threw before reaching the network
   and the app cycled the relays for ever — the same symptom as a carrier blocking the

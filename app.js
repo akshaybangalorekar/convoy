@@ -30,11 +30,14 @@
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
     ],
     retryMs: 1200,            // pause before trying the next relay
+    reconnectMs: 3000,        // pause before reconnecting to one that worked
+    keepalive: 30,            // seconds; mobile networks drop idle sockets well before 60
+    stableMs: 60000,          // a connection that lasted this long was not a flap
     // Chosen for battery life, which matters more on a long drive than a smooth trail of
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v23',             // must match VERSION in sw.js; a test holds them together
+    build: 'v24',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -76,8 +79,6 @@
     away: false,          // true while our own app is in the background
     roomExpires: 0,       // when this room lapses, for the note in the sheet
     paused: false,        // hidden from the map: deliberately not sharing our position
-    roomName: '',         // a human name for the room, shared with everyone in it
-    roomNameTs: 0,        // when it was last named; newest wins, like the destination
     arrived: false,       // we have reached the destination (or said we have)
     focused: '',          // the car whose name is showing because it was tapped
   };
@@ -288,30 +289,6 @@
     if (!p) return;
     p.paused = false;
     renderPeople();
-  }
-
-  /* ---------------------------------------------------------------- *
-   * Naming the room
-   * ---------------------------------------------------------------- */
-  function setRoomName(name) {
-    const clean = String(name || '').trim().slice(0, 32);
-    state.roomName = clean;
-    state.roomNameTs = Date.now();
-    saveRoom({ name: clean, nameTs: state.roomNameTs });
-    send({ t: 'room-name', name: clean, ts: state.roomNameTs });
-    renderTop();
-    renderControls();
-  }
-
-  // Same rule as the destination: the newest decision wins, so a phone coming back cannot
-  // put an old name over a newer one.
-  function onRoomName(msg) {
-    const ts = typeof msg.ts === 'number' ? msg.ts : Date.now();
-    if (ts < state.roomNameTs) return;
-    state.roomNameTs = ts;
-    state.roomName = String(msg.name || '').slice(0, 32);
-    saveRoom({ name: state.roomName, nameTs: ts });
-    renderTop();
   }
 
   // Where each person stands. "away" is something they told us; "lost" is what we
@@ -733,7 +710,6 @@
       send({ t: 'dest-clear', ts: state.destTs });
     }
     if (state.myEta) send({ t: 'eta', dur: state.myEta.dur, dist: state.myEta.dist });
-    if (state.roomName) send({ t: 'room-name', name: state.roomName, ts: state.roomNameTs });
     if (state.paused) send({ t: 'paused' });
     if (state.arrived) send({ t: 'arrived', on: true });
   }
@@ -759,7 +735,6 @@
       case 'paused':     onPaused(msg); return;
       case 'sharing':    onSharing(msg); return;
       case 'arrived':    onArrived(msg); return;
-      case 'room-name':  onRoomName(msg); return;
       default: return;
     }
   }
@@ -1018,6 +993,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  let flapping = 0;
   let connFailures = 0;
   let toldAboutRelay = false;
 
@@ -1055,15 +1031,26 @@
     }
 
     try {
-      client = mqtt.connect(b.url, { clientId: state.me.id, clean: true, reconnectPeriod: 0 });
+      client = mqtt.connect(b.url, {
+        // A unique id per attempt. Two copies of the app on one phone share the same
+        // device id, and a broker kicks the older session when a second client arrives
+        // with the same one — which looks like a connection that keeps dropping.
+        clientId: state.me.id + '-' + rand(4),
+        clean: true,
+        reconnectPeriod: 0,
+        // Mobile networks drop idle sockets long before MQTT's default minute is up.
+        keepalive: CFG.keepalive,
+      });
     } catch (e) {
       fail();
       retry();
       return;
     }
 
+    let liveAt = 0;
     client.on('connect', () => {
       settled = true;
+      liveAt = Date.now();
       connFailures = 0;
       toldAboutRelay = false;
       setConn('live', 'live');
@@ -1075,8 +1062,18 @@
     client.on('error', () => { if (!settled) { fail(); retry(); } });
     client.on('close', () => {
       setConn('', 'offline');
-      if (!settled) { fail(); retry(); }
-      else scheduleReconnect();
+      if (!settled) { fail(); retry(); return; }
+      // A connection that lasted a while ended normally; one that dies straight after
+      // connecting is a flap, and two of those in a row mean this relay is not the one.
+      if (Date.now() - liveAt >= CFG.stableMs) flapping = 0;
+      else flapping++;
+      if (flapping >= 2) {
+        flapping = 0;
+        brokerIdx++;
+        retry();
+        return;
+      }
+      scheduleReconnect();
     });
   }
 
@@ -1089,7 +1086,7 @@
 
   function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, 4000);
+    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, CFG.reconnectMs);
   }
 
   /* ---------------------------------------------------------------- *
@@ -1289,8 +1286,6 @@
     // two phones in the same room, so hiding it behind a friendly name is how someone ends
     // up typing the name into the code box and landing in a different room altogether.
     $('roomChip').textContent = state.room || '—';
-    $('roomChip').title = state.roomName || '';
-    if ($('inRoomName')) $('inRoomName').value = state.roomName || '';
   }
 
   // The one switch in the sheet. Internally this is still "paused"; on screen it says what
@@ -1467,10 +1462,7 @@
     const rec = loadRoom(room);
     state.roomExpires = rec ? rec.expiresAt : 0;
     // A name the room was given last time, and nobody has arrived yet.
-    state.roomName = (rec && rec.name) || '';
-    state.roomNameTs = (rec && rec.nameTs) || 0;
     state.arrived = false;
-    if ($('inRoomName')) $('inRoomName').value = state.roomName;
     if (rec && rec.members) {
       Object.keys(rec.members).forEach((id) => {
         if (id === state.me.id || state.peers.has(id)) return;
@@ -1720,7 +1712,6 @@
 
     // The one switch in the sheet.
     $('btnPause').addEventListener('click', () => setPaused(!state.paused));
-    $('inRoomName').addEventListener('change', () => setRoomName($('inRoomName').value));
 
     // Tapping someone brings the map to them.
     $('people').addEventListener('click', (e) => {
@@ -1864,7 +1855,7 @@
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
-                  setRoomName, renderControls, renderTop, renderPeople,
+                  renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
                   renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,
                   probeRelay, showConnection, checkForUpdate,

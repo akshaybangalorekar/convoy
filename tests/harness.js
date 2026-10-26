@@ -96,10 +96,10 @@ function boot(opts = {}) {
 
   const clients = [];
   window.mqtt = {
-    connect(url) {
+    connect(url, opts) {
       const h = {};
       const c = {
-        url, connected: false, published: [], subscribed: null, ended: false,
+        url, opts: opts || {}, connected: false, published: [], subscribed: null, ended: false,
         on(e, f) { (h[e] = h[e] || []).push(f); return c; },
         subscribe(t, o, cb) { c.subscribed = t; if (cb) cb(null); return c; },
         publish(t, msg) { c.published.push(msg); return c; },
