@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v31',             // must match VERSION in sw.js; a test holds them together
+    build: 'v32',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -285,7 +285,6 @@
     state.paused = !!on;
     send({ t: state.paused ? 'paused' : 'sharing' });
     if (!state.paused) publishNow(true);
-    banner(state.paused ? 'Not sharing your location' : 'Sharing your location again');
     renderControls();
     renderPeople();
   }
@@ -466,10 +465,8 @@
   function onMapLongPress(e) {
     const lat = e.latlng.lat;
     const lng = e.latlng.lng;
-    banner('Setting the destination\u2026');
     const apply = (label) => {
       setDest(lat, lng, label || 'Pinned location');
-      banner('Destination set');
     };
     const R = window.ConvoyRoute;
     if (R && R.reverse) {
@@ -842,7 +839,6 @@
     send({ t: 'allowed', ids: Array.from(state.allowed) });
     const req = state.pending.get(String(id));
     state.pending.delete(String(id));
-    banner((req ? req.name : 'They') + ' is in');
     renderPeople();
   }
 
@@ -853,7 +849,6 @@
     state.removed.add(String(id));
     saveRoom({ removed: Array.from(state.removed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
-    banner((req ? req.name : 'They') + ' will not be asked again');
     renderPeople();
   }
 
@@ -1006,7 +1001,8 @@
   }
 
   function notify(title, body) {
-    banner(body ? title + ' — ' + body : title);
+    // No banner: the phone's own notification is the notification, and a second copy on
+    // screen was just noise.
     ping();
     try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) { /* ignore */ }
     try {
@@ -1077,7 +1073,6 @@
     });
 
     if (results.indexOf('reached') < 0) {
-      banner('This network is blocking every relay. Try Wi-Fi.');
     } else if (!client || !client.connected) {
       connect();          // one of them answers, so try the real thing again
     }
@@ -1116,7 +1111,6 @@
     setConn('', 'no relay');
     if (toldAboutRelay) return;
     toldAboutRelay = true;
-    banner('Cannot reach the relay from this network — mobile data often blocks it. Try Wi-Fi.');
   }
 
   const connLabel = (whileTrying) =>
@@ -1135,7 +1129,6 @@
     if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
       fail();
       setConn('', 'no library');
-      banner('The relay library did not load — reload the app.');
       return;
     }
 
@@ -1215,20 +1208,19 @@
      time we come back to the screen, and on any touch while we still have no position
      (iOS will not hand over a location until the page has been touched). */
   function startWatching() {
-    if (!navigator.geolocation) { banner('This device cannot share its location'); return; }
+    if (!navigator.geolocation) { state.geoUnavailable = true; renderPeople(); return; }
     stopWatching();
     try {
       geoWatch = navigator.geolocation.watchPosition(onFix, onGeoError, {
         enableHighAccuracy: true, maximumAge: 4000, timeout: 20000,
       });
-    } catch (e) { banner('This device cannot share its location'); }
+    } catch (e) { state.geoUnavailable = true; renderPeople(); }
   }
 
   const haveMyPosition = () => !!(state.me && state.me.lat != null && state.me.lng != null);
 
   function nudgeForLocation() {
     if (!state.joined || state.paused || haveMyPosition()) return;
-    banner('Tap anywhere to share your location');
   }
 
   function onFix(pos) {
@@ -1250,11 +1242,9 @@
   }
 
   function onGeoError(err) {
-    banner({
-      1: 'Location is blocked — allow it so the group can see you',
-      2: 'Location is unavailable right now',
-      3: 'Location timed out, retrying',
-    }[err.code] || 'Location error');
+    state.geoProblem = { 1: 'Location is blocked', 2: 'Location unavailable',
+                         3: 'Location timed out' }[err.code] || 'Location problem';
+    renderPeople();
     // If this is the browser built into a chat app, that is usually why — say so.
     if (window.ConvoyInstall && window.ConvoyInstall.showOpenInBrowser) {
       window.ConvoyInstall.showOpenInBrowser();
@@ -1370,8 +1360,10 @@
     let meta = '';
     let tag = '';
     if (p.isMe) {
-      // Say so plainly rather than showing a bare "you" with no dot on the map.
-      meta = p.lat == null ? 'waiting for your location'
+      // Say so plainly rather than showing a bare "you" with no dot on the map. Location
+      // trouble used to be a banner; it belongs on your own row, where it cannot be missed.
+      meta = state.geoProblem || state.geoUnavailable ? (state.geoProblem || 'No location here')
+           : p.lat == null ? 'waiting for your location · tap anywhere'
            : state.away ? 'app in the background' : 'you';
       if (state.arrived) tag = 'arrived';
     } else if (kind === 'paused') {
@@ -1381,11 +1373,14 @@
       meta = 'not sharing their location';
     } else if (p.lat == null) {
       const seen = lastSeenOf(p);
-      meta = seen ? 'out of contact · last seen ' + fmtAgo(seen) : 'out of contact';
+      meta = seen ? 'Lost network · ' + fmtAgo(seen) : 'Lost network';
     } else if (kind === 'away') {
-      meta = 'app in the background';
+      // They told us: the app was put away or shut down.
+      meta = 'Shut down app';
     } else if (kind === 'lost') {
-      meta = 'out of contact · last seen ' + fmtAgo(lastSeenOf(p));
+      // Silence, which in practice means the network went, so say the thing people
+      // actually want to know and keep the how-long beside it.
+      meta = 'Lost network · ' + fmtAgo(lastSeenOf(p));
     } else {
       meta = behindAhead(me, p) || (me && me.lat != null ? nearText(me, p) : '');
     }
@@ -1464,7 +1459,6 @@
     if (!p || p.lat == null) return;
     state.autoFit = false;
     map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15), { animate: true });
-    banner('Showing ' + p.name);
   }
 
   // Pasting a whole invite link into the code box should just work.
@@ -1497,7 +1491,6 @@
     state.removed.add(id);
     setRemoved(Array.from(state.removed));
     send({ t: 'removed', ids: Array.from(state.removed) });
-    banner(name + ' removed from the group');
     renderPeople();
   }
 
@@ -1507,7 +1500,6 @@
     setRemoved(Array.from(state.removed));
     send({ t: 'removed', ids: Array.from(state.removed) });
     const p = state.peers.get(id);
-    banner((p ? p.name : 'They') + ' added back');
     renderPeople();
   }
 
@@ -1531,8 +1523,6 @@
     try { return normRoom(decodeURIComponent(m[1])); }
     catch (e) { return normRoom(m[1]); }
   }
-
-  function toast(msg) { banner(msg); }
 
   /* ---------------------------------------------------------------- *
    * Destination
@@ -1777,7 +1767,15 @@
       }
     } catch (e) { /* they dismissed the share sheet, or it is unavailable here */ }
 
-    if (await copyText(url)) { banner('Invite link copied — paste it into your chat'); return; }
+    if (await copyText(url)) {
+      const label = $('btnInvite') && $('btnInvite').querySelector('span');
+      if (label) {
+        const was = label.textContent;
+        label.textContent = 'Copied';
+        setTimeout(() => { label.textContent = was; }, 2000);
+      }
+      return;
+    }
     showLink(url);
   }
 
@@ -1834,7 +1832,6 @@
     }, 1000);
 
     setConn('live', 'demo');
-    banner('Demo: five cars on one map');
   }
 
   function stopDemo() {
@@ -1887,7 +1884,7 @@
       const pin = $('inPin').value;
       if (!pin) return;
       $('inPin').value = '';
-      if (pinHash(pin) !== CFG.masterHash) { banner('Not recognised'); return; }
+      if (pinHash(pin) !== CFG.masterHash) return;   // nothing to see; the field clears
       state.master = true;
       try { localStorage.setItem('convoy.master', '1'); } catch (e) { /* ignore */ }
       if (state.me) {
@@ -1898,7 +1895,6 @@
       const note = $('pinNote');
       note.textContent = 'This phone can add and remove people.';
       note.classList.remove('hidden');
-      banner('Unlocked on this phone');
       renderPeople();
     });
 
@@ -1993,7 +1989,7 @@
     wire();
     if (window.ConvoyRoute) {
       window.ConvoyRoute.init({
-        state, esc, setDest, clearDest, toast,
+        state, esc, setDest, clearDest,
       });
     }
     if (window.ConvoyInstall) window.ConvoyInstall.init();
@@ -2020,7 +2016,7 @@
   }
 
   window.Convoy = {
-    CFG, state, esc, toast, setDest, clearDest, join, share, copyText, inviteLink,
+    CFG, state, esc, setDest, clearDest, join, share, copyText, inviteLink,
     map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom, roomFromUrl,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,

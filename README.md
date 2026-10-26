@@ -112,6 +112,9 @@ Nobody is in the room until the phone with the pin lets them in.
 - **The request goes to everyone, and only the master sees it.** It appears at the top of
   the list as *"Priya wants to join"* with **Let in** and a cross. On a phone without the
   pin the same message arrives and draws nothing at all.
+- **This is the only banner in the app.** Everything else that used to raise one — a relay
+  that cannot be reached, a location that is blocked, a name that is not recognised — is
+  said in place instead: on the connection state in the header, or on your own row.
 - **Let in** adds them to the allowed list, which is broadcast and remembered, so they stay
   in from then on. **The cross** marks them out, and they are not asked about again.
 - **The list is announced again whenever anyone speaks.** A single broadcast is not enough:
@@ -229,8 +232,18 @@ In practice a force-kill often *does* leave a trace, because iOS and Android bac
 app before killing it — so the "away" note frequently gets out, and the group sees "app in
 the background" rather than silence. But that is a happy accident, not a guarantee.
 
-Someone brought back from the room's roster shows as **out of contact** until they send
-something. The app does not pretend they are live just because they were here yesterday.
+Someone who goes quiet does not raise a banner. Their **circle turns grey** and their row
+says why, in the words people actually use:
+
+- **"Lost network · 20 min ago"** — nothing has been heard from them, which in practice
+  means the signal went. It is an inference, and it is the honest one.
+- **"Shut down app"** — they told us: the app was put away or closed, which it says on the
+  way out.
+- **"Location is blocked"** / **"waiting for your location · tap anywhere"** — on your own
+  row, when it is your phone that has the problem.
+
+Someone brought back from the roster shows as **Lost network** until they send something.
+The app does not pretend they are live just because they were here yesterday.
 
 ## Nobody is dropped
 
@@ -340,7 +353,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 645 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 632 checks:
 
 ```bash
 npm install

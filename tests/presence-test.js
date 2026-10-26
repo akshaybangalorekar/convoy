@@ -115,7 +115,7 @@ async function testABlockedRelaySaysSo() {
 
   check('after a few failures it stops pretending to connect',
         text(api, 'connState') === 'no relay', text(api, 'connState'));
-  check('and says why, once', /Cannot reach the relay/.test(bannerText(api)), bannerText(api));
+  check('and says so without a banner', bannerText(api) === '', bannerText(api));
 
   const after = api.notes.length;
   for (let i = 0; i < 4; i++) {
@@ -162,9 +162,9 @@ async function testTheRelayCheckNamesABlockedNetwork() {
   check('every relay reads blocked',
         rows.length > 0 && rows.every((li) => li.className === 'bad' && /blocked/.test(li.textContent)),
         d.getElementById('connList').textContent);
-  check('and it says the network is the problem, not the app',
-        /blocking every relay/.test(d.getElementById('banner').textContent),
-        d.getElementById('banner').textContent);
+  check('and the card names the network as the problem, not the app',
+        Array.from(d.querySelectorAll('#connList li')).every((li) => li.className === 'bad'),
+        d.getElementById('connList').textContent);
 }
 
 async function testAMissingLibraryIsNotABlockedNetwork() {
@@ -179,7 +179,9 @@ async function testAMissingLibraryIsNotABlockedNetwork() {
 
   check('a missing relay library is named as such',
         text(api, 'connState') === 'no library', text(api, 'connState'));
-  check('and it says to reload', /did not load/.test(bannerText(api)), bannerText(api));
+  check('and says so on the connection state, with no banner',
+        text(api, 'connState') === 'no library' && bannerText(api) === '',
+        text(api, 'connState'));
 
   const attempts = api.clients.length;
   await sleep(120);
@@ -222,8 +224,8 @@ async function testSomeoneWithNoLocationStillAppears() {
   api.window.Convoy.CFG.staleMs = 10;
   await sleep(40);
   api.window.Convoy._internals.renderPeople();
-  check('once they go quiet it does say out of contact',
-        /out of contact/.test(list(api)), list(api));
+  check('once they go quiet it says the network went',
+        /Lost network/.test(list(api)), list(api));
 
   api.window.Convoy.CFG.staleMs = 90000;      // back to normal before the hello
   api.recv({ t: 'hello', id: 'laptop', name: 'Laptop', ts: Date.now() });
@@ -326,8 +328,8 @@ async function testSomeoneElseAway() {
   const before = api.notes.length;
   api.recv({ t: 'away', id: 'p1', name: 'Priya' });
   await sleep(20);
-  check('her app going to the background shows on the list',
-        /background/.test(list(api)), list(api));
+  check('her app being put away shows on the list as shut down',
+        /Shut down app/.test(list(api)), list(api));
   check('but does not raise a notification', api.notes.length === before,
         String(api.notes.length - before));
 
@@ -365,7 +367,7 @@ async function testSomeoneGoesQuiet() {
         /out of contact/.test(notes(api)), notes(api));
   check('the wording does not claim to know why',
         !/killed|force/i.test(notes(api)), notes(api));
-  check('the list says out of contact', /out of contact/.test(list(api)), list(api));
+  check('the list says the network went', /Lost network/.test(list(api)), list(api));
 
   const after = api.notes.length;
   api.window.Convoy._internals.sweepPresence();

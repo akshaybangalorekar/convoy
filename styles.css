@@ -251,9 +251,10 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 }
 #people li + li { border-top: 1px solid var(--sep); border-radius: 0; }
 /* Someone we cannot reach: put away, or gone quiet */
-#people li.away { opacity: 0.66; }
-#people li.lost { opacity: 0.45; }
-#people li.lost .pdot { filter: grayscale(0.75); }
+/* Gone quiet or gone away: the circle goes grey and the row says why. The name stays
+   readable — dimming the whole row made it hard to see who it was. */
+#people li.away .pdot, #people li.lost .pdot { filter: grayscale(1); opacity: 0.55; }
+#people li.away .pname, #people li.lost .pname { color: var(--muted); }
 .mk.stale { opacity: 0.45; }
 
 /* Your own name, editable in place: text until you touch it. */

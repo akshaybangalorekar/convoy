@@ -146,8 +146,12 @@ try {
         /function checkArrivals/.test(app));
   check('and the row is marked arrived once they are there, once, not twice',
         /tag = 'arrived'/.test(app) && !/peta arrived/.test(app));
-  check('out-of-contact people say when they were last heard from',
-        /last seen /.test(app) && /function lastSeenOf/.test(app));
+  check('someone who goes quiet is marked lost, with how long ago',
+        /Lost network · ' \+ fmtAgo/.test(app) && /function lastSeenOf/.test(app));
+  check('and someone who put the app away is marked as shut down',
+        /Shut down app/.test(app));
+  check('their circle goes grey rather than the whole row fading',
+        /li\.away \.pdot, #people li\.lost \.pdot \{ filter: grayscale\(1\)/.test(css));
   check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
   check('pausing is announced rather than looking like silence',
         /state\.paused \? 'paused' : 'sharing'/.test(app));
@@ -175,7 +179,10 @@ try {
   check('and the connection state can be tapped to check the relays',
         /id="connCard"/.test(html) && /function probeRelay/.test(app));
   check('and a relay that cannot be reached says so instead of pretending',
-        /no relay/.test(app) && /mobile data often blocks it/.test(app));
+        /no relay/.test(app));
+  check('with no banner anywhere except the join request',
+        (app.match(/banner\(/g) || []).length === 2,        // the definition, plus one call
+        String((app.match(/banner\(/g) || []).length));
   check('the location watch is armed again on coming back',
         /startWatching\(\);/.test(app) && /geoWatch = navigator\.geolocation\.watchPosition/.test(app));
   check('and a touch retries while we have no position', /haveMyPosition/.test(app));
@@ -241,7 +248,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v31/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v32/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

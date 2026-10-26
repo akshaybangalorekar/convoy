@@ -94,8 +94,8 @@ async function testNobodyIsDropped() {
 
   api.window.Convoy._internals.sweepPresence();
   await sleep(20);
-  check('and still on the list, marked out of contact',
-        /Priya/.test(list(api)) && /out of contact/.test(list(api)), list(api));
+  check('and still on the list, marked as lost',
+        /Priya/.test(list(api)) && /Lost network/.test(list(api)), list(api));
   check('but not announced as having left', !/left/.test(titles(api)), titles(api));
 }
 
@@ -160,8 +160,8 @@ async function testRosterComesBack() {
   check('the group comes back with the room', api.window.Convoy.state.peers.size === 2,
         String(api.window.Convoy.state.peers.size));
   check('with their names', /Priya/.test(list(api)) && /Rahul/.test(list(api)), list(api));
-  check('marked out of contact, since nothing has been heard from them',
-        /out of contact/.test(list(api)), list(api));
+  check('marked as lost, since nothing has been heard from them',
+        /Lost network/.test(list(api)), list(api));
 
   const p1 = api.window.Convoy.state.peers.get('p1');
   check('a restored person has no position until they send one', p1 && p1.lat === null,

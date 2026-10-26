@@ -194,7 +194,8 @@ async function testNotifications() {
   api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
   await sleep(20);
   check('someone joining raises a notification', /Priya joined/.test(last().title), last().title);
-  check('and a banner on screen', /Priya joined/.test(text(api, 'banner')), text(api, 'banner'));
+  check('and no banner on screen — the phone notification is the notification',
+        text(api, 'banner') === '', text(api, 'banner'));
 
   const before = api.notes.length;
   api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
@@ -278,9 +279,9 @@ async function testCopyingWhenSharingIsUnavailable() {
   await sleep(10);
   check('the old copy method is used when the clipboard API is missing',
         asked === 'copy', String(asked));
-  check('and it says the link is copied',
-        /copied/i.test(api.document.getElementById('banner').textContent),
-        api.document.getElementById('banner').textContent);
+  check('and the button itself says so, rather than a banner',
+        /Copied/.test(api.document.getElementById('btnInvite').textContent),
+        api.document.getElementById('btnInvite').textContent);
 }
 
 async function testTheLinkIsShownWhenNothingElseWorks() {

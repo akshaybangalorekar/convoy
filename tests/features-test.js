@@ -31,8 +31,8 @@ async function testSomeoneGoneQuietSaysHowLong() {
   await sleep(20);
 
   const list = text(api, 'people');
-  check('someone gone quiet says when we last heard from them',
-        /last seen/.test(list), list);
+  check('someone gone quiet is named and the reason given',
+        /Priya/.test(list) && /Lost network/.test(list), list);
   check('with a real length of time in it',
         /(19|20|21) min ago/.test(list), list);
 }
@@ -52,7 +52,8 @@ async function testTheRosterRemembersLastSeen() {
 
   const list = text(api, 'people');
   check('a phone from earlier is still listed', /Ravi/.test(list), list);
-  check('with when we last heard from it', /last seen/.test(list), list);
+  check('with when we last heard from it, beside the reason',
+        /Lost network ·/.test(list), list);
   check('and how long ago that was', /1h ago/.test(list), list);
 }
 
