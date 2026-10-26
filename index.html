@@ -26,14 +26,6 @@
 
 <!-- Top: who you are with, and where you are all heading -->
 <header id="topbar">
-  <div class="card bar">
-    <span class="bar-name">Convoy</span>
-    <button id="connState" class="conn" aria-label="Connection status">connecting</button>
-    <div class="bar-actions">
-      <button id="btnInvite" class="pill accent">Invite</button>
-    </div>
-  </div>
-
   <div class="card dest-row">
     <button id="destRow" class="dest-main" aria-label="Destination">
       <span class="dest-pin" aria-hidden="true"></span>
@@ -46,14 +38,6 @@
 </header>
 
 <button id="btnRecenter" class="recenter" aria-label="Show everyone"></button>
-<button id="btnSettings" class="gear" aria-label="Settings">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.7" />
-    <path d="M12 2.2v2.6M12 19.2v2.6M2.2 12h2.6M19.2 12h2.6M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"
-          stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none" />
-  </svg>
-</button>
-
 <!-- Everyone, and when they arrive -->
 <section id="sheet" class="card">
   <button id="sheetHead" class="sheet-head">
@@ -63,12 +47,10 @@
   <ul id="people"></ul>
 
   <div class="sheet-controls">
-    <button id="btnPause" class="ctl" aria-pressed="false">Hide my location</button>
-  </div>
-
-  <div class="sheet-name">
-    <label for="inMyName">Your name</label>
-    <input id="inMyName" maxlength="24" autocomplete="name" />
+    <button id="connState" class="conn" aria-label="Connection status">connecting</button>
+    <button id="btnInvite" class="pill accent">Invite</button>
+    <button id="btnPause" class="pill accent" aria-pressed="false">Hide my location</button>
+    <button id="btnSettings" class="pill accent" aria-label="Settings">Settings</button>
   </div>
 
   <p id="iosNote" class="fine hidden">On an iPhone a link always opens in Safari — there is

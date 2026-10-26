@@ -45,9 +45,12 @@ async function testStartAGroup() {
 async function testYouCanRenameYourself() {
   const api = boot();
   await sleep(20);
-  const box = api.document.getElementById('inMyName');
-  check('the sheet has your name in it', box && box.value === api.window.Convoy.state.me.name,
-        box && box.value);
+  const box = api.document.querySelector('input.myname');
+  check('your own row in the list holds your name',
+        box && box.value === api.window.Convoy.state.me.name, box && box.value);
+  check('and nobody else has an editable row',
+        api.document.querySelectorAll('input.myname').length === 1,
+        String(api.document.querySelectorAll('input.myname').length));
 
   box.value = 'Akshay';
   box.dispatchEvent(new api.window.Event('change', { bubbles: true }));
@@ -331,16 +334,19 @@ async function testACloseCarSaysNextToYou() {
 async function testTheTagDoesNotRepeatTheName() {
   const demo = boot();
   demo.join('You', 'goa-trip');                        // the demo names you "You"
-  await sleep(20);
-  const mine = text(demo, 'people');
-  check('the row does not read "You you"', !/You\s*you/i.test(mine), mine);
-  check('but your name is there', /You/.test(mine), mine);
+  demo.fix(-33.86, 151.2);                             // so the tag would read "you"
+  await sleep(30);
+  const box = demo.document.querySelector('input.myname');
+  check('your own row holds your name, ready to edit', !!box && box.value === 'You',
+        box && box.value);
+  check('and the row does not repeat it as a tag',
+        !/you/i.test(text(demo, 'people')), text(demo, 'people'));
 
   const named = boot();
   named.join('Akshay', 'goa-trip');
-  await sleep(20);
-  check('and a real name still gets its tag',
-        /Akshay/.test(text(named, 'people')) && /you/.test(text(named, 'people')),
+  named.fix(-33.86, 151.2);
+  await sleep(30);
+  check('while a real name still gets its tag', /you/.test(text(named, 'people')),
         text(named, 'people'));
 }
 
@@ -362,6 +368,7 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
   try {
     await testStartAGroup();
     await testAnOldLinkStillWorks();
+    await testYouCanRenameYourself();
     await testInviteLinkCopy();
     await testPeopleAppear();
     await testArrivalTimes();

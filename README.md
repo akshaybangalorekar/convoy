@@ -83,6 +83,12 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
+**Everything lives at the bottom of the screen**, so the map gets the rest: the people, then
+one row of three blue buttons — **Invite**, **Hide my location** and **Settings** — with the
+connection state beside them. The top of the screen holds only the destination. Your name is
+edited in the list itself: your own row is the one with a dashed underline, and nobody else's
+row can be changed.
+
 **There is no code and nothing to set up.** Open the app and you are in the same room as
 everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
 thing anyone needs, and it is taken from the device — an iPhone shows as "iPhone 4a" — so even
@@ -97,8 +103,8 @@ what this is for. An invite is now just the app's own address.
 Everyone who opens the app is in the group. The one thing only the master phone can do is
 take someone off it.
 
-- **The gear** sits in the bottom-left corner, above the zoom buttons. It shows the version
-  and an empty field that does not say what it is for.
+- **Settings** is a blue button in the row at the foot of the sheet. It shows the version and
+  an empty field that does not say what it is for.
 - **Typing the pin in that field** unlocks the master on that phone, and it stays unlocked —
   it is remembered, so it is asked once.
 - **A master sees a cross on every other person.** Tapping it removes them: they disappear
@@ -309,7 +315,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 597 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 605 checks:
 
 ```bash
 npm install

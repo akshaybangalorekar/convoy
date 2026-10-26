@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v28',             // must match VERSION in sw.js; a test holds them together
+    build: 'v29',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1034,14 +1034,14 @@
   function noteRelayFailure() {
     connFailures++;
     if (connFailures < 3) return;
-    setConn('', 'relay unreachable');
+    setConn('', 'no relay');
     if (toldAboutRelay) return;
     toldAboutRelay = true;
     banner('Cannot reach the relay from this network — mobile data often blocks it. Try Wi-Fi.');
   }
 
   const connLabel = (whileTrying) =>
-    (connFailures >= 3 ? 'relay unreachable' : whileTrying);
+    (connFailures >= 3 ? 'no relay' : whileTrying);
 
   function connect() {
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
@@ -1055,7 +1055,7 @@
     // blocked network. Say so instead.
     if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
       fail();
-      setConn('', 'relay library missing');
+      setConn('', 'no library');
       banner('The relay library did not load — reload the app.');
       return;
     }
@@ -1109,7 +1109,7 @@
 
   function retry() {
     brokerIdx++;
-    setConn('', connLabel('trying another relay'));
+    setConn('', connLabel('trying…'));
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, CFG.retryMs);
   }
@@ -1204,10 +1204,11 @@
     $('peopleCount').textContent = rows.length + (rows.length === 1 ? ' person' : ' people') +
       (state.dest ? '' : ' · no destination');
 
-    if (!rows.length) {
-      ul.innerHTML = '<li class="empty">Waiting for others to join…</li>';
-    } else {
-      ul.innerHTML = rows.join('');
+    const el = document.activeElement;
+    const editing = !!(el && el.classList && el.classList.contains('myname'));
+    if (!editing) {
+      ul.innerHTML = rows.length ? rows.join('')
+        : '<li class="empty">Waiting for others to join…</li>';
     }
 
     renderMarkers();
@@ -1217,10 +1218,6 @@
     if (sheet) {
       document.documentElement.style.setProperty('--sheet-h', sheet.offsetHeight + 'px');
     }
-    renderRoomNote();
-  }
-
-  function renderRoomNote() {
   }
 
   function etaCell(p) {
@@ -1300,12 +1297,16 @@
         ? '<button class="row-act add" data-add="' + esc(p.id) + '" aria-label="Add back">+</button>'
         : '<button class="row-act" data-remove="' + esc(p.id) + '" aria-label="Remove">&#215;</button>';
     }
+    const inner = p.isMe
+      ? '<input class="myname" maxlength="24" aria-label="Your name" value="' +
+        esc(p.name) + '" />'
+      : esc(p.name);
     return '<li data-id="' + esc(p.id) + '" class="' +
       (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') +
       (kind === 'paused' ? 'paused ' : '') +
       (state.removed.has(p.id) ? 'removed ' : '') + '">' +
       '<span class="pdot" style="background:' + p.color + '"></span>' +
-      '<span class="pname">' + esc(p.name) +
+      '<span class="pname">' + inner +
         (meta ? '<span class="tag">' + esc(meta) + '</span>' : '') + '</span>' +
       (tag ? '<span class="ptag">' + esc(tag) + '</span>' : '') +
       etaCell(p) + act +
@@ -1326,9 +1327,7 @@
   }
 
   function renderTop() {
-    // There is one room for everyone, so there is no code to show. The chip names the app.
-    const mine = $('inMyName');
-    if (mine && state.me) mine.value = state.me.name || '';
+    // Nothing in the bar any more: the destination is the only thing up there.
   }
 
   /* Your name is the only thing you can set, and it is set from the sheet: opening the app
@@ -1788,6 +1787,10 @@
     });
 
     // Tapping someone brings the map to them; the master's crosses and pluses come first.
+    $('people').addEventListener('change', (e) => {
+      const inp = e.target;
+      if (inp && inp.classList && inp.classList.contains('myname')) setName(inp.value);
+    });
     $('people').addEventListener('click', (e) => {
       const node = e.target;
       const near = node && node.closest ? node : null;

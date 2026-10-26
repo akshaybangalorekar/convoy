@@ -2,6 +2,8 @@
    grouped-background greys, generous radii, and a bottom sheet. */
 
 :root {
+  /* The sheet's bottom offset (20px, to clear the attribution) plus a small gap. */
+  --sheet-lift: 32px;
   --bg: #f2f2f7;
   --card: rgba(255, 255, 255, 0.86);
   --card-solid: #ffffff;
@@ -71,6 +73,8 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
   background: rgba(120, 120, 128, 0.16); color: var(--text);
 }
 .pill.accent { background: var(--accent); color: var(--accent-text); }
+/* Blue means "I am on the map". Grey means you have taken yourself off it. */
+.pill.accent.on { background: rgba(120, 120, 128, 0.16); color: var(--text); }
 .pill:active { opacity: 0.65; }
 
 .bar-name {
@@ -102,9 +106,6 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .conn-list li.bad em { color: var(--danger); }
 
 /* Your own name, below the people it identifies you to. */
-.sheet-name { margin: 10px 0 2px; }
-.sheet-name label { margin-bottom: 4px; }
-.sheet-name input { margin-bottom: 0; font-size: 15px; padding: 10px 12px; }
 .build-line {
   margin: 2px 0 16px; font-size: 12px; color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -117,8 +118,20 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
   display: flex; flex-direction: column; gap: 8px;
   max-width: 560px; margin: 0 auto;
 }
-.bar { display: flex; align-items: center; gap: 8px; padding: 9px 10px 9px 12px; }
-.bar-actions { margin-left: auto; display: flex; gap: 6px; }
+/* The controls all live in one row at the foot of the sheet, leaving the top of the
+   screen to the map and the destination. */
+.sheet-controls {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 8px 4px; flex-wrap: nowrap;
+}
+.sheet-controls .pill {
+  font-size: 12.5px; padding: 10px 11px; white-space: nowrap; flex: 0 0 auto;
+}
+.sheet-controls .conn {
+  padding: 0; margin: 0 2px 0 4px; flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px;
+}
+.sheet-controls .pill:last-child { margin-left: auto; }
 
 .dest-row {
   width: 100%; display: flex; align-items: center; padding: 0; overflow: hidden;
@@ -150,26 +163,13 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 
 /* Leaflet's controls and its attribution must clear the sheet, not hide behind it. */
 .leaflet-bottom.leaflet-left {
-  bottom: calc(var(--sheet-h, 240px) + 8px + var(--safe-bottom));
+  bottom: calc(var(--sheet-h, 240px) + var(--sheet-lift) - 4px + var(--safe-bottom));
 }
-/* Right-hand side has the recenter button at sheet + 12; the attribution goes above it. */
+/* The attribution sits along the bottom edge of the screen, below the sheet. */
 .leaflet-bottom.leaflet-right {
-  bottom: calc(var(--sheet-h, 240px) + 70px + var(--safe-bottom));
+  bottom: calc(1px + var(--safe-bottom));
 }
-
-/* The gear sits in the bottom left, mirroring the recenter button. */
-.gear {
-  position: fixed; z-index: 25; left: 12px;
-  /* Clear of Leaflet's zoom buttons, which sit in the same corner. */
-  bottom: calc(var(--sheet-h, 240px) + 80px + var(--safe-bottom));
-  width: 38px; height: 38px; border-radius: 50%;
-  border: 0; background: var(--card); color: var(--muted);
-  box-shadow: var(--shadow); display: grid; place-items: center;
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  cursor: pointer;
-}
-.gear svg { width: 19px; height: 19px; }
-.gear:active { opacity: 0.6; }
+.leaflet-control-attribution { font-size: 10px; }
 
 /* A master can take someone off the group, and put them back. */
 .row-act {
@@ -184,7 +184,7 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 /* ---------- Recenter ---------- */
 .recenter {
   position: fixed; z-index: 25; right: 12px;
-  bottom: calc(var(--sheet-h, 240px) + 12px + var(--safe-bottom));
+  bottom: calc(var(--sheet-h, 240px) + var(--sheet-lift) + var(--safe-bottom));
   width: 46px; height: 46px; border-radius: 50%;
   border: 0; background: var(--card); box-shadow: var(--shadow);
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
@@ -205,7 +205,7 @@ body.sheet-collapsed .recenter { bottom: calc(70px + var(--safe-bottom)); }
 /* ---------- People sheet ---------- */
 #sheet {
   position: fixed; z-index: 28;
-  left: 10px; right: 10px; bottom: calc(10px + var(--safe-bottom));
+  left: 10px; right: 10px; bottom: calc(20px + var(--safe-bottom));
   max-width: 560px; margin: 0 auto;
   padding: 4px 0 6px;
   max-height: 52vh; display: flex; flex-direction: column;
@@ -236,6 +236,17 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 #people li.lost { opacity: 0.45; }
 #people li.lost .pdot { filter: grayscale(0.75); }
 .mk.stale { opacity: 0.45; }
+
+/* Your own name, editable in place: text until you touch it. */
+.myname {
+  display: inline-block; width: 14ch; max-width: 58%;
+  appearance: none; -webkit-appearance: none;
+  border: 0; background: none; font: inherit; color: inherit;
+  padding: 0 0 2px; margin: 0; min-width: 4ch;
+  border-bottom: 1px dashed rgba(120, 120, 128, 0.5);
+  border-radius: 0; vertical-align: baseline;
+}
+.myname:focus { outline: none; border-bottom: 1px solid var(--accent); }
 .pdot {
   flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
@@ -396,7 +407,6 @@ label .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: 
 
 /* ---------- Naming the room, and the switches in the sheet ---------- */
 
-.sheet-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .ctl {
   flex: 1 1 40%; min-width: 0;
   padding: 10px 12px; border-radius: 12px;

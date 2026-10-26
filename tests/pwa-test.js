@@ -110,13 +110,21 @@ try {
         /function pinHash/.test(app) && /pinHash\(pin\) !== CFG\.masterHash/.test(app));
   check('the settings field is unlabelled, so it does not advertise itself',
         /id="inPin"/.test(html) && !/placeholder[^>]*pin/i.test(html));
-  check('there is no room code anywhere in the bar',
-        !/roomChip/.test(html) && /bar-name/.test(html));
+  check('the attribution sits along the bottom edge, not floating over the map',
+        /\.leaflet-bottom\.leaflet-right \{\s*bottom: calc\(1px/.test(css));
+  check('and the sheet clears it', /bottom: calc\(20px \+ var\(--safe-bottom\)\)/.test(css));
+  check('there is no room code and no bar at the top',
+        !/roomChip/.test(html) && !/class="bar"/.test(html));
   check('and there is no room-name field at all, since a name only caused confusion',
         !/inRoomName/.test(html) && !/roomName/.test(app));
   check('there is no code field at all', !/id="inRoom"/.test(html));
-  check('and your name is set from the sheet instead',
-        /id="inMyName"/.test(html) && /function setName/.test(app));
+  check('your name is edited in the list, on your own row only',
+        /class="myname"/.test(app) && /function setName/.test(app) &&
+        !/inMyName/.test(html));
+  check('and the controls sit in one row at the foot of the sheet',
+        /class="sheet-controls"/.test(html) &&
+        /id="btnInvite"/.test(html) && /id="btnPause"/.test(html) &&
+        /id="btnSettings"/.test(html));
   check('the clear button lives on the destination row, not in the search sheet',
         /id="btnClearDest"/.test(html) &&
         html.indexOf('id="btnClearDest"') < html.indexOf('id="search"'));
@@ -146,7 +154,7 @@ try {
   check('the relay library has a second source, since a CDN can fail on a phone',
         /cdn\.jsdelivr\.net\/npm\/mqtt/.test(html));
   check('a missing relay library is named instead of looking like a blocked network',
-        /relay library missing/.test(app));
+        /no library/.test(app));
   check('the shell fetch bypasses the HTTP cache, or updates never land',
         /fetch\(req, \{ cache: 'no-store' \}\)/.test(sw));
   check('the app asks for a new service worker on open and on return',
@@ -161,7 +169,7 @@ try {
   check('and the connection state can be tapped to check the relays',
         /id="connCard"/.test(html) && /function probeRelay/.test(app));
   check('and a relay that cannot be reached says so instead of pretending',
-        /relay unreachable/.test(app) && /mobile data often blocks it/.test(app));
+        /no relay/.test(app) && /mobile data often blocks it/.test(app));
   check('the location watch is armed again on coming back',
         /startWatching\(\);/.test(app) && /geoWatch = navigator\.geolocation\.watchPosition/.test(app));
   check('and a touch retries while we have no position', /haveMyPosition/.test(app));
@@ -227,7 +235,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v28/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v29/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

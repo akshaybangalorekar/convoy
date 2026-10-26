@@ -114,7 +114,7 @@ async function testABlockedRelaySaysSo() {
   }
 
   check('after a few failures it stops pretending to connect',
-        text(api, 'connState') === 'relay unreachable', text(api, 'connState'));
+        text(api, 'connState') === 'no relay', text(api, 'connState'));
   check('and says why, once', /Cannot reach the relay/.test(bannerText(api)), bannerText(api));
 
   const after = api.notes.length;
@@ -178,7 +178,7 @@ async function testAMissingLibraryIsNotABlockedNetwork() {
   await sleep(40);
 
   check('a missing relay library is named as such',
-        text(api, 'connState') === 'relay library missing', text(api, 'connState'));
+        text(api, 'connState') === 'no library', text(api, 'connState'));
   check('and it says to reload', /did not load/.test(bannerText(api)), bannerText(api));
 
   const attempts = api.clients.length;
