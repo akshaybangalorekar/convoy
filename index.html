@@ -35,11 +35,15 @@
     </div>
   </div>
 
-  <button id="destRow" class="card dest-row" aria-label="Destination">
-    <span class="dest-pin" aria-hidden="true"></span>
-    <span class="dest-text" id="destText">Set a destination</span>
-    <span class="dest-chev" aria-hidden="true">›</span>
-  </button>
+  <div class="card dest-row">
+    <button id="destRow" class="dest-main" aria-label="Destination">
+      <span class="dest-pin" aria-hidden="true"></span>
+      <span class="dest-text" id="destText">Set a destination</span>
+      <span class="dest-chev" aria-hidden="true">›</span>
+    </button>
+    <button id="btnClearDest" class="dest-clear" aria-label="Clear the destination"
+            title="Clear the destination">&#215;</button>
+  </div>
 </header>
 
 <button id="btnRecenter" class="recenter" aria-label="Show everyone"></button>
@@ -50,15 +54,15 @@
     <span id="peopleCount">0 people</span>
     <span class="sheet-chev" aria-hidden="true">›</span>
   </button>
-  <div class="sheet-room">
-    <input id="inRoomName" maxlength="32" placeholder="Room name — just a label"
-           aria-label="Room name, which is only a label" />
-  </div>
-
   <ul id="people"></ul>
 
   <div class="sheet-controls">
     <button id="btnPause" class="ctl" aria-pressed="false">Hide my location</button>
+  </div>
+
+  <div class="sheet-room">
+    <input id="inRoomName" maxlength="32" placeholder="Room name — just a label"
+           aria-label="Room name, which is only a label" />
   </div>
 
   <p id="roomNote" class="room-note"></p>
@@ -78,16 +82,28 @@
   </div>
 
   <div class="card join-card">
-    <div class="logo" aria-hidden="true"></div>
+    <svg class="logo" viewBox="0 0 46 46" aria-hidden="true">
+      <defs><linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#007aff" /><stop offset="1" stop-color="#34c759" />
+      </linearGradient></defs>
+      <rect width="46" height="46" rx="14" fill="url(#logoGrad)" />
+      <polyline points="11,33 20,20 30,26 36,13" fill="none" stroke="rgba(255,255,255,0.8)"
+                stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round" />
+      <circle cx="11" cy="33" r="4.6" fill="#fff" /><circle cx="11" cy="33" r="2.5" fill="#ff3b30" />
+      <circle cx="20" cy="20" r="4.6" fill="#fff" /><circle cx="20" cy="20" r="2.5" fill="#ff9500" />
+      <circle cx="30" cy="26" r="4.6" fill="#fff" /><circle cx="30" cy="26" r="2.5" fill="#34c759" />
+    </svg>
     <h1>Convoy</h1>
     <p class="sub">Everyone on one map, with the time each person will arrive.</p>
 
     <label for="inName">Your name</label>
-    <input id="inName" maxlength="24" placeholder="Your name" autocomplete="name" />
+    <input id="inName" maxlength="24" autocomplete="name" />
 
-    <label for="inRoom">Invite code <span class="hint">— this is what puts phones in the same room</span></label>
-    <input id="inRoom" maxlength="32" placeholder="Leave empty to start a new group"
+    <label for="inRoom">Invite code</label>
+    <input id="inRoom" maxlength="32"
            autocapitalize="none" autocorrect="off" spellcheck="false" />
+    <p class="hint-line">The code joins phones together — capitals do not matter. Leave it
+      empty to start a new group.</p>
 
     <button id="btnGo" class="primary">Start a new group</button>
 
@@ -96,8 +112,6 @@
       <b>Add to Home Screen</b>, then open Convoy from your home screen and paste the code
       in. <button id="btnCopyCode" class="linkish">Copy the code</button></p>
 
-    <p class="fine">Anyone with the code can join, see the map and set the destination.
-      Codes are not case-sensitive — capitals do not matter.</p>
     <button id="btnDemo" class="linkish">Just looking? Preview with demo cars</button>
   </div>
  </div>
@@ -112,7 +126,6 @@
       <button id="btnSearchClose" class="pill">Cancel</button>
     </div>
     <ul id="results" class="results"></ul>
-    <button id="btnClearDest" class="ghost">Clear the destination</button>
   </div>
 </div>
 

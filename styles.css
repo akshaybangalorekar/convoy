@@ -93,11 +93,22 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .bar-actions { margin-left: auto; display: flex; gap: 6px; }
 
 .dest-row {
-  appearance: none; border: 0; width: 100%;
-  display: flex; align-items: center; gap: 10px;
-  padding: 13px 14px; text-align: left;
+  width: 100%; display: flex; align-items: center; padding: 0; overflow: hidden;
 }
-.dest-row:active { opacity: 0.75; }
+.dest-main {
+  appearance: none; border: 0; background: none; color: inherit; font: inherit;
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 6px 13px 14px; text-align: left; cursor: pointer;
+}
+.dest-main:active { opacity: 0.75; }
+/* Clearing is a small, quiet cross on the row itself — not a big button in the search flow. */
+.dest-clear {
+  appearance: none; border: 0; background: none; color: var(--muted);
+  flex: 0 0 auto; padding: 10px 14px 10px 10px;
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.dest-clear:active { opacity: 0.55; }
 .dest-pin {
   flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%;
   background: var(--danger); box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.18);
@@ -108,6 +119,15 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 .dest-text.empty { color: var(--muted); font-weight: 500; }
 .dest-chev { flex: 0 0 auto; color: var(--muted); font-size: 20px; line-height: 1; }
+
+/* Leaflet's controls and its attribution must clear the sheet, not hide behind it. */
+.leaflet-bottom.leaflet-left {
+  bottom: calc(var(--sheet-h, 240px) + 8px + var(--safe-bottom));
+}
+/* Right-hand side has the recenter button at sheet + 12; the attribution goes above it. */
+.leaflet-bottom.leaflet-right {
+  bottom: calc(var(--sheet-h, 240px) + 70px + var(--safe-bottom));
+}
 
 /* ---------- Recenter ---------- */
 .recenter {
@@ -192,10 +212,16 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 
 .join-card, .search-card { width: 100%; max-width: 420px; padding: 26px 22px 22px; }
 .search-card { max-height: 82vh; display: flex; flex-direction: column; }
+/* One sheet rises from the bottom; the other should too, rather than floating mid-screen
+   like a dialog. */
+#search { padding-bottom: 0; }
+#search .search-card { margin: auto auto 0; border-radius: 18px 18px 0 0; }
 
-.logo {
-  width: 46px; height: 46px; border-radius: 14px; margin-bottom: 14px;
-  background: linear-gradient(160deg, var(--accent), #34c759);
+.logo { display: block; width: 46px; height: 46px; margin-bottom: 14px; }
+
+/* The rules under the code field: one quiet line instead of three lines of fine print. */
+.hint-line {
+  margin: -6px 0 16px 3px; font-size: 13.5px; line-height: 1.5; color: var(--muted);
 }
 h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: -0.6px; }
 .sub { margin: 0 0 20px; color: var(--muted); font-size: 15px; }
@@ -226,6 +252,7 @@ input:focus { outline: none; border-color: var(--accent); }
   font-size: 16px; font-weight: 600;
 }
 .ghost:active { opacity: 0.65; }
+#btnDemo { font-size: 13px; opacity: 0.8; }
 .linkish {
   appearance: none; border: 0; background: none; width: 100%;
   margin-top: 14px; padding: 6px;

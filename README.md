@@ -57,7 +57,11 @@ ready to tap again. That history is kept on your phone and nowhere else — it i
 the room, so it is yours alone rather than the group's. Picking somewhere you have been before
 moves it back to the top instead of listing it twice.
 
-The sheet under the map holds one switch:
+The sheet under the map puts **the people first**, then the one switch, then the room name —
+which is only a label and does not deserve the best space in the sheet. When there is no
+destination it says so once, in the header, rather than on every row.
+
+It holds one switch:
 
 - **Hide my location** takes you off everyone's map without leaving the room, and *tells* the
   group you have hidden rather than going quiet — so nobody thinks you have been lost.
@@ -69,7 +73,11 @@ sharing less often can never make anyone look lost. Nor is there a button to say
 arrived — coming within 50 m of the destination does it, and until then everyone keeps seeing
 your arrival time.
 
-Tapping a name brings the map to that person and stops the view chasing everyone else. Each row
+**Names on the map** are shown for your own car, the nearest one, and whichever car you have
+tapped. Every name at once collides into an unreadable stack the moment cars are close, which
+is exactly when the map matters; the dots always show everyone, and tapping a car names it and
+brings the map to it. Tapping a name in the list does the same. A car within 50 m reads
+*"next to you"* rather than `0 m N`. Each row
 says how long ago you last heard from them, and — once a destination is set — who is ahead of
 you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 50 m of the
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
@@ -282,7 +290,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 554 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 570 checks:
 
 ```bash
 npm install
@@ -318,7 +326,7 @@ npm test
   setting it, the row surviving the fuller answer arriving underneath a finger, the
   recent-places history and its five-item cap, the car route, and the search sheet.
 - `tests/map-test.js` — rejoining on launch, unique car colours, the view that keeps
-  everyone in frame, and the one-tap-out / two-taps-in gestures.
+  everyone in frame, the one-tap-out / two-taps-in gestures, and which cars carry a name.
 - `tests/pwa-test.js` — manifest, icons, service worker, and that the removed features are
   really gone.
 
@@ -340,6 +348,8 @@ npm test
 - **A force-quit still lands you back in the room.** The room, your identity and your name
   all live on the phone, so reopening puts you straight back in. If the name ever went
   missing, the room's own roster has it, because you were added to it when you joined.
+- **Clearing the destination is a small cross on the destination row**, not a button inside
+  the search sheet, so search keeps one job.
 - **Your recent places live on your phone.** They are not shared with the room and are not
   on any server, so a phone that is wiped loses them.
 - **The roster lives on each phone.** A phone that has never had the room does not know who

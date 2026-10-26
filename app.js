@@ -47,7 +47,7 @@
   };
 
   const PALETTE = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de',
-                   '#5ac8fa', '#ffcc00', '#ff2d55', '#30d158', '#5856d6'];
+                   '#5ac8fa', '#b58900', '#ff2d55', '#30d158', '#5856d6'];
 
   const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me',
                invite: 'convoy.invite' };
@@ -72,6 +72,7 @@
     roomName: '',         // a human name for the room, shared with everyone in it
     roomNameTs: 0,        // when it was last named; newest wins, like the destination
     arrived: false,       // we have reached the destination (or said we have)
+    focused: '',          // the car whose name is showing because it was tapped
   };
 
   let map = null;
@@ -455,7 +456,7 @@
       rotate: false,
       doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -555,21 +556,69 @@
     container.addEventListener('pointercancel', () => { from = null; dragged = false; });
   }
 
-  function makeIcon(p) {
+  /* Every name on the map at once collides into one unreadable stack the moment cars are
+     close — which is exactly when the map matters. So the map names your own car, the
+     nearest one, and whichever car you have tapped. The dots always show everyone. */
+  function nearestPeer() {
+    const me = state.me;
+    if (!me || me.lat == null) return null;
+    let best = null;
+    let bestD = Infinity;
+    state.peers.forEach((p) => {
+      if (p.lat == null) return;
+      const d = haversine(me, p);
+      if (d < bestD) { bestD = d; best = p; }
+    });
+    return best;
+  }
+
+  function labelledIds() {
+    const ids = new Set();
+    if (state.me && state.me.id) ids.add(state.me.id);
+    const near = nearestPeer();
+    if (near) ids.add(near.id);
+    if (state.focused) ids.add(state.focused);
+    return ids;
+  }
+
+  function makeIcon(p, showLabel) {
     const html =
       '<div class="mk' + (p.isMe ? ' me' : '') + '" style="color:' + p.color + '">' +
         '<span class="dot"></span>' +
-        '<span class="lbl">' + esc(p.name) + '</span>' +
+        (showLabel ? '<span class="lbl">' + esc(p.name) + '</span>' : '') +
       '</div>';
     return L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [0, 0] });
   }
 
   function ensureMarker(p) {
     if (p._marker) return p._marker;
+    p._labelled = labelledIds().has(p.id);
     p._marker = L.marker([p.lat, p.lng], {
-      icon: makeIcon(p), keyboard: false, zIndexOffset: p.isMe ? 1000 : 0,
+      icon: makeIcon(p, p._labelled), keyboard: false, zIndexOffset: p.isMe ? 1000 : 0,
     }).addTo(map);
+    if (!p.isMe) {
+      // Tapping a car names it and brings the map to it.
+      p._marker.on('click', () => {
+        state.focused = p.id;
+        focusPeer(p.id);
+        renderMarkers();
+      });
+    }
     return p._marker;
+  }
+
+  // Only redraw an icon when whether it carries a name actually changes.
+  function renderMarkers() {
+    const labels = labelledIds();
+    allPeople().forEach((p) => {
+      if (!p._marker) return;
+      const want = labels.has(p.id);
+      if (p._labelled === want) return;
+      p._labelled = want;
+      p._marker.setIcon(makeIcon(p, want));
+      const el = p._marker.getElement();
+      if (el) el.classList.toggle('stale', !p.isMe && isStale(p));
+    });
   }
 
   function updateMarker(p) {
@@ -1013,13 +1062,16 @@
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
       .forEach((p) => rows.push(rowFor(p, me)));
 
-    $('peopleCount').textContent = rows.length + (rows.length === 1 ? ' person' : ' people');
+    $('peopleCount').textContent = rows.length + (rows.length === 1 ? ' person' : ' people') +
+      (state.dest ? '' : ' · no destination');
 
     if (!rows.length) {
       ul.innerHTML = '<li class="empty">Waiting for others to join…</li>';
     } else {
       ul.innerHTML = rows.join('');
     }
+
+    renderMarkers();
 
     // Keep the recenter button clear of the sheet.
     const sheet = $('sheet');
@@ -1036,7 +1088,9 @@
   }
 
   function etaCell(p) {
-    if (!state.dest) return '<span class="peta">no destination</span>';
+    // One mention in the header beats five in the rows. Repetition at that density stops
+    // being information and becomes texture.
+    if (!state.dest) return '';
     // Nobody presses the button if they do not have to: coming within reach of the
     // destination is arriving. Until that happens the arrival time stays on screen — it is
     // the one thing everyone actually watches.
@@ -1069,6 +1123,12 @@
     return (m && m.lastSeen) || p.ts || 0;
   }
 
+  // A bearing and a zero distance is noise. Inside fifty metres, say what it means.
+  function nearText(me, p) {
+    const d = haversine(me, p);
+    return d < 50 ? 'next to you' : fmtDist(d) + ' ' + compass(bearing(me, p));
+  }
+
   function rowFor(p, me) {
     const kind = presenceOf(p);
     let meta = '';
@@ -1089,9 +1149,10 @@
     } else if (kind === 'lost') {
       meta = 'out of contact · last seen ' + fmtAgo(lastSeenOf(p));
     } else {
-      meta = behindAhead(me, p) ||
-        (me && me.lat != null ? fmtDist(haversine(me, p)) + ' ' + compass(bearing(me, p)) : '');
+      meta = behindAhead(me, p) || (me && me.lat != null ? nearText(me, p) : '');
     }
+    // "You you": never let the tag repeat the name it sits beside.
+    if (p.isMe && meta && String(p.name).toLowerCase() === meta.toLowerCase()) meta = '';
     if (p.arrived && !p.isMe) tag = 'arrived';
     return '<li data-id="' + esc(p.id) + '" class="' +
       (kind === 'lost' ? 'lost ' : '') + (kind === 'away' ? 'away ' : '') +
@@ -1285,6 +1346,7 @@
     state.joined = true;
     state.seen = new Set();
     state.away = false;
+    state.focused = '';
 
     // Restore the destination this phone last knew for this room, so a returning phone
     // can put it straight back on the air without asking anybody.
@@ -1585,6 +1647,7 @@
       lastFitAt = 0;
       fitAll();
     });
+    $('btnClearDest').addEventListener('click', clearDest);
     $('destRow').addEventListener('click', () => {
       if (window.ConvoyRoute) window.ConvoyRoute.openSearch();
     });
@@ -1693,6 +1756,7 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   setRoomName, renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
+                  renderMarkers, labelledIds, nearestPeer, nearText,
                   startWatching, stopWatching, haveMyPosition, nudgeForLocation,
                   askWakeLock },
   };

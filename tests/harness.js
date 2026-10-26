@@ -12,11 +12,15 @@ const check = (name, cond, extra = '') => checks.push({ name, ok: !!cond, extra 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function layer() {
-  const o = {};
+  const o = { _icons: [], _handlers: {} };
   ['addTo', 'setLatLng', 'setLatLngs', 'setView', 'panTo', 'fitBounds', 'getBounds',
-   'extend', 'removeLayer', 'on', 'off', 'getZoom', 'setStyle', 'bindPopup',
-   'setZIndex', 'setIcon', 'getElement']
+   'extend', 'removeLayer', 'off', 'getZoom', 'setStyle', 'bindPopup',
+   'setZIndex', 'getElement']
     .forEach((m) => { o[m] = () => o; });
+  // Icons and handlers are recorded, so a test can ask what a marker was drawn with.
+  o.setIcon = (icon) => { o._icons.push(icon); return o; };
+  o.on = (ev, fn) => { o._handlers[ev] = fn; return o; };
+  o.fire = (ev) => { if (o._handlers[ev]) o._handlers[ev](); };
   o.getZoom = () => 13;
   o.getPane = () => ({ style: {} });
   o.getContainer = () => ({ addEventListener: () => {} });
@@ -86,7 +90,8 @@ function boot(opts = {}) {
     polyline: layer,
     latLngBounds: (pts) => { const b = layer(); b._pts = (pts || []).slice(); return b; },
     control: { zoom: () => ({ addTo: () => {} }) },
-    divIcon: (o) => o, marker: layer,
+    divIcon: (o) => o,
+    marker: (ll, opts) => { const m = layer(); if (opts && opts.icon) m._icons.push(opts.icon); return m; },
   };
 
   const clients = [];

@@ -345,7 +345,6 @@
   function openSearch() {
     $('search').classList.remove('hidden');
     $('inSearch').value = '';
-    $('btnClearDest').style.display = API.state.dest ? '' : 'none';
     showRecent();
     if (!pushed) {
       try { history.pushState({ convoySheet: 'search' }, ''); pushed = true; } catch (e) {}
@@ -438,10 +437,6 @@
     // A tap on the dimmed area, outside the card, always gets you out.
     $('search').addEventListener('click', (e) => {
       if (e.target === $('search')) closeSearch();
-    });
-    $('btnClearDest').addEventListener('click', () => {
-      API.clearDest();
-      closeSearch();
     });
     $('inSearch').addEventListener('input', () => {
       if (debounce) clearTimeout(debounce);

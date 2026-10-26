@@ -107,7 +107,12 @@ try {
   check('but the chip always shows the code, never the name',
         /roomChip'\)\.textContent = state\.room \|\|/.test(app));
   check('and the code field says it is the thing that joins phones',
-        /puts phones in the same room/.test(html));
+        /The code joins phones together/.test(html));
+  check('the clear button lives on the destination row, not in the search sheet',
+        /id="btnClearDest"/.test(html) &&
+        html.indexOf('id="btnClearDest"') < html.indexOf('id="search"'));
+  check('and the join form has one hint instead of a wall of fine print',
+        /class="hint-line"/.test(html) && !/class="fine"/.test(html));
   check('the name is shared with the room', /t: 'room-name'/.test(app));
   check('a long press on the map sets the destination',
         /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
@@ -194,7 +199,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v18/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v19/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

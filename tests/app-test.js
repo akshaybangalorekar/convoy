@@ -43,7 +43,7 @@ async function testStartAGroup() {
         api.window.Convoy.state.room + '/bus', c.subscribed);
   check('the phone announces itself', !!api.sent('hello'));
   check('the people sheet appears', !d.getElementById('sheet').classList.contains('hidden'));
-  check('you are on your own in the list', text(api, 'peopleCount') === '1 person',
+  check('you are on your own in the list', text(api, 'peopleCount') === '1 person · no destination',
         text(api, 'peopleCount'));
   check('the recenter button appears',
         !d.getElementById('btnRecenter').classList.contains('hidden'));
@@ -108,7 +108,8 @@ async function testPeopleAppear() {
 
   check('both other people are on the map', api.window.Convoy.state.peers.size === 2,
         String(api.window.Convoy.state.peers.size));
-  check('the count adds up', text(api, 'peopleCount') === '3 people', text(api, 'peopleCount'));
+  check('the count adds up', text(api, 'peopleCount') === '3 people · no destination',
+        text(api, 'peopleCount'));
   const list = text(api, 'people');
   check('their names are listed', /Priya/.test(list) && /Rahul/.test(list), list);
   check('each has a colour', /background:#/.test(d.getElementById('people').innerHTML));
@@ -125,8 +126,10 @@ async function testArrivalTimes() {
 
   api.recv(pos('p1', 'Priya', 15.510, 73.810));
   await sleep(20);
-  check('with no destination there is nothing to arrive at',
-        /no destination/.test(text(api, 'people')), text(api, 'people'));
+  check('with no destination it is said once, in the header, not on every row',
+        /no destination/.test(text(api, 'peopleCount')) &&
+        !/no destination/.test(text(api, 'people')),
+        text(api, 'peopleCount') + ' || ' + text(api, 'people'));
 
   api.window.Convoy.setDest(15.600, 73.900, 'Goa');
   await sleep(60);
@@ -377,6 +380,50 @@ async function testBothLinkShapesWork() {
         query.document.getElementById('btnGo').textContent);
 }
 
+/* ---------- The list reads like a list ---------- */
+async function testACloseCarSaysNextToYou() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-37.90, 145.05);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -37.9001, 145.05));      // about 11 m away
+  await sleep(30);
+  const list = text(api, 'people');
+  check('a car right beside you says so', /next to you/.test(list), list);
+  check('rather than a zero distance with a compass point', !/0 m/.test(list), list);
+}
+
+async function testTheTagDoesNotRepeatTheName() {
+  const demo = boot();
+  demo.join('You', 'goa-trip');                        // the demo names you "You"
+  await sleep(20);
+  const mine = text(demo, 'people');
+  check('the row does not read "You you"', !/You\s*you/i.test(mine), mine);
+  check('but your name is there', /You/.test(mine), mine);
+
+  const named = boot();
+  named.join('Akshay', 'goa-trip');
+  await sleep(20);
+  check('and a real name still gets its tag',
+        /Akshay/.test(text(named, 'people')) && /you/.test(text(named, 'people')),
+        text(named, 'people'));
+}
+
+async function testThePeopleComeBeforeTheRoomName() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const sheet = api.document.getElementById('sheet');
+  const order = Array.from(sheet.querySelectorAll('ul, .sheet-controls, .sheet-room'))
+    .map((el) => el.id || el.className);
+  const listAt = order.indexOf('people');
+  const roomAt = order.findIndex((c) => /sheet-room/.test(c));
+  check('the people list comes before the optional room name',
+        listAt >= 0 && roomAt >= 0 && listAt < roomAt, JSON.stringify(order));
+  check('and the switch sits between them', order.indexOf('sheet-controls') > listAt &&
+        order.indexOf('sheet-controls') < roomAt, JSON.stringify(order));
+}
+
 /* ---------- Run ---------- */
 (async () => {
   try {
@@ -394,6 +441,9 @@ async function testBothLinkShapesWork() {
     await testTheLinkIsShownWhenNothingElseWorks();
     await testCodesAreNotCaseSensitive();
     await testBothLinkShapesWork();
+    await testACloseCarSaysNextToYou();
+    await testTheTagDoesNotRepeatTheName();
+    await testThePeopleComeBeforeTheRoomName();
   } catch (e) { crash(e); }
   finish('app');
 })();

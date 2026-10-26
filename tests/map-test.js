@@ -202,6 +202,53 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- Names on the map ---------- */
+// Every name at once collides into one unreadable stack when cars are close, so the map
+// names your own car, the nearest one, and whichever car you have tapped.
+function iconHtml(api, id) {
+  const p = id === 'me' ? api.window.Convoy.state.me : api.window.Convoy.state.peers.get(id);
+  if (!p || !p._marker || !p._marker._icons) return '';
+  const icons = p._marker._icons;
+  return icons.length ? String(icons[icons.length - 1].html) : '';
+}
+const named = (api, id) => /class="lbl"/.test(iconHtml(api, id));
+
+async function testOnlySomeCarsCarryAName() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-37.90, 145.05);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -37.9005, 145.05));    // ~55 m: the nearest
+  api.recv(pos('p2', 'Rahul', -37.95, 145.10));
+  api.recv(pos('p3', 'Meera', -37.96, 145.11));
+  await sleep(40);
+
+  check('your own car is always named', named(api, 'me'), iconHtml(api, 'me'));
+  check('so is the nearest car', named(api, 'p1'), iconHtml(api, 'p1'));
+  check('but not the ones further off, where the names would collide',
+        !named(api, 'p2') && !named(api, 'p3'),
+        iconHtml(api, 'p2') + ' || ' + iconHtml(api, 'p3'));
+  check('every car is still drawn as a dot',
+        ['me', 'p1', 'p2', 'p3'].every((id) => /class="dot"/.test(iconHtml(api, id))));
+}
+
+async function testTappingACarNamesIt() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-37.90, 145.05);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -37.9005, 145.05));
+  api.recv(pos('p2', 'Rahul', -37.95, 145.10));
+  await sleep(40);
+  check('the far car starts unnamed', !named(api, 'p2'), iconHtml(api, 'p2'));
+
+  const far = api.window.Convoy.state.peers.get('p2');
+  far._marker.fire('click');
+  await sleep(30);
+  check('tapping it names it', named(api, 'p2'), iconHtml(api, 'p2'));
+  check('and the map goes to it', api.window.Convoy.state.autoFit === false);
+}
+
 (async () => {
   try {
     await testRejoinOnLaunch();
@@ -212,6 +259,8 @@ async function testSheetCollapses() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testOnlySomeCarsCarryAName();
+    await testTappingACarNamesIt();
   } catch (e) { crash(e); }
   finish('map');
 })();
