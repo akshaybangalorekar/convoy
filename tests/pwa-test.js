@@ -124,9 +124,12 @@ try {
         /id="inPin"/.test(html) && !/placeholder[^>]*pin/i.test(html));
   check('there are no + and - buttons on the map — tapping zooms',
         !/control\.zoom/.test(app) && !/leaflet-control-zoom/.test(html));
-  check('the attribution sits along the bottom edge, not floating over the map',
-        /\.leaflet-bottom\.leaflet-right \{\s*bottom: calc\(1px/.test(css));
-  check('and the sheet clears it', /bottom: calc\(20px \+ var\(--safe-bottom\)\)/.test(css));
+  check('the map draws no credit line over itself',
+        /attributionControl: false/.test(app) && !/\.leaflet-control-attribution/.test(css));
+  check('the credit is in Help instead, with a link to OpenStreetMap',
+        /Map data &copy;/.test(html) && /openstreetmap\.org\/copyright/.test(html));
+  check('and the sheet is the bottom-most thing, flush to the edge',
+        /bottom: 0;/.test(css) && /border-radius: 16px 16px 0 0/.test(css));
   check('there is no room code and no bar at the top',
         !/roomChip/.test(html) && !/class="bar"/.test(html));
   check('and there is no room-name field at all, since a name only caused confusion',
@@ -260,7 +263,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v36/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v37/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

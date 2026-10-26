@@ -98,7 +98,9 @@ you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 
 destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
-**Everything lives at the bottom of the screen**, so the map gets the rest: the people, then a
+**Everything lives at the bottom of the screen**, and the sheet is the bottom-most thing —
+flush to the edge, square at the bottom, with the phone's safe area handled inside it, so no
+map shows underneath: the people, then a
 row of four equal buttons — **Invite**, **Sharing**, **Location** and **Help** — each an icon
 over one short word so they all match whatever the state. The connection state sits in the
 sheet's header, beside the count. The top of the screen holds only the destination.
@@ -150,8 +152,11 @@ Everyone already in the room can still be removed by the master:
 
 - **Help** is a blue button in the row at the foot of the sheet. It carries five short lines —
   zoom, checking the signal, setting the destination, following a car, inviting — then the
-  version, and at the very bottom a plain unlabelled field. That field is the pin. It is a
-  faint line rather than a labelled input, so it advertises nothing.
+  map credit, the version, and at the very bottom a plain unlabelled field. That field is the
+  pin. It is a faint line rather than a labelled input, so it advertises nothing.
+- **The map credit lives in Help**, not over the map. Leaflet's own attribution strip is
+  switched off, so nothing is drawn on top of the map at all; the OpenStreetMap credit is a
+  line in Help with a link to the copyright page.
 - **Typing the pin in that field** unlocks the master on that phone, and it stays unlocked —
   it is remembered, so it is asked once.
 - **A master sees a cross on every other person.** Tapping it removes them: they disappear
@@ -372,7 +377,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 644 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 649 checks:
 
 ```bash
 npm install

@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v36',             // must match VERSION in sw.js; a test holds them together
+    build: 'v37',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -440,7 +440,7 @@
   function initMap() {
     map = L.map('map', {
       zoomControl: false,
-      attributionControl: true,
+      attributionControl: false,   // the credit lives in Help, not over the map
       rotate: false,
       doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
