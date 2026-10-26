@@ -48,6 +48,23 @@ const photonAddress = (url) => {
   return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
 };
 
+// A hotel: a name worth reading, on top of an address that does not contain it.
+const photonHotel = (url) => {
+  if (url.indexOf('photon.komoot.io') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({
+      features: [{
+        geometry: { coordinates: [MEL.lng, MEL.lat] },
+        properties: {
+          name: 'Novotel on Collins', osm_key: 'tourism', osm_value: 'hotel',
+          housenumber: '270', street: 'Collins Street', city: 'Melbourne',
+          state: 'Victoria', postcode: '3000', country: 'Australia',
+        },
+      }],
+    }) });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
 // The same address from Nominatim, which breaks it down under `address`.
 const nominatimAddress = (url) => {
   if (url.indexOf('photon.komoot.io') >= 0) {
@@ -127,6 +144,47 @@ async function testSearch() {
   const urls = api.netCalls.map((c) => c.url);
   check('the search is scoped to one country',
         urls.some((u) => /bbox=112,-44,154,-10/.test(u)), urls.join(' '));
+}
+
+async function testAPlaceNameIsShownWithItsAddress() {
+  const api = boot({ fetch: photonHotel });
+  await sleep(20);
+  const found = await api.window.ConvoyRoute.search('novotel collins');
+  check('a hotel comes back with its name', found[0] && found[0].name === 'Novotel on Collins',
+        JSON.stringify(found[0] && found[0].name));
+  check('and its address', /270 Collins Street/.test(found[0].label), found[0].label);
+
+  api.window.ConvoyRoute.openSearch();
+  api.window.ConvoyRoute._internals.renderResults(found);
+  await sleep(20);
+  const rows = api.document.querySelectorAll('#results li[data-i]');
+  check('the row shows the name', rows.length && /Novotel on Collins/.test(rows[0].innerHTML),
+        rows.length && rows[0].innerHTML);
+  check('with the address under it', rows.length && /270 Collins Street/.test(rows[0].innerHTML),
+        rows.length && rows[0].innerHTML);
+
+  rows[0].click();
+  await sleep(20);
+  check('and choosing it puts the name on the destination bar',
+        api.window.Convoy.state.dest && api.window.Convoy.state.dest.label === 'Novotel on Collins',
+        api.window.Convoy.state.dest && api.window.Convoy.state.dest.label);
+}
+
+async function testAStreetAddressIsNotRepeated() {
+  // Photon calls a street by its own name; showing that above the address would just say
+  // the same thing twice.
+  const api = boot({ fetch: photonAddress });
+  await sleep(20);
+  const found = await api.window.ConvoyRoute.search('25 chippendale');
+  check('a street address gets no separate name', found[0] && found[0].name === '',
+        JSON.stringify(found[0] && found[0].name));
+
+  api.window.ConvoyRoute.openSearch();
+  api.window.ConvoyRoute._internals.renderResults(found);
+  await sleep(20);
+  const row = api.document.querySelector('#results li[data-i]');
+  check('so the row is one line, the address', row && !/<b>/.test(row.innerHTML),
+        row && row.innerHTML);
 }
 
 async function testSearchFallback() {
@@ -780,6 +838,8 @@ async function testHistoryIsPerPhone() {
 (async () => {
   try {
     await testSearch();
+    await testAPlaceNameIsShownWithItsAddress();
+    await testAStreetAddressIsNotRepeated();
     await testSearchFallback();
     await testStreetAddressLabel();
     await testFallbackAddressLabel();

@@ -20,15 +20,18 @@ Live at **https://akshaybangalorekar.github.io/convoy/**
 
 ## Try it
 
-Open the link, type your name, and press **Start a new group**. You get a code and a map.
+Open the link and you are on the map. There is no code, no sign-in and nothing to fill in: your
+name comes from the device and can be changed by tapping it in the list. If the phone with the
+pin is around, it lets you in; until then you see a waiting note and nothing else.
 
-To bring someone in, tap **Invite**. The message leads with the **link**, because a link can be
-tapped and needs no typing at all
-and the only thing they type is their name. The code is repeated underneath as a fallback, for
-anyone the link will not open for — and **codes are not case-sensitive**, so capitals and spaces
-are folded away and `Goa Trip` and `goa-trip` are the same room. The shared link uses a query
-string (`?r=`) rather than a `#` fragment, since chat apps and link previewers keep that more
-reliably.
+To bring someone in, tap **Invite**. The message is just the link — a link can be tapped and
+needs no typing at all.
+
+**Search results lead with the name of the place** when the map service gives one — the hotel,
+the lookout, the station — with the address underneath. That is what tells you a result is the
+place you meant; an address alone could be any building on the street. A plain street address
+is not given a name line, because the service calls it by its own street name and the row would
+say the same thing twice. Choosing a named result puts the name on the destination bar too.
 
 Someone opening that link for the first time is also **offered the app on their home screen**,
 so it opens full-screen from then on rather than in a browser tab. On Android that is one tap —
@@ -43,8 +46,6 @@ deletes it, and never inside an app that is already on the home screen. "Not now
 
 If someone installs from an invite link, they land in the one room, so the
 installed app still offers them the right room rather than starting a new one.
-
-To see it work on one phone, tap **Just looking? Preview with demo cars** on the join screen.
 
 On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
 instead, and a finger that moves was panning, not tapping.
@@ -383,7 +384,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 657 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 664 checks:
 
 ```bash
 npm install

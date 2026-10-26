@@ -68,6 +68,17 @@
     return out.join(', ');
   }
 
+  /* A hotel, a lookout, a station: these come back with a name as well as an address, and
+     the name is what tells you it is the place you meant. A plain street address comes back
+     with a name too — the street — so it is dropped when it is already in the address, or
+     every row would say the same thing twice. */
+  function placeName(name, label) {
+    const n = String(name || '').trim();
+    if (!n || n.length > 80) return '';
+    if (String(label || '').toLowerCase().indexOf(n.toLowerCase()) >= 0) return '';
+    return n;
+  }
+
   // Which of the area names to show. The important part is that anything more local than
   // the city wins: given "Melbourne" in city and "Carnegie" in one of the finer fields,
   // the answer must be Carnegie, not Melbourne. A plain order of preference gets this
@@ -128,9 +139,11 @@
       .map((f) => {
         const p = f.properties || {};
         const c = f.geometry.coordinates;
+        const label = addressFrom(p);
         return {
           lat: c[1], lng: c[0],
-          label: addressFrom(p),
+          label,
+          name: placeName(p.name, label),
           // Did it come with enough to place it properly — a postcode or a state?
           placed: !!(p.postcode || p.state),
         };
@@ -152,10 +165,14 @@
     const j = await getJson(url, CFG.timeoutMs);
     if (!Array.isArray(j)) return null;
     return j
-      .map((r) => ({
-        lat: parseFloat(r.lat), lng: parseFloat(r.lon),
-        label: addressFromNominatim(r) || r.display_name || '',
-      }))
+      .map((r) => {
+        const label = addressFromNominatim(r) || r.display_name || '';
+        return {
+          lat: parseFloat(r.lat), lng: parseFloat(r.lon),
+          label,
+          name: placeName(r.name, label),
+        };
+      })
       .filter((r) => r.label && isFinite(r.lat) && isFinite(r.lng));
   }
 
@@ -328,8 +345,9 @@
         const r = list[parseInt(li.getAttribute('data-recent'), 10)];
         if (!r) return;
         try {
-          API.setDest(r.lat, r.lng, r.label);
-          rememberPlace(r);
+          const named = r.name || r.label;
+          API.setDest(r.lat, r.lng, named);
+          rememberPlace(Object.assign({}, r, { label: named }));
         } finally {
           closeSearch();
         }
@@ -372,6 +390,11 @@
   // closing over one particular array, so a row can be updated without being replaced.
   let shown = [];
 
+  const rowHtml = (r) => (r.name
+    ? '<b>' + API.esc(r.name) + '</b><span>' + API.esc(r.label) + '</span>'
+    : API.esc(r.label));
+  const rowText = (r) => (r.name ? r.name + ' ' + r.label : r.label);
+
   function renderResults(list) {
     const ul = $('results');
     if (!list.length) { showHint(diag.note || 'Nothing found. Try a different name.'); return; }
@@ -383,22 +406,26 @@
     const rows = ul.querySelectorAll('li[data-i]');
     if (rows.length === list.length && !ul.querySelector('li.head')) {
       list.forEach((r, i) => {
-        if (rows[i].textContent !== r.label) rows[i].textContent = r.label;
+        if (rows[i].getAttribute('data-text') === rowText(r)) return;
+        rows[i].innerHTML = rowHtml(r);
+        rows[i].setAttribute('data-text', rowText(r));
       });
       shown = list;
       return;
     }
 
     ul.innerHTML = list.map((r, i) =>
-      '<li data-i="' + i + '">' + API.esc(r.label) + '</li>').join('');
+      '<li data-i="' + i + '" data-text="' + API.esc(rowText(r)) + '">' +
+      rowHtml(r) + '</li>').join('');
     ul.querySelectorAll('li[data-i]').forEach((li) => {
       li.addEventListener('click', () => {
         const r = shown[parseInt(li.getAttribute('data-i'), 10)];
         if (!r) return;
         // Whatever else happens, the sheet gets out of the way.
         try {
-          API.setDest(r.lat, r.lng, r.label);
-          rememberPlace(r);
+          const named = r.name || r.label;
+          API.setDest(r.lat, r.lng, named);
+          rememberPlace(Object.assign({}, r, { label: named }));
         } finally {
           closeSearch();
         }
@@ -455,6 +482,6 @@
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
-                  shownList: () => shown, reverse },
+                  shownList: () => shown, reverse, renderResults, rowHtml, rowText },
   };
 })();
