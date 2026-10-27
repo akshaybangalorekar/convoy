@@ -30,8 +30,9 @@ async function testStartAGroup() {
         api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
   check('a connection was opened', api.clients.length > 0, String(api.clients.length));
   check('and it subscribes to the one room',
-        api.clients[api.clients.length - 1].subscribed === 'sarvam-convoy/v1/convoy/bus',
-        api.clients[api.clients.length - 1].subscribed);
+        (api.clients[api.clients.length - 1].subscriptions || [])
+          .indexOf(api.window.Convoy.state.topic) >= 0,
+        JSON.stringify(api.clients[api.clients.length - 1].subscriptions));
   check('the phone announces itself', !!api.sent('hello'));
   check('the people sheet is there', !d.getElementById('sheet').classList.contains('hidden'));
   check('you are on your own in the list', text(api, 'peopleCount') === '1 person · no destination',

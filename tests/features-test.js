@@ -509,8 +509,8 @@ async function testOneButtonUntilYouAreIn() {
   const d = out.document;
   const vis = (id) => !d.getElementById(id).classList.contains('hidden');
 
-  check('outside the room there is one button, and it says Join',
-        vis('btnJoin') && text(out, 'joinLabel') === 'Join', text(out, 'joinLabel'));
+  check('outside the room there is one button, and it says Join the convoy',
+        vis('btnJoin') && text(out, 'joinLabel') === 'Join the convoy', text(out, 'joinLabel'));
   check('and none of the four', ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings']
     .every((id) => !vis(id)));
 
@@ -524,7 +524,8 @@ async function testOneButtonUntilYouAreIn() {
 
   d.getElementById('btnJoin').click();
   await sleep(20);
-  check('cancelling puts Join back', text(out, 'joinLabel') === 'Join', text(out, 'joinLabel'));
+  check('cancelling puts Join the convoy back',
+        text(out, 'joinLabel') === 'Join the convoy', text(out, 'joinLabel'));
   const lastHello = out.sentAll('hello')[out.sentAll('hello').length - 1];
   check('and stops the asking', lastHello && lastHello.ask === false,
         JSON.stringify(lastHello && lastHello.ask));
@@ -574,8 +575,8 @@ async function testBeingRemovedReachesThatPhone() {
   check('and it is remembered, so a reload does not put it back',
         !JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}')
           .allowed.includes(me));
-  check('the button offers to join back', text(api, 'joinLabel') === 'Join back',
-        text(api, 'joinLabel'));
+  check('the button offers the same door as anyone else',
+        text(api, 'joinLabel') === 'Join the convoy', text(api, 'joinLabel'));
   check('and nothing says they were kicked out',
         !/kick|removed|thrown|banned/i.test(text(api, 'people') + text(api, 'peopleCount')),
         text(api, 'people') + ' / ' + text(api, 'peopleCount'));
@@ -631,6 +632,49 @@ async function testTheAskGoesOutEvenWithAStaleAllowedList() {
   await sleep(20);
   const hello = api.sent('hello') || {};
   check('the ask is still on the message', hello.ask === true, JSON.stringify(hello.ask));
+}
+
+async function testARequestOutlivesTheSender() {
+  // A request sent while no pin phone was connected used to be lost. It is now published
+  // retained on a topic of its own, so the broker holds it for whoever connects next.
+  const api = boot({ outside: true });
+  await sleep(20);
+  const d = api.document;
+  const client = () => api.clients[api.clients.length - 1];
+
+  check('the phone listens for requests left for it',
+        (client().subscriptions || []).some((t) => /\/ask\/\+$/.test(t)),
+        JSON.stringify(client().subscriptions));
+
+  d.getElementById('btnJoin').click();
+  await sleep(20);
+  const ask = client().publishes.filter((p) => /\/ask\//.test(p.topic) && p.opts.retain);
+  check('asking publishes a retained message on its own topic', ask.length === 1,
+        JSON.stringify(client().publishes.map((p) => p.topic)));
+  check('naming who is asking', ask.length && /Priya|Phone/.test(ask[0].msg), ask[0] && ask[0].msg);
+
+  d.getElementById('btnJoin').click();
+  await sleep(20);
+  const cleared = client().publishes.filter(
+    (p) => /\/ask\//.test(p.topic) && p.opts.retain && p.msg === '');
+  check('cancelling clears it from the broker, so it cannot come back later',
+        cleared.length === 1, String(cleared.length));
+}
+
+async function testAPinPhoneIsToldOfARequestLeftWhileItWasAway() {
+  const api = boot();
+  await sleep(20);
+  await unlock(api);
+
+  api.recv({ t: 'ask', id: 'away', name: 'Priya', ts: Date.now() }, { asStranger: true });
+  await sleep(20);
+  check('a request left on the broker shows up on connecting',
+        api.window.Convoy.state.pending.has('away'), text(api, 'people'));
+  check('and it notifies', /wants to join/.test(titles(api)), titles(api));
+
+  api.recv({ t: 'ask', id: 'stale', name: 'Rahul', ts: Date.now() - 3600000 }, { asStranger: true });
+  await sleep(20);
+  check('but an hour-old one does not', !api.window.Convoy.state.pending.has('stale'));
 }
 
 async function testAMessageWithoutTheFlagStillCountsAsAsking() {
@@ -885,6 +929,8 @@ async function testBehindAndAhead() {
     await testTheRemovalIsAnnouncedAgainAfterAReconnect();
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheAskGoesOutEvenWithAStaleAllowedList();
+    await testARequestOutlivesTheSender();
+    await testAPinPhoneIsToldOfARequestLeftWhileItWasAway();
     await testAMessageWithoutTheFlagStillCountsAsAsking();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();

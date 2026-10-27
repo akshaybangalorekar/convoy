@@ -168,7 +168,7 @@ Nobody is in the room until the phone with the pin lets them in.
 
 - **Opening the app puts you in the waiting room**, not the room: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
-- **Outside the room there is one button, and it says Join.** The four only appear once you
+- **Outside the room there is one button, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
   ask and the row disappears from the pin phone's list too, because the ask is a flag on
@@ -218,7 +218,15 @@ Everyone already in the room can still be removed by the master:
   was briefly offline when they removed someone had nothing to send it with, and the push on
   reconnecting never carried it, so the removed phone never heard. That is why a removal
   could look like it had not happened.
-  **A phone waiting to be let in hunts for the group.** If it is asking, connected, and hears
+  **A join request outlives the phone that sent it.** This is the one place the app uses a
+broker feature rather than plain broadcast, and it matters: a request sent while no pin phone
+was connected used to be lost outright. The ask is now published **retained** on a topic of
+its own (`…/bus/ask/<id>`), which the broker keeps and hands to whoever subscribes next — so a
+pin phone that opens an hour later still sees it, as long as it is under half an hour old.
+Withdrawing, being let in, or being removed publishes an empty retained message to clear it,
+so nothing accumulates on the broker.
+
+**A phone waiting to be let in hunts for the group.** If it is asking, connected, and hears
 nothing from anybody for twenty seconds, it moves to the next relay and asks again — the group
 can only be on one of them, and sitting on the wrong one is invisible. There are only a few
 relays, so it walks the list.
@@ -451,7 +459,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 723 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 731 checks:
 
 ```bash
 npm install

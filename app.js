@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v49',             // must match VERSION in sw.js; a test holds them together
+    build: 'v50',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -56,7 +56,8 @@
     roomDays: 7,
     arrivedM: 50,             // within this much of the destination counts as arrived
     behindM: 200,             // this much further from it counts as "behind you"
-    minMoveM: 12,             // publish early if we moved this far
+    minMoveM: 12,
+    askFreshMs: 1800000,     // a retained request older than half an hour is stale
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
     // One tap zooms out, two zoom in. The wait is how long a single tap is held back to
@@ -707,6 +708,26 @@
   /* ---------------------------------------------------------------- *
    * Messages
    * ---------------------------------------------------------------- */
+  /* One topic per phone, retained. Publishing an empty payload clears it, which is how an
+     ask is withdrawn, or retired once it has been answered. */
+  const askTopic = (id) => state.topic + '/ask/' + id;
+
+  function publishAsk() {
+    if (!client || !client.connected || !state.me) return;
+    try {
+      client.publish(askTopic(state.me.id),
+        JSON.stringify({ id: state.me.id, name: state.me.name, ts: Date.now() }),
+        { retain: true, qos: 0 });
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearAsk() {
+    if (!client || !client.connected || !state.me) return;
+    try {
+      client.publish(askTopic(state.me.id), '', { retain: true, qos: 0 });
+    } catch (e) { /* ignore */ }
+  }
+
   function send(obj) {
     if (!client || !client.connected || !state.topic) return;
     const body = Object.assign({ id: state.me.id, name: state.me.name, ts: Date.now() }, obj);
@@ -800,6 +821,13 @@
     if (msg.t === 'allowed') { onAllowed(msg); return; }
     if (msg.t === 'removed') { onRemoved(msg); return; }
 
+    // A retained request, handed over because we have only just connected.
+    if (msg.t === 'ask') {
+      if (Date.now() - (msg.ts || 0) > CFG.askFreshMs) { return; }
+      if (!state.allowed.has(msg.id) && state.master) askedToJoin(msg);
+      return;
+    }
+
     if (!state.allowed.has(msg.id)) {
       // Not in the room. Whoever is arriving needs the current list: the broadcast that
       // carried their approval may have gone out before they were listening, and that is
@@ -851,7 +879,10 @@
     msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
     saveRoom({ allowed: Array.from(state.allowed) });
     state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
-    if (state.me && state.allowed.has(state.me.id)) state.joinAsked = false;
+    if (state.me && state.allowed.has(state.me.id)) {
+      if (state.joinAsked) clearAsk();          // answered, so stop advertising it
+      state.joinAsked = false;
+    }
     renderPeople();
   }
 
@@ -908,6 +939,7 @@
     if (state.me && ids.indexOf(state.me.id) >= 0 && state.allowed.has(state.me.id)) {
       state.allowed.delete(state.me.id);
       state.joinAsked = false;
+      clearAsk();
       saveRoom({ allowed: Array.from(state.allowed) });
     }
     renderPeople();
@@ -1229,6 +1261,11 @@
       toldAboutRelay = false;
       setConn('live', 'live');
       client.subscribe(state.topic, { qos: 0 }, () => {});
+      // Retained requests: each phone asks on its own topic, so the broker keeps the ask
+      // and hands it to a pin phone that connects later. Without this a request sent while
+      // nobody with the pin was connected was simply lost.
+      client.subscribe(askTopic('+'), { qos: 0 }, () => {});
+      if (state.joinAsked) publishAsk();
       sendState();          // push everything we know, so nobody has to hold it for us
       refreshRoute();
     });
@@ -1576,8 +1613,7 @@
     if (join) join.classList.toggle('hidden', inRoom);
     const joinLabel = $('joinLabel');
     if (joinLabel) {
-      joinLabel.textContent = state.joinAsked ? 'Cancel request'
-        : (state.me && state.removed.has(state.me.id)) ? 'Join back' : 'Join';
+      joinLabel.textContent = state.joinAsked ? 'Cancel request' : 'Join the convoy';
     }
     ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
       const b = $(id);
@@ -2068,8 +2104,8 @@
 
     $('btnJoin').addEventListener('click', () => {
       state.joinAsked = !state.joinAsked;
-      if (state.joinAsked) sendState();            // the ask, with ask: true on it
-      else send({ t: 'hello' });                   // the withdrawal, with ask: false
+      if (state.joinAsked) { publishAsk(); sendState(); }   // retained, and on the bus
+      else { clearAsk(); send({ t: 'hello' }); }            // withdrawn
       renderControls();
     });
     // Help holds the pin field, so it has to stay reachable while you are outside the room.
@@ -2227,7 +2263,7 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
-                  huntForTheGroup,
+                  huntForTheGroup, publishAsk, clearAsk, askTopic,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,

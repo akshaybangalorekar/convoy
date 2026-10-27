@@ -23,7 +23,9 @@ async function testRejoinOnLaunch() {
   if (c) c.connect_();
   await sleep(20);
   check('and it subscribes to the one room',
-        c && c.subscribed === 'sarvam-convoy/v1/convoy/bus', c && c.subscribed);
+        (api.clients[api.clients.length - 1].subscriptions || [])
+          .indexOf(api.window.Convoy.state.topic) >= 0,
+        JSON.stringify(api.clients[api.clients.length - 1].subscriptions));
 }
 
 async function testFirstRunAsks() {

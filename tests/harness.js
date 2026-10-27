@@ -114,9 +114,10 @@ function boot(opts = {}) {
       const h = {};
       const c = {
         url, opts: opts || {}, connected: false, published: [], subscribed: null, ended: false,
+        publishes: [], subscriptions: [],
         on(e, f) { (h[e] = h[e] || []).push(f); return c; },
-        subscribe(t, o, cb) { c.subscribed = t; if (cb) cb(null); return c; },
-        publish(t, msg) { c.published.push(msg); return c; },
+        subscribe(t, o, cb) { c.subscribed = t; c.subscriptions.push(t); if (cb) cb(null); return c; },
+        publish(t, msg, o) { c.published.push(msg); c.publishes.push({ topic: t, msg, opts: o || {} }); return c; },
         end() { c.ended = true; return c; },
         _emit(e, ...a) { (h[e] || []).forEach((f) => f(...a)); },
         connect_() { c.connected = true; c._emit('connect'); },
