@@ -256,10 +256,12 @@ function boot(opts = {}) {
     },
   });
 
-  const geo = { ok: null, err: null, watchId: 0, started: 0, cleared: 0, clearedIds: [] };
+  const geo = {
+    watches: [], ok: null, err: null, watchId: 0, started: 0, cleared: 0, clearedIds: [] };
   window.navigator.geolocation = {
-    watchPosition(ok, err) {
+    watchPosition(ok, err, opts) {
       geo.ok = ok; geo.err = err; geo.watchId++; geo.started++;
+      geo.watches.push({ id: geo.watchId, opts: opts || {} });
       return geo.watchId;
     },
     clearWatch(id) { geo.cleared++; geo.clearedIds.push(id); },

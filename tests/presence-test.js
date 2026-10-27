@@ -250,6 +250,31 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testTheWatchDropsToCheapInTheBackground() {
+  // The GPS chip is what costs battery, not the messages. High accuracy while the map is
+  // on screen; the cheap kind once the app is put away.
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  const last = () => api.geo.watches[api.geo.watches.length - 1];
+
+  api.window.Convoy._internals.startWatching();
+  await sleep(20);
+  const before = api.geo.watches.length;
+  check('on screen it asks for high accuracy', last().opts.enableHighAccuracy === true,
+        JSON.stringify(last().opts));
+
+  api.window.Convoy._internals.goAway();
+  await sleep(20);
+  check('put away, it starts a new watch', api.geo.watches.length > before,
+        before + ' -> ' + api.geo.watches.length);
+  check('and it is the cheap kind', last().opts.enableHighAccuracy === false,
+        JSON.stringify(last().opts));
+  check('accepting an older fix, so it is asked for less often',
+        last().opts.maximumAge >= 30000, String(last().opts.maximumAge));
+}
+
 async function testTheBackgroundHeartbeat() {
   const api = boot();
   api.join('Akshay');
@@ -797,6 +822,7 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testTheWatchDropsToCheapInTheBackground();
     await testTheBackgroundHeartbeat();
     await testABackgroundReportKeepsSomeoneOnTheList();
     await testTheDestinationDotWearsTheSettersColour();

@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v67',             // must match VERSION in sw.js; a test holds them together
+    build: 'v68',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1516,12 +1516,19 @@
      gone — and then you are on nobody's map, not even your own. So it is re-armed every
      time we come back to the screen, and on any touch while we still have no position
      (iOS will not hand over a location until the page has been touched). */
+  /* High accuracy while the app is on screen — that is what draws the map. In the
+     background it drops to the cheap kind: the GPS chip is what costs battery, not the
+     messages, and a five-minute beat does not need metre precision. */
+  let wantPrecise = true;
+
   function startWatching() {
     if (!navigator.geolocation) { state.geoUnavailable = true; renderPeople(); return; }
     stopWatching();
     try {
       geoWatch = navigator.geolocation.watchPosition(onFix, onGeoError, {
-        enableHighAccuracy: true, maximumAge: 4000, timeout: 20000,
+        enableHighAccuracy: wantPrecise,
+        maximumAge: wantPrecise ? 4000 : 30000,
+        timeout: 20000,
       });
     } catch (e) { state.geoUnavailable = true; renderPeople(); }
   }
@@ -2348,6 +2355,8 @@
     if (!state.away) { state.away = true; send({ t: 'away' }); }
     // While it is in the background, report on the slower beat instead of the fast one.
     if (publishTimer) { clearInterval(publishTimer); publishTimer = null; }
+    wantPrecise = false;
+    startWatching();                 // cheap location: the GPS chip is the battery cost
     startBgHeartbeat();
     renderPeople();
   }
@@ -2482,6 +2491,7 @@
       if (!state.joined) return;
       state.lastActive = Date.now();
       stopBgHeartbeat();
+      if (!wantPrecise) { wantPrecise = true; startWatching(); }
       if (!publishTimer) publishTimer = setInterval(publishNow, CFG.publishMs);
       unlockAudio();          // iOS suspends the audio context when the app is put away
       // The screen lock is dropped while we are hidden, and the location watch is often

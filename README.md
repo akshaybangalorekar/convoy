@@ -314,6 +314,23 @@ and anyone who reads the code can find a way round it. It keeps honest people ho
 every honest phone ignores them — it cannot stop them receiving. Both are consequences of
 there being no server, which is the same reason the app is free and needs no sign-up.
 
+## Why the beat stays at thirty seconds while you are on the app
+
+The publish is a ~200-byte MQTT message on a socket that is already open — about 24 KB an
+hour at this rate. Slowing it to five minutes would save roughly 21 KB an hour, which is
+nothing, because the battery cost is the **GPS chip**, not the messages: `watchPosition` runs
+at high accuracy whenever the map is on screen, whatever the publish rate. And five minutes
+would visibly break things — ninety seconds of silence is what marks someone out of contact,
+so everyone would flip to "Lost network" between updates, cars would jump in five-minute
+leaps, arrival detection would lag, and the ETAs would be wrong.
+
+If you do want a slower beat, `CFG.publishMs` is the one constant — but `CFG.staleMs` has to
+go above it at the same time, or everyone looks out of contact half the time.
+
+**What actually saves battery** is dropping the GPS accuracy in the background:
+`enableHighAccuracy: false` and a 30-second maximum age once the app is put away, back to high
+accuracy when it returns. A five-minute beat does not need metre precision.
+
 ## In the background it keeps reporting, on a slower beat
 
 Put the app away and it stops the 30-second position update and sends one every **five
@@ -592,7 +609,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 950 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 952 checks:
 
 ```bash
 npm install
