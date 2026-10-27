@@ -226,6 +226,12 @@ Everyone already in can still be removed by the master:
   or it goes on broadcasting itself as removed and the pin phone puts it straight back. Both
   were broken after the add-back button was removed, and both are covered by a test that
   removes someone, has them ask again, and lets them back in.
+- **If a phone says it is asking but is already on the allowed list, it is told again and
+  treated as one of us.** On a bad link a phone can miss the broadcast that let it in and go
+  on asking; treating that as a fresh request announced the same person over and over, offered
+  Let in repeatedly, and — because the request path returns early — kept them off the list
+  entirely, so the pin phone could not see someone who could see it.
+- **An explicit ask outranks the pin phone's own allowed list.**
   **A removal is not a life sentence:** the person can press **Join back** and ask again, and
   you can let them back in. Nothing says they were kicked out — the convoy simply goes away,
   the sheet says "not in the convoy", and the button offers to ask again.
@@ -517,7 +523,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 768 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 774 checks:
 
 ```bash
 npm install

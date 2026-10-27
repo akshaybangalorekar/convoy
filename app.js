@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v58',             // must match VERSION in sw.js; a test holds them together
+    build: 'v59',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -823,11 +823,15 @@
     }
 
     if (msg.ask === true) {
-      // It says it is outside, and it would know. Trust that over our own list,
-      // which can be stale. Only the pin phone is shown the request.
+      /* It says it is asking. If we have already let it in, its own copy of the list is
+         stale — it missed the broadcast, which on a bad link is easy. Tell it again, and
+         then treat it like anyone else rather than as a request: otherwise the same person
+         is announced and offered a Let in button for ever, and never joins the list. */
       announceAllowed();
-      if (state.master) askedToJoin(msg);
-      return;
+      if (!state.allowed.has(msg.id)) {
+        if (state.master) askedToJoin(msg);
+        return;
+      }
     }
 
     if (!state.allowed.has(msg.id)) {

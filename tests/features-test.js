@@ -871,6 +871,44 @@ async function testRemovedThenLetBackInWorks() {
         Array.from(guest.window.Convoy.state.allowed).join(','));
 }
 
+async function testAPhoneThatMissedTheBroadcastIsLetInNotAskedAgain() {
+  // On a bad link the phone being let in may miss the broadcast and go on asking. It used
+  // to be announced and offered a Let in button for ever, and never appear on the list.
+  const broker = makeBroker();
+  const pin = boot({ broker });
+  const guest = boot({ broker, outside: true });
+  await sleep(30);
+  await unlock(pin);
+  pin.goLive();
+  guest.goLive();
+  await sleep(60);
+
+  const gid = guest.window.Convoy.state.me.id;
+  const asked = () => pin.notes.filter((n) => /wants to join/.test(n.title)).length;
+
+  guest.document.getElementById('btnJoin').click();
+  await sleep(100);
+  check('the request shows', pin.window.Convoy.state.pending.has(gid));
+  check('and is announced once', asked() === 1, String(asked()));
+
+  pin.document.querySelector('[data-yes]').click();
+  await sleep(120);
+  check('letting in clears the request', !pin.window.Convoy.state.pending.has(gid));
+
+  // Now it goes on asking, as a phone that missed the broadcast does.
+  guest.window.Convoy.state.joinAsked = true;
+  for (let i = 0; i < 3; i++) {
+    guest.window.Convoy._internals.sendState();
+    await sleep(50);
+  }
+  check('it is not offered a Let in button again', !pin.window.Convoy.state.pending.has(gid),
+        String(pin.window.Convoy.state.pending.size));
+  check('and it is not announced a second time', asked() === 1, String(asked()));
+  check('and it is on the pin phone list, which it was not',
+        pin.window.Convoy.state.peers.has(gid),
+        pin.document.getElementById('people').innerHTML.slice(0, 160));
+}
+
 async function testAStaleAllowedListStillLetsTheRequestThrough() {
   // The pin phone still had them down as in — as if a removal made on another pin phone
   // never arrived. The phone asking knows it is outside, so its word wins.
@@ -1139,6 +1177,7 @@ async function testBehindAndAhead() {
     await testAMessageWithoutTheFlagStillCountsAsAsking();
     await testTheRequestCrossesToTheOtherPhone();
     await testRemovedThenLetBackInWorks();
+    await testAPhoneThatMissedTheBroadcastIsLetInNotAskedAgain();
     await testAStaleAllowedListStillLetsTheRequestThrough();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
