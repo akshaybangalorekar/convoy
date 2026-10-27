@@ -107,6 +107,9 @@ async function testABlockedRelaySaysSo() {
   check('it starts out saying it is connecting',
         /connecting|offline/.test(text(api, 'connState')), text(api, 'connState'));
 
+  // Retries back off, so squeeze the delays to watch several failures happen quickly.
+  api.window.Convoy.CFG.retryMs = 1;
+  api.window.Convoy.CFG.retryMaxMs = 2;
   for (let i = 0; i < 6; i++) {
     const c = api.clients[api.clients.length - 1];
     if (c && !c.connected) c._emit('error');
@@ -250,6 +253,33 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testRetriesBackOffInsteadOfHammering() {
+  const api = boot();
+  await sleep(20);
+  const CFG = api.window.Convoy.CFG;
+  const st = api.window.Convoy.state;
+  const I = api.window.Convoy._internals;
+
+  check('there is a ceiling on the wait', CFG.retryMaxMs > CFG.retryMs,
+        CFG.retryMs + ' -> ' + CFG.retryMaxMs);
+
+  // The delay doubles with each failure and stops at the ceiling.
+  const delay = (failures) => Math.min(CFG.retryMaxMs, CFG.retryMs * Math.pow(2, Math.min(4, failures)));
+  check('one failure waits a moment', delay(0) === CFG.retryMs, String(delay(0)));
+  check('the next waits twice as long', delay(1) === CFG.retryMs * 2, String(delay(1)));
+  check('and it stops growing at the ceiling',
+        delay(9) === CFG.retryMaxMs && delay(20) === CFG.retryMaxMs, String(delay(20)));
+
+  // And the single cadence: one function decides how often anything is sent.
+  st.away = false;
+  check('on screen the beat is the fast one', I.cadenceMs() === CFG.publishMs,
+        String(I.cadenceMs()));
+  st.away = true;
+  check('in the background it is the slow one', I.cadenceMs() === CFG.bgMs,
+        String(I.cadenceMs()));
+  st.away = false;
+}
+
 async function testTheWatchDropsToCheapInTheBackground() {
   // The GPS chip is what costs battery, not the messages. High accuracy while the map is
   // on screen; the cheap kind once the app is put away.
@@ -293,24 +323,24 @@ async function testTheBackgroundHeartbeat() {
 
   // Four hours of reporting after the last time you touched the app.
   st.lastActive = Date.now();
-  I.startBgHeartbeat();
+  I.goAway();
   check('it keeps reporting for four hours from then',
         Math.abs(st.bgUntil - (st.lastActive + 4 * 3600000)) < 1000, String(st.bgUntil));
   check('and it is allowed to report now', I.bgAllowed() === true);
-  I.stopBgHeartbeat();
+  I.stopPublishTimer();
 
   // Somebody who was last on the app five hours ago gets nothing.
   st.lastActive = Date.now() - 5 * 3600000;
-  I.startBgHeartbeat();
+  I.goAway();
   check('but not once that window has passed', I.bgAllowed() === false, String(st.bgUntil));
-  I.stopBgHeartbeat();
+  I.stopPublishTimer();
 
   // Arriving ends it early.
   st.lastActive = Date.now();
   st.arrived = true;
-  I.startBgHeartbeat();
+  I.goAway();
   check('and reaching the destination ends it', I.bgAllowed() === false);
-  I.stopBgHeartbeat();
+  I.stopPublishTimer();
   st.arrived = false;
 
   // A report from the background says so, and says how fresh the fix is.
@@ -822,6 +852,7 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testRetriesBackOffInsteadOfHammering();
     await testTheWatchDropsToCheapInTheBackground();
     await testTheBackgroundHeartbeat();
     await testABackgroundReportKeepsSomeoneOnTheList();

@@ -18,9 +18,8 @@ async function away(opts = {}) {
   const I = api.window.Convoy._internals;
   if (opts.dest !== false) api.window.Convoy.setDest(-33.89, 151.27, 'Bondi Beach');
   await sleep(30);
-  st.away = true;
   if (opts.lastActive != null) st.lastActive = opts.lastActive;
-  I.startBgHeartbeat();
+  I.goAway();                        // sets the four-hour window and arms the timer
   await sleep(20);
   return { api, st, I };
 }
@@ -53,13 +52,13 @@ async function testItStopsAfterFourHours() {
   check('2a just inside four hours, it still runs', I.bgAllowed() === true);
 
   st.lastActive = Date.now() - 4.1 * HOUR;
-  I.startBgHeartbeat();
+  I.goAway();
   check('2b past four hours, it stops', I.bgAllowed() === false);
   check('2c and no timer is left running', I.bgRunning() === false);
 
   // The clock is from the last time on the app, not from going into the background.
   st.lastActive = Date.now() - 3.5 * HOUR;
-  I.startBgHeartbeat();
+  I.goAway();
   check('2d the four hours are counted from when you were last on the app',
         Math.abs(st.bgUntil - (st.lastActive + 4 * HOUR)) < 1000, String(st.bgUntil));
   check('2e so half an hour is left, not four', I.bgAllowed() === true);
@@ -145,7 +144,7 @@ async function testTheForegroundDoesNotUseTheSlowBeat() {
   await sleep(20);
   check('7c going away starts the slow beat', st.away === true && I.bgRunning() === true);
 
-  I.stopBgHeartbeat();
+  I.stopPublishTimer();
   st.away = false;
   check('7d and coming back stops it', I.bgRunning() === false);
 }

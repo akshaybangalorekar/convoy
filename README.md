@@ -314,6 +314,21 @@ and anyone who reads the code can find a way round it. It keeps honest people ho
 every honest phone ignores them — it cannot stop them receiving. Both are consequences of
 there being no server, which is the same reason the app is free and needs no sign-up.
 
+## One timer, one cadence, one gate
+
+The fast and slow beats used to be two intervals with their own start and stop, and four
+different paths had to remember to swap them — which is exactly how they get out of step.
+There is now **one timer** (`schedulePublish`) and **one function that decides the interval**
+(`cadenceMs`, fast on screen, slow in the background). Whether there is anything to report at
+all is asked in **one place**, inside `publishNow`, rather than by callers stopping and
+starting a timer. Setting or clearing a destination no longer has to touch any of it.
+
+`inConvoy()` is the one answer to "am I in?", which was written out in eight places in three
+slightly different shapes.
+
+Reconnects back off to a fifteen-second ceiling instead of retrying a blocked port every 1.2
+seconds for as long as the app is open, and the delay resets on any successful connect.
+
 ## Why the beat stays at thirty seconds while you are on the app
 
 The publish is a ~200-byte MQTT message on a socket that is already open — about 24 KB an
@@ -609,7 +624,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 952 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 960 checks:
 
 ```bash
 npm install

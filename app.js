@@ -33,7 +33,8 @@
     // so the digits do not appear in the source. This keeps honest people honest; it is
     // not security, since anyone reading this file can find a way round it in a minute.
     masterHash: 0x44169612,
-    retryMs: 1200,            // pause before trying the next relay
+    retryMs: 1200,
+    retryMaxMs: 15000,        // however many failures, never wait longer than this            // pause before trying the next relay
     reconnectMs: 3000,        // pause before reconnecting to one that worked
     keepalive: 30,            // seconds; mobile networks drop idle sockets well before 60
     stableMs: 60000,          // a connection that lasted this long was not a flap
@@ -41,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v68',             // must match VERSION in sw.js; a test holds them together
+    build: 'v69',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -398,6 +399,10 @@
   /* ---------------------------------------------------------------- *
    * Colours: unique per person, and the same on every phone
    * ---------------------------------------------------------------- */
+  /* "Am I in?" was written out in several places, in slightly different shapes. One answer,
+     so a change to what being in means happens in one place. */
+  const inConvoy = () => !!(state.me && state.allowed.has(state.me.id));
+
   function colorFor(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -757,7 +762,10 @@
   function publishNow(force) {
     const me = state.me;
     if (!me) return;
-    if (state.joinAsked && !state.allowed.has(me.id)) publishAsk();
+    // In the background there is nothing to report once you have arrived, once the four
+    // hours are up, or while the group has no destination at all.
+    if (state.away && !bgAllowed()) return;
+    if (state.joinAsked && !inConvoy()) publishAsk();
     if (state.paused) return;          // deliberately not sharing
     if (me.lat == null) {
       // Nothing to place on the map — but a phone whose location is switched off is still
@@ -902,14 +910,13 @@
   // let in, and a newcomer finds out the moment the decision reaches it.
   function onAllowed(msg) {
     if (!Array.isArray(msg.ids)) return;
-    const wasInConvoy = !!(state.me && state.allowed.has(state.me.id));
+    const wasInConvoy = inConvoy();
     const before = state.allowed.size;
     msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
     saveRecord({ allowed: Array.from(state.allowed) });
     state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
-    const justLetIn = !!(state.me && state.allowed.has(state.me.id) &&
-                         !wasInConvoy);
-    if (state.me && state.allowed.has(state.me.id)) {
+    const justLetIn = inConvoy() && !wasInConvoy;
+    if (inConvoy()) {
       if (state.joinAsked) clearAsk();          // answered, so stop advertising it
       state.joinAsked = false;
       saveJoinAsked(false);
@@ -1115,7 +1122,6 @@
     drawDest();
     refreshRoute();
     saveDest();
-    if (state.away) startBgHeartbeat();      // a destination again: report again
     notify((msg.by || msg.name || 'Someone') + ' set the destination', next.label);
   }
 
@@ -1131,7 +1137,6 @@
     drawMyLine(null);
     renderPeople();
     saveDest();
-    if (state.away) stopBgHeartbeat();       // nowhere to go: no need to report
     if (had) notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
   }
 
@@ -1309,23 +1314,21 @@
     const line = $('waitLine');
     if (!bar || !line) return;
 
-    const me = state.me;
-    const inConvoy = !!(me && state.allowed.has(me.id));
     const conn = state.conn || 'waiting';
-    const asking = !inConvoy && !!state.joinAsked;
+    const asking = !inConvoy() && !!state.joinAsked;
 
     let text = '';
     if (conn === 'down') {
       text = asking
         ? 'No connection. Your request is kept.'
-        : inConvoy
+        : inConvoy()
           ? 'No connection. Nobody can see where you are.'
           : 'No connection. Retrying…';
     } else if (conn !== 'live') {
       text = 'Connecting to the relay…';
     } else if (asking) {
       text = 'Request sent. Waiting for the pin phone…';
-    } else if (!inConvoy) {
+    } else if (!inConvoy()) {
       text = 'Press Join the convoy to ask to be let in.';
     }
 
@@ -1488,11 +1491,16 @@
     });
   }
 
+  /* Backing off matters on a phone: a blocked port refuses instantly, and a fixed one-second
+     retry hammers it for as long as the app is open — battery, and a connection state that
+     flips constantly, which is what flapping looks like from the outside. The delay doubles
+     up to a ceiling and is reset by any successful connect. */
   function retry() {
     brokerIdx++;
     setConn('waiting', connLabel('trying…'));
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, CFG.retryMs);
+    const wait = Math.min(CFG.retryMaxMs, CFG.retryMs * Math.pow(2, Math.min(4, connFailures)));
+    reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, wait);
   }
 
   function scheduleReconnect() {
@@ -1645,9 +1653,9 @@
     const ul = $('people');
     const me = state.me;
     const rows = [];
-    const inConvoy = !!(me && state.allowed.has(me.id));
+    const here = inConvoy();
 
-    if (inConvoy) {
+    if (here) {
       if (me) rows.push(rowFor(me, null));
       Array.from(state.peers.values())
         .filter((p) => !state.removed.has(p.id))
@@ -1658,7 +1666,7 @@
     // Requests come first: they are the only thing anyone has to act on.
     if (state.master) state.pending.forEach((r) => rows.unshift(pendingRow(r)));
 
-    $('peopleCount').textContent = inConvoy
+    $('peopleCount').textContent = here
       ? people + (people === 1 ? ' person' : ' people') +
         (state.dest ? '' : ' · no destination')
       : (state.me && state.removed.has(state.me.id) ? 'not in the convoy' : 'waiting to be let in');
@@ -1666,7 +1674,7 @@
     const el = document.activeElement;
     const editing = !!(el && el.classList && el.classList.contains('myname'));
     if (!editing) {
-      if (!inConvoy) {
+      if (!here) {
         ul.innerHTML = '<li class="empty">' +
           (state.joinAsked ? 'The phone with the pin has been asked.'
             : 'Nobody outside can see the map until they let you in.') + '</li>';
@@ -1851,16 +1859,16 @@
   function renderControls() {
     renderWaiting();
     // Not in yet: one Join button and nothing else to press.
-    const inConvoy = !!(state.me && state.allowed.has(state.me.id));
+    const here = inConvoy();
     const join = $('btnJoin');
-    if (join) join.classList.toggle('hidden', inConvoy);
+    if (join) join.classList.toggle('hidden', here);
     const joinLabel = $('joinLabel');
     if (joinLabel) {
       joinLabel.textContent = state.joinAsked ? 'Cancel request' : 'Join the convoy';
     }
     ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
       const b = $(id);
-      if (b) b.classList.toggle('hidden', !inConvoy);
+      if (b) b.classList.toggle('hidden', !here);
     });
 
     const el = $('btnPause');
@@ -1972,7 +1980,6 @@
       drawDest();
       refreshRoute();
       saveDest();
-      if (state.away) startBgHeartbeat();      // a destination again: report again
       send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by,
              byId: state.dest.byId, ts: state.destTs });
       state.autoFit = true;
@@ -1991,7 +1998,6 @@
     drawMyLine(null);
     renderPeople();
     saveDest();
-    if (state.away) stopBgHeartbeat();       // nowhere to go: no need to report
     send({ t: 'dest-clear', ts: state.destTs });
   }
 
@@ -2059,7 +2065,7 @@
    * ---------------------------------------------------------------- */
   function startTimers() {
     stopTimers();
-    publishTimer = setInterval(publishNow, CFG.publishMs);
+    schedulePublish();
     renderTimer = setInterval(() => {
       // The blanket rule: a week after their last sign of life, someone is dropped from
       // the list and from the roster, on every phone, without anyone having to act.
@@ -2081,8 +2087,9 @@
   }
 
   function stopTimers() {
-    [publishTimer, renderTimer, etaTimer].forEach((t) => { if (t) clearInterval(t); });
-    publishTimer = renderTimer = etaTimer = null;
+    stopPublishTimer();
+    [renderTimer, etaTimer].forEach((t) => { if (t) clearInterval(t); });
+    renderTimer = etaTimer = null;
   }
 
   /* Keep the screen awake while the app is in front, the way a maps app does. Two things
@@ -2320,44 +2327,43 @@
     renderPeople();
   }
 
-  // "My app is going to the background." Best effort: a force-kill gives no chance to
-  // send it, which is exactly why sweepPresence exists as the backstop.
-  let bgTimer = null;
+  /* One timer for reporting, and one place that decides how often. Two timers, each with
+     its own start and stop, was how the fast and the slow beat could get out of step: every
+     path that changed the mode had to remember to stop one and start the other. */
+  const cadenceMs = () => (state.away ? CFG.bgMs : CFG.publishMs);
 
-  /* Three things end it, and all three have to hold for it to run:
-       1. not having arrived at the destination;
-       2. fewer than four hours since you were last on the app;
-       3. there is a destination at all. Nobody needs a five-minute position while the
-          group has nowhere to go — and setting one again inside the four hours brings it
-          straight back. */
+  function stopPublishTimer() {
+    if (publishTimer) { clearTimeout(publishTimer); publishTimer = null; }
+  }
+
+  function schedulePublish() {
+    stopPublishTimer();
+    if (!state.joined) return;
+    publishTimer = setTimeout(() => {
+      publishTimer = null;
+      publishNow();
+      schedulePublish();            // re-arm with whatever the cadence is now
+    }, cadenceMs());
+  }
+
+  /* Whether there is anything to report while the phone is in the background. Three things
+     end it, and any one of them ending stops it:
+       1. having arrived at the destination;
+       2. four hours since you were last actually on the app;
+       3. no destination at all — nobody needs a five-minute position with nowhere to go,
+          and setting one again inside the four hours brings it straight back. */
   const bgAllowed = () => !!state.me && !state.arrived && !!state.dest &&
     Date.now() < state.bgUntil;
-
-  /* Four hours counted from the last time you were actually on the app, not from now, so
-     putting the phone away does not restart the clock. */
-  function startBgHeartbeat() {
-    stopBgHeartbeat();
-    if (!state.me) return;
-    state.bgUntil = (state.lastActive || Date.now()) + CFG.bgForMs;
-    if (!bgAllowed()) return;
-    bgTimer = setInterval(() => {
-      if (!bgAllowed()) { stopBgHeartbeat(); return; }
-      publishNow(true);        // one position, and no more often than this
-    }, CFG.bgMs);
-  }
-
-  function stopBgHeartbeat() {
-    if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
-  }
 
   function goAway() {
     if (!state.joined || demoTimer) return;
     if (!state.away) { state.away = true; send({ t: 'away' }); }
-    // While it is in the background, report on the slower beat instead of the fast one.
-    if (publishTimer) { clearInterval(publishTimer); publishTimer = null; }
+    // Four hours counted from the last time you were on the app, not from now, so putting
+    // the phone down does not restart the clock.
+    state.bgUntil = (state.lastActive || Date.now()) + CFG.bgForMs;
     wantPrecise = false;
     startWatching();                 // cheap location: the GPS chip is the battery cost
-    startBgHeartbeat();
+    schedulePublish();               // the slower beat, chosen by the cadence
     renderPeople();
   }
 
@@ -2490,9 +2496,8 @@
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
       state.lastActive = Date.now();
-      stopBgHeartbeat();
       if (!wantPrecise) { wantPrecise = true; startWatching(); }
-      if (!publishTimer) publishTimer = setInterval(publishNow, CFG.publishMs);
+      schedulePublish();             // back to the fast beat
       unlockAudio();          // iOS suspends the audio context when the app is put away
       // The screen lock is dropped while we are hidden, and the location watch is often
       // lost too. Both are taken again every time we come back.
@@ -2568,7 +2573,10 @@
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
-                  startBgHeartbeat, stopBgHeartbeat, bgAllowed, bgRunning: () => !!bgTimer,
+                  bgAllowed, schedulePublish, stopPublishTimer, cadenceMs,
+                  // "Reporting in the background", not "a timer exists": the timer always
+                  // ticks, and the gate decides whether anything goes out.
+                  bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),
                   renderWaiting,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,

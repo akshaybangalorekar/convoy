@@ -49,7 +49,7 @@ html, body {
 
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
-button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 
 #map {
   position: fixed; inset: 0; background: var(--bg);
@@ -76,11 +76,6 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 /* Blue means "I am on the map". Grey means you have taken yourself off it. */
 .pill.accent.on { background: rgba(120, 120, 128, 0.16); color: var(--text); }
 .pill:active { opacity: 0.65; }
-
-.bar-name {
-  font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: var(--text);
-  white-space: nowrap;
-}
 /* The connection state is a pill with a coloured dot — the same size and shape whether you
    are in or still waiting, because it means the same thing either way. */
 .conn {
@@ -381,8 +376,6 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 @media (prefers-reduced-motion: reduce) { #search { transition: none; } }
 #search .search-card { margin: auto auto 0; border-radius: 18px 18px 0 0; }
 
-.logo { display: block; width: 46px; height: 46px; margin-bottom: 14px; }
-
 /* The rules under the code field: one quiet line instead of three lines of fine print. */
 .hint-line {
   margin: -6px 0 16px 3px; font-size: 13.5px; line-height: 1.5; color: var(--muted);
@@ -408,16 +401,7 @@ input:focus { outline: none; border-color: var(--accent); }
   background: var(--accent); color: var(--accent-text);
   font-size: 17px; font-weight: 600;
 }
-.primary:active { opacity: 0.75; }
-.ghost {
-  appearance: none; border: 0; width: 100%; margin-top: 10px;
-  padding: 13px; border-radius: 14px;
-  background: rgba(120, 120, 128, 0.16); color: var(--text);
-  font-size: 16px; font-weight: 600;
-}
-.ghost:active { opacity: 0.65; }
-#btnDemo { font-size: 13px; opacity: 0.8; }
-.linkish {
+.primary:active { opacity: 0.75; }.linkish {
   appearance: none; border: 0; background: none; width: 100%;
   margin-top: 14px; padding: 6px;
   font-size: 14px; color: var(--muted); text-decoration: underline;
@@ -510,15 +494,6 @@ input:focus { outline: none; border-color: var(--accent); }
 label .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); }
 
 /* ---------- The switches in the sheet ---------- */
-
-.ctl {
-  flex: 1 1 40%; min-width: 0;
-  padding: 10px 12px; border-radius: 12px;
-  border: 1px solid var(--sep); background: transparent;
-  color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600;
-  cursor: pointer; -webkit-appearance: none; appearance: none;
-}
-.ctl.on { border-color: transparent; background: var(--accent); color: var(--accent-text); }
 
 /* Tapping someone brings the map to them */
 #people li { cursor: pointer; }
