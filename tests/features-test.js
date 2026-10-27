@@ -423,6 +423,72 @@ async function testEveryoneElseStopsSeeingThem() {
         d.getElementById('people').textContent);
 }
 
+/* ---------- The four group events, and the join request ---------- */
+const titles = (api) => api.notes.map((n) => n.title).join(' | ');
+
+async function testEveryGroupEventNotifies() {
+  const api = boot();
+  await sleep(20);
+
+  api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
+  await sleep(20);
+  check('a person joining notifies', /Priya joined/.test(titles(api)), titles(api));
+
+  api.recv({ t: 'dest', id: 'p1', name: 'Priya', lat: -37.9, lng: 145.05,
+             label: 'Bondi', by: 'Priya', ts: Date.now() });
+  await sleep(20);
+  check('a destination change notifies', /set the destination/.test(titles(api)), titles(api));
+
+  api.fix(-37.9001, 145.0501);                    // right on it
+  I(api).checkArrivals();                          // what the render tick does
+  await sleep(30);
+  check('arriving notifies', /arrived/i.test(titles(api)), titles(api));
+
+  api.recv({ t: 'bye', id: 'p1', name: 'Priya' });
+  await sleep(20);
+  check('a person leaving notifies', /Priya left/.test(titles(api)), titles(api));
+}
+
+async function testAJoinRequestNotifiesEveryPhoneWithThePin() {
+  const one = boot();
+  const two = boot();
+  const plain = boot();
+  await sleep(20);
+  await unlock(one);
+  await unlock(two);
+
+  const ask = { t: 'hello', id: 'newbie', name: 'Priya', ask: true };
+  [one, two, plain].forEach((api) => api.recv(ask, { asStranger: true }));
+  await sleep(20);
+
+  check('a request to join notifies the first phone with the pin',
+        /wants to join/.test(titles(one)), titles(one));
+  check('and the second one too, so it does not matter which is to hand',
+        /wants to join/.test(titles(two)), titles(two));
+  check('a phone without the pin is not bothered with it',
+        !/wants to join/.test(titles(plain)), titles(plain));
+}
+
+async function testNotificationsGoThroughTheServiceWorker() {
+  // Safari on iOS will not show a notification the page made itself; it has to come from
+  // the service worker, so that is what is tried first.
+  const shown = [];
+  const api = boot({ setup: (w) => {
+    Object.defineProperty(w.navigator, 'serviceWorker', {
+      configurable: true,
+      value: { ready: Promise.resolve({
+        showNotification: (t, o) => { shown.push(t + ' — ' + ((o && o.body) || '')); return Promise.resolve(); },
+      }) },
+    });
+  } });
+  await sleep(30);
+  api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
+  await sleep(30);
+  check('the notification is shown by the service worker', shown.length === 1, JSON.stringify(shown));
+  check('and not by the page, which iOS would drop', api.notes.length === 0,
+        JSON.stringify(api.notes.map((n) => n.title)));
+}
+
 /* ---------- Letting people in ---------- */
 async function testAPhoneOutsideTheRoomWaits() {
   const api = boot({ outside: true });
@@ -780,6 +846,9 @@ async function testBehindAndAhead() {
     await testTheScreenLockIsTakenAgainOnReturn();
     await testATouchRetriesARefusedScreenLock();
     await testItIsFineWithNoWakeLockApi();
+    await testEveryGroupEventNotifies();
+    await testAJoinRequestNotifiesEveryPhoneWithThePin();
+    await testNotificationsGoThroughTheServiceWorker();
     await testAPhoneOutsideTheRoomWaits();
     await testOneButtonUntilYouAreIn();
     await testHelpStaysReachableWhileOutside();

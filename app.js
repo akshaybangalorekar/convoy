@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v47',             // must match VERSION in sw.js; a test holds them together
+    build: 'v48',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -864,7 +864,12 @@
       id: msg.id, name: (msg.name || (had && had.name) || 'Someone').slice(0, 24),
       at: Date.now(),
     });
-    if (!had) banner((msg.name || 'Someone') + ' wants to join');
+    if (!had) {
+      const who = msg.name || 'Someone';
+      banner(who + ' wants to join');
+      // Every phone holding the pin gets this, and any of them can let them in.
+      notify(who + ' wants to join', 'Open Convoy to let them in');
+    }
     renderPeople();
   }
 
@@ -1049,19 +1054,32 @@
     bannerTimer = setTimeout(() => el.classList.remove('show'), 4200);
   }
 
+  /* A notification that actually arrives on both phones. Safari on iOS refuses to show one
+     made by the page itself — it has to come from the service worker — so that is tried
+     first and the plain constructor is the fallback. No tag: each of these is its own
+     event, and a shared tag would make them replace each other so you only ever saw the
+     last one. */
+  let swReg = null;
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then((r) => { swReg = r; }).catch(() => {});
+    }
+  } catch (e) { /* ignore */ }
+
   function notify(title, body) {
-    // No banner: the phone's own notification is the notification, and a second copy on
-    // screen was just noise.
     ping();
     try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) { /* ignore */ }
+    if (typeof Notification !== 'function' || Notification.permission !== 'granted') return;
+    const opts = { body: body || '', icon: 'icons/apple-touch-icon.png' };
     try {
-      if (typeof Notification === 'function' && Notification.permission === 'granted') {
-        // eslint-disable-next-line no-new
-        new Notification(title, {
-          body: body || '', icon: 'icons/apple-touch-icon.png',
-          tag: 'convoy', renotify: true,
-        });
+      if (swReg && typeof swReg.showNotification === 'function') {
+        swReg.showNotification(title, opts).catch(() => {});
+        return;
       }
+    } catch (e) { /* fall through */ }
+    try {
+      // eslint-disable-next-line no-new
+      new Notification(title, opts);
     } catch (e) { /* ignore */ }
   }
 
@@ -2083,6 +2101,7 @@
     ['pointerdown', 'touchstart'].forEach((ev) => {
       window.addEventListener(ev, () => {
         askWakeLock();      // a refused screen lock is often allowed after a touch
+        askToNotify();      // and iOS only offers the permission prompt after a touch
         if (state.joined && !state.paused && !haveMyPosition()) startWatching();
       }, { passive: true });
     });

@@ -281,8 +281,18 @@ one with a back button — back closing the search sheet instead of leaving the 
 
 ## The one thing to know about notifications
 
-The ping appears as a banner on screen and a vibration **whenever the app is open**, and as a
-system notification too if you allow it.
+**What notifies, on every phone in the group:** someone joins, someone leaves, the
+destination is set or cleared, and someone arrives. Plus one only the phones holding the pin
+see: a request to join, so whichever pin phone is to hand can let them in. There can be more
+than one pin phone, and each of them is asked.
+
+**They are shown by the service worker, not the page.** Safari on iOS refuses a notification
+made by the page itself, which is the usual reason an iPhone looks like it has no
+notifications at all. `showNotification` works on both phones, so it is tried first and the
+plain constructor is only the fallback. Nothing shares a tag either — a shared tag makes each
+new notification replace the last, so you would only ever see one.
+
+The vibration and the ping come with it **whenever the app is open**.
 
 **It cannot arrive when the app is fully closed.** Waking a closed app needs a push service
 and a server to send through, and this app deliberately has neither. So: leave Convoy open
@@ -436,7 +446,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 710 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 719 checks:
 
 ```bash
 npm install
