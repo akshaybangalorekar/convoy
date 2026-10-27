@@ -250,6 +250,41 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testTheRelayIsAskedWhatWentWrong() {
+  // The error used to be thrown away: a refused connection looked exactly like a blocked
+  // port, and there was no way to tell them apart.
+  const api = boot();
+  await sleep(20);
+  const c = api.clients[api.clients.length - 1];
+
+  c._emit('disconnect', { reasonCode: 135 });
+  await sleep(20);
+  check('an MQTT reason code is kept and named',
+        /135/.test(api.window.Convoy.state.lastError) &&
+        /not authorized/.test(api.window.Convoy.state.lastError),
+        api.window.Convoy.state.lastError);
+
+  c._emit('error', new Error('connack timeout'));
+  await sleep(20);
+  check('a timeout is called a timeout',
+        /timed out/.test(api.window.Convoy.state.lastError),
+        api.window.Convoy.state.lastError);
+
+  c._emit('error', new Error('WebSocket connection failed'));
+  await sleep(20);
+  check('a socket failure is named as one',
+        /socket failed/.test(api.window.Convoy.state.lastError),
+        api.window.Convoy.state.lastError);
+  check('and which relay said it', !!api.window.Convoy.state.lastErrorRelay,
+        api.window.Convoy.state.lastErrorRelay);
+
+  await api.window.Convoy._internals.showConnection();
+  await sleep(20);
+  check('the connection card shows it',
+        /Last from/.test(api.document.getElementById('connError').textContent),
+        api.document.getElementById('connError').textContent);
+}
+
 async function testAWaitingPhoneLooksForTheGroupOnOtherRelays() {
   // Waiting to be let in and hearing nothing usually means the group is on another relay,
   // and there is no way to tell from the app. Walk the list rather than sit there.
@@ -619,6 +654,7 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testTheRelayIsAskedWhatWentWrong();
     await testAWaitingPhoneLooksForTheGroupOnOtherRelays();
     await testOutOfContactIsSaidOnceAndOnlyWhileItIsNews();
     await testALongGonePhoneIsNotAnnouncedAgain();

@@ -32,6 +32,18 @@ keyboard opens, but a fixed overlay stays put in the layout viewport — so a bo
 sheet ends up behind the keyboard with the field you are typing into invisible. The sheet is
 lifted by exactly the height the keyboard takes, measured from `visualViewport`.
 
+**The transport is MQTT over WebSocket Secure — that is, over TLS.** Not raw TCP: a browser
+has no TCP socket API, so MQTT over WebSocket is the only option for a page like this, and
+every relay is `wss://` on its own port (443, 8084, 8884, 8081). `clean: true`, our own
+reconnect rather than the library's, and a 30-second keepalive because mobile networks drop
+idle sockets well before MQTT's default minute.
+
+**The app now keeps what the relay says.** Until recently the error handler took no argument,
+so a refused connection and a blocked port looked identical — both just "no relay". The
+connection card reports the last thing a relay actually said: MQTT 5 reason codes spelled out
+(135 not authorized, 136 server unavailable, 150 quota exceeded and so on), a connack timeout
+called a timeout, a socket failure called a socket failure, and which relay said it.
+
 **The map uses the standard OpenStreetMap tiles**, which are the only ones left that need no
 API key. The styled basemaps that look like a phone map — CARTO, MapTiler, Stadia — all want a
 key now, and a key cannot be shipped in a page that anyone can read. If you want one of those
@@ -523,7 +535,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 774 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 780 checks:
 
 ```bash
 npm install

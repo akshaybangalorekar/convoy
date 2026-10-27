@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v59',             // must match VERSION in sw.js; a test holds them together
+    build: 'v60',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -87,6 +87,8 @@
     focused: '',          // the car whose name is showing because it was tapped
     headingUp: true,      // turn the map so the way you are going is up
     relay: '',            // which relay we are on, shown in Help
+    lastError: '',        // the last thing the relay actually said, for the connection card
+    lastErrorRelay: '',
     joinAsked: false,     // has this phone asked to be let in, and not withdrawn it
                           // (kept in localStorage too, so a reload does not lose it)
     lastHeard: 0,         // when anything last arrived from anyone
@@ -1203,6 +1205,13 @@
     const buildLine = $('connBuild');
     if (buildLine) buildLine.textContent = 'Build ' + CFG.build + ' · ' + CFG.brokers.length + ' relays';
 
+    const errLine = $('connError');
+    if (errLine) {
+      errLine.textContent = state.lastError
+        ? 'Last from ' + (state.lastErrorRelay || 'a relay') + ': ' + state.lastError
+        : '';
+    }
+
     const results = await Promise.all(CFG.brokers.map((b) => probeRelay(b.url, 6000)));
     const rows = list.querySelectorAll('li');
     results.forEach((r, i) => {
@@ -1321,6 +1330,38 @@
   const connLabel = (whileTrying) =>
     (connFailures >= 3 ? 'no relay' : whileTrying);
 
+  /* What the relay actually said. This was being thrown away: the error handler took no
+     argument, so a refused connection looked exactly like a blocked port and there was no
+     way to tell the two apart. MQTT 5 reason codes are spelled out where we get them. */
+  const MQTT_CODES = {
+    128: 'unspecified error', 129: 'malformed packet', 130: 'protocol error',
+    131: 'implementation specific error', 132: 'unsupported protocol version',
+    133: 'client id not valid', 134: 'bad user name or password', 135: 'not authorized',
+    136: 'server unavailable', 137: 'server busy', 138: 'banned',
+    140: 'bad authentication method', 144: 'topic filter invalid', 145: 'topic name invalid',
+    148: 'packet too large', 149: 'message rate too high', 150: 'quota exceeded',
+    151: 'administrative action', 153: 'payload format invalid',
+  };
+
+  function noteError(err, pkt) {
+    let text = '';
+    if (pkt && typeof pkt.reasonCode === 'number') {
+      text = 'reason ' + pkt.reasonCode +
+        (MQTT_CODES[pkt.reasonCode] ? ' (' + MQTT_CODES[pkt.reasonCode] + ')' : '');
+      if (pkt.reasonString) text += ' — ' + pkt.reasonString;
+    } else if (err) {
+      const m = err.message || err.code || String(err);
+      text = /timeout/i.test(m) ? 'timed out'
+        : /unauthor|not authori|401|403/i.test(m) ? 'not authorized'
+        : /refused/i.test(m) ? 'connection refused'
+        : /websocket|socket|network/i.test(m) ? 'socket failed'
+        : m;
+    }
+    if (!text) return;
+    state.lastError = String(text).slice(0, 120);
+    state.lastErrorRelay = state.relay || '';
+  }
+
   function connect() {
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
     state.relay = b.name;
@@ -1372,8 +1413,10 @@
       refreshRoute();
     });
     client.on('message', onMessage);
-    client.on('error', () => { if (!settled) { fail(); retry(); } });
+    client.on('error', (err) => { noteError(err); if (!settled) { fail(); retry(); } });
+    client.on('disconnect', (pkt) => { noteError(null, pkt); });
     client.on('close', () => {
+      if (!state.lastError) noteError(new Error('socket closed'));
       setConn('down', 'offline');
       if (!settled) { fail(); retry(); return; }
       // A connection that lasted a while ended normally; one that dies straight after
