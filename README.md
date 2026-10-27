@@ -32,10 +32,14 @@ keyboard opens, but a fixed overlay stays put in the layout viewport — so a bo
 sheet ends up behind the keyboard with the field you are typing into invisible. The sheet is
 lifted by exactly the height the keyboard takes, measured from `visualViewport`.
 
-**The map is a phone map**: the light CARTO Voyager style by day, the same family's dark
-basemap at night — not one style inverted. Both are keyless. If that host cannot be reached
-at all, the app falls back to the standard OpenStreetMap tiles after a few failed tiles rather
-than leaving a blank map, and it does that once so it cannot thrash. Help names both sources.
+**The map uses the standard OpenStreetMap tiles**, which are the only ones left that need no
+API key. The styled basemaps that look like a phone map — CARTO, MapTiler, Stadia — all want a
+key now, and a key cannot be shipped in a page that anyone can read. If you want one of those
+styles, get a free key and it is a one-line change in `TILES`.
+
+An earlier version tried CARTO without a key and the map came up asking for one. That is the
+whole reason this is now the plain tiles and nothing else: one source, no key, no fallback
+machinery to go wrong.
 
 **The map goes dark after sunset.** Not on a clock and not on a phone setting: the sun's
 elevation is worked out for where you are, and the tiles are darkened when it drops below
@@ -421,7 +425,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 705 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 702 checks:
 
 ```bash
 npm install

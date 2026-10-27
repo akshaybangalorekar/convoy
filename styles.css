@@ -240,6 +240,9 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 /* After sunset the map itself goes dark. Only the tile pane is filtered, so the cars keep
    their own colours — they are what you are reading the map for. */
 #map.night-tiles { background: #0d1319; }
+#map.night-tiles .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.55);
+}
 
 /* ---------- People sheet ---------- */
 #sheet {

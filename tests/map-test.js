@@ -209,37 +209,16 @@ async function testSheetCollapses() {
 
 /* ---------- Run ---------- */
 /* ---------- The tiles ---------- */
-async function testTheTilesLookLikeAPhoneMap() {
+async function testTheTilesAreKeyless() {
   const api = boot();
   api.join('Akshay', 'goa-trip');
   await sleep(20);
   const layer = api.tileLayers[0];
-  check('by day the map uses the light, Google-like style',
-        /basemaps\.cartocdn\.com\/rastertiles\/voyager/.test(layer.url), layer.url);
-  check('at twice the pixels on a phone that can show them', layer.opts.detectRetina === true);
-
-  api.window.Convoy._internals.applySun.call(null);
-  const realNow = api.window.Date.now;
-  api.window.Date.now = () => Date.UTC(2026, 0, 15, 14, 0, 0);      // 1am Sydney
-  api.fix(-33.87, 151.21);
-  await sleep(20);
-  check('at night it switches to a real dark basemap, not an inverted one',
-        /dark_all/.test(layer.url), layer.url);
-  api.window.Date.now = realNow;
-}
-
-async function testTheTilesFallBackRatherThanGoBlank() {
-  const api = boot();
-  await sleep(20);
-  const layer = api.tileLayers[0];
-  for (let i = 0; i < 5; i++) layer.fire('tileerror');
-  check('a few failures are tolerated', /voyager/.test(layer.url), layer.url);
-  layer.fire('tileerror');
-  check('but a run of them falls back to the standard tiles',
+  check('the map uses the standard tiles, which need no key',
         /tile\.openstreetmap\.org/.test(layer.url), layer.url);
-  for (let i = 0; i < 20; i++) layer.fire('tileerror');
-  check('and it does not thrash after that',
-        /tile\.openstreetmap\.org/.test(layer.url), layer.url);
+  check('and asks for no key of any kind', !/apikey|api_key|access_token/i.test(layer.url));
+  check('one layer, not a second service that could demand a key',
+        api.tileLayers.length === 1, String(api.tileLayers.length));
 }
 
 /* ---------- Day and night ---------- */
@@ -457,8 +436,7 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
-    await testTheTilesLookLikeAPhoneMap();
-    await testTheTilesFallBackRatherThanGoBlank();
+    await testTheTilesAreKeyless();
     await testTheSunIsWhereItShouldBe();
     await testTheMapGoesDarkAfterSunset();
     await testTheBadgeSaysWhichWayYouAreGoing();

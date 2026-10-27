@@ -138,9 +138,8 @@ try {
         !/control\.zoom/.test(app) && !/leaflet-control-zoom/.test(html));
   check('the map draws no credit line over itself',
         /attributionControl: false/.test(app) && !/\.leaflet-control-attribution/.test(css));
-  check('the credit is in Help instead, naming both sources',
-        /Map data &copy;/.test(html) && /openstreetmap\.org\/copyright/.test(html) &&
-        /carto\.com\/attributions/.test(html));
+  check('the credit is in Help instead, with a link to OpenStreetMap',
+        /Map data &copy;/.test(html) && /openstreetmap\.org\/copyright/.test(html));
   check('and the sheet is the bottom-most thing, flush to the edge',
         /bottom: 0;/.test(css) && /border-radius: 16px 16px 0 0/.test(css));
   check('there is no floating recenter button, since Location does that job',
@@ -181,10 +180,11 @@ try {
         /Lost network · ' \+ fmtAgo/.test(app) && /function lastSeenOf/.test(app));
   check('and someone who put the app away is marked as shut down',
         /Shut down app/.test(app));
-  check('the night map is a real dark basemap, not an inverted light one',
-        /dark_all/.test(app) && !/invert\(1\) hue-rotate/.test(css));
-  check('and there is a fallback if the style host cannot be reached',
-        /TILES\.fallback/.test(app) && /tileerror/.test(app));
+  check('the map needs no API key, and nothing in it asks for one',
+        !/cartocdn|apikey|api_key|access_token/i.test(app + html + css));
+  check('the night map is darkened only at night, never by the phone\'s dark mode',
+        /#map\.night-tiles \.leaflet-tile-pane/.test(css) &&
+        !/\.leaflet-tile \{\s*filter/.test(css));
   check('their circle goes grey rather than the whole row fading',
         /li\.away \.pdot, #people li\.lost \.pdot \{ filter: grayscale\(1\)/.test(css));
   check('and who is behind or ahead of you', /behind you/.test(app) && /ahead of you/.test(app));
@@ -287,7 +287,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v44/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v45/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

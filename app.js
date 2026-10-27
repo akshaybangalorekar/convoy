@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v44',             // must match VERSION in sw.js; a test holds them together
+    build: 'v45',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -438,21 +438,11 @@
   /* ---------------------------------------------------------------- *
    * Map
    * ---------------------------------------------------------------- */
-  /* A light, clean style by day and a real dark basemap at night — the two things a phone
-     map is expected to look like. Both are keyless; the standard OSM tiles are the fallback
-     if this host cannot be reached at all. */
-  const TILES = {
-    day: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    night: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
-    fallback: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  };
+  /* The standard OpenStreetMap tiles: keyless, and the only source that reliably is. The
+     styled basemaps that look like a phone map all want an API key now, and a key in the
+     source is not something this app can ship. Night is the same tiles darkened. */
+  const TILES = { day: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' };
   let tiles = null;
-  let tileErrors = 0;
-  let tilesFellBack = false;
-  let tilesNight = null;
-
-  const tileTemplate = (night) =>
-    (tilesFellBack ? TILES.fallback : (night ? TILES.night : TILES.day));
 
   function initMap() {
     map = L.map('map', {
@@ -465,20 +455,10 @@
       touchRotate: false,
       doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
-    tiles = L.tileLayer(tileTemplate(false), {
+    tiles = L.tileLayer(TILES.day, {
       maxZoom: 19,
-      detectRetina: true,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    });
-    // A style host can be unreachable where the plain tiles are not. Rather than leave a
-    // blank map, fall back to the standard tiles after a few failures — once.
-    tiles.on('tileerror', () => {
-      if (tilesFellBack) return;
-      if (++tileErrors < 6) return;
-      tilesFellBack = true;
-      tiles.setUrl(TILES.fallback);
-    });
-    tiles.addTo(map);
+    }).addTo(map);
     // Dragging or zooming by hand hands the view back to you.
     map.on('dragstart zoomstart', () => {
       if (Date.now() - lastAutoView > 700) { state.autoFit = false; }
@@ -1330,10 +1310,6 @@
     const up = sunElevation(Date.now(), at.lat, at.lng);
     const night = up < -0.833;
     el.classList.toggle('night-tiles', night);
-    if (tiles && tilesNight !== night) {
-      tilesNight = night;
-      tiles.setUrl(tileTemplate(night));      // day style, night style
-    }
     state.sunUp = up;
     state.night = night;
   }
