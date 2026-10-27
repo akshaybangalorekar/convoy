@@ -15,6 +15,62 @@ const isIn = (api) => {
 };
 
 /* ---------- A phone that was kicked out can always come back ---------- */
+/* ---------- Leaving on purpose, and coming back ---------- */
+async function testLeavingOnPurposeAndComingBack() {
+  const broker = makeBroker();
+  const a = boot({ broker });
+  const b = boot({ broker, outside: true });
+  await sleep(40);
+  await unlockPin(a);
+  a.goLive(); b.goLive();
+  await sleep(120);
+  b.document.getElementById('btnJoin').click();
+  await sleep(120);
+  a.document.querySelector('[data-yes]').click();
+  await sleep(200);
+  const bid = b.window.Convoy.state.me.id;
+  check('13a both are in', isIn(a) && isIn(b));
+
+  // The Leave button only exists while you are in, and it is in Help.
+  b.document.getElementById('btnSettings').click();
+  await sleep(30);
+  check('13b the Leave button is offered while you are in',
+        !b.document.getElementById('btnLeave').classList.contains('hidden'));
+
+  // Two taps: the first arms it and changes what it says.
+  b.document.getElementById('btnLeave').click();
+  await sleep(30);
+  check('13c the first tap only arms it', isIn(b) &&
+        /Tap again/.test(b.document.getElementById('btnLeave').textContent),
+        b.document.getElementById('btnLeave').textContent);
+
+  b.document.getElementById('btnLeave').click();
+  await sleep(250);
+  check('13d the second tap leaves', !isIn(b));
+  check('13e and the group is told', /left/.test(titles(a)), titles(a));
+  check('13f and it comes off their list', !a.window.Convoy.state.peers.has(bid));
+  const roster = () => {
+    try { return JSON.parse(a.window.localStorage.getItem('convoy.record') || '{}'); }
+    catch (e) { return {}; }
+  };
+  check('13g and off the roster', !(roster().members || {})[bid],
+        JSON.stringify(Object.keys(roster().members || {})));
+  check('13h the leaving phone is back on Join',
+        /Join the convoy/.test(b.document.getElementById('joinLabel').textContent),
+        b.document.getElementById('joinLabel').textContent);
+  check('13i and sees nobody', b.window.Convoy.state.peers.size === 0);
+
+  /* Leaving is not a ban. The pin phone never put them on its removed list, so asking again
+     puts them straight back in without anybody having to approve it. Being removed with the
+     cross is the other thing entirely, and that does need approval. */
+  b.document.getElementById('btnJoin').click();
+  await sleep(300);
+  check('13j asking again puts it straight back in, because leaving is not a ban', isIn(b));
+  check('13k and it needs no approval', a.window.Convoy.state.pending.size === 0,
+        JSON.stringify([...a.window.Convoy.state.pending.keys()]));
+  check('13l and it is on the list again', a.window.Convoy.state.peers.has(bid));
+}
+
 async function testAKickedOutPhoneCanAlwaysRejoin() {
   const broker = makeBroker();
   const pin = boot({ broker });
@@ -424,6 +480,7 @@ async function testRemovedWhileOffline() {
     await testOneRemovedTheOtherStays();
     await testAskingWhileThePinPhoneIsOffline();
     await testSomeoneAlreadyInIsNotARequest();
+    await testLeavingOnPurposeAndComingBack();
     await testAKickedOutPhoneCanAlwaysRejoin();
     await testRemovalSeenFromTheOtherPinPhone();
     await testRemovedWhileOffline();

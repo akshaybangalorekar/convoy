@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v73',             // must match VERSION in sw.js; a test holds them together
+    build: 'v74',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -318,6 +318,19 @@
 
   /* The other half of the switch: back on the map. Without this, someone who hid their
      location and then unhid it stayed marked as hidden for ever. */
+  /* They chose to go. Unlike a phone that simply went quiet, this is a decision: they come
+     off the list and off the roster, so a reopened app does not show them hanging around. */
+  function onBye(msg) {
+    if (!state.peers.has(msg.id) && !state.seen.has(msg.id)) return;
+    const p = state.peers.get(msg.id);
+    const name = (p && p.name) || msg.name || 'Someone';
+    removePeer(msg.id);
+    state.seen.delete(msg.id);
+    forgetMember(msg.id);
+    renderPeople();
+    notify(name + ' left', '');
+  }
+
   function onSharing(msg) {
     const p = state.peers.get(msg.id);
     if (!p) return;
@@ -886,7 +899,7 @@
          stale — it missed the broadcast, which on a bad link is easy. Tell it again, and
          then treat it like anyone else rather than as a request: otherwise the same person
          is announced and offered a Let in button for ever, and never joins the list. */
-      announceAllowed();
+      announceAllowed(true);           // they are asking: answer without waiting
       if (!state.allowed.has(msg.id)) {
         if (state.master) askedToJoin(msg);
         return;
@@ -908,7 +921,7 @@
     // anyone new, it is what puts them on the list. Leaving is the one exception: we do
     // not want to add someone just to remove them.
     const knownBefore = state.peers.has(msg.id) || state.seen.has(msg.id);
-    ensurePeer(msg);
+    if (msg.t !== 'bye') ensurePeer(msg);   // a goodbye is not an introduction
 
     switch (msg.t) {
       case 'hello':      onHello(msg, knownBefore); return;
@@ -920,6 +933,7 @@
       case 'pos':        onPos(msg); return;
       case 'paused':     onPaused(msg); return;
       case 'sharing':    onSharing(msg); return;
+      case 'bye':        onBye(msg); return;
       case 'arrived':    onArrived(msg); return;
       default: return;
     }
@@ -1051,10 +1065,13 @@
      their approval may have gone out before they were listening, which leaves a phone
      waiting for ever — so any phone that knows the list passes it on when someone speaks. */
   let allowedAt = 0;
-  function announceAllowed() {
+  function announceAllowed(force) {
     if (!state.allowed.size) return;
     const now = Date.now();
-    if (now - allowedAt < 5000) return;      // a burst of hellos should not become a storm
+    // A burst of hellos should not become a storm — but a phone that is actually asking has
+    // to be answered at once, or someone who left and came back sits on "Cancel request"
+    // until the next tick, up to half a minute later.
+    if (!force && now - allowedAt < 5000) return;
     allowedAt = now;
     send({ t: 'allowed', ids: Array.from(state.allowed) });
     // Whoever is arriving needs to know who is out as well as who is in, or a removal that
@@ -1904,6 +1921,14 @@
       const b = $(id);
       if (b) b.classList.toggle('hidden', !here);
     });
+    const leaveBtn = $('btnLeave');
+    if (leaveBtn && !here) {
+      leaveBtn.classList.add('hidden');
+      leaveBtn.classList.remove('armed');
+      leaveBtn.textContent = 'Leave the convoy';
+    } else if (leaveBtn) {
+      leaveBtn.classList.remove('hidden');
+    }
 
     const el = $('btnPause');
     if (!el) return;
@@ -2382,6 +2407,36 @@
   const bgAllowed = () => !!state.me && !!state.dest && Date.now() < state.bgUntil &&
     !everyoneArrived();
 
+  /* Leaving is voluntary and reversible, which is what makes it different from being
+     removed. It says goodbye so the group can drop you off its rosters, and puts this phone
+     back on the Join button — nothing stops you asking again a minute later. */
+  function leaveConvoy() {
+    if (!state.me || !inConvoy()) return;
+    send({ t: 'bye' });
+    const mine = state.me.id;
+    state.allowed.delete(mine);
+    state.removed.delete(mine);
+    state.pending.delete(mine);
+    Array.from(state.peers.keys()).forEach((id) => removePeer(id));
+    state.seen.clear();
+    forgetMember(mine);                // a reopened app should not put us back in
+    state.dest = null;
+    state.destTs = Date.now();
+    state.arrived = false;
+    state.allDone = false;
+    state.myEta = null;
+    state.joinAsked = false;
+    saveJoinAsked(false);
+    clearAsk();
+    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+    saveDest();
+    renderDest();
+    drawDest();
+    drawMyLine(null);
+    renderPeople();
+    renderControls();
+  }
+
   function goAway() {
     if (!state.joined || demoTimer) return;
     if (!state.away) { state.away = true; send({ t: 'away' }); }
@@ -2455,7 +2510,28 @@
     });
     // Help holds the pin field, so it has to stay reachable while you are not in yet.
     let connHold = null;
-    const openHelp = () => { fillHelp(); $('settingsCard').classList.remove('hidden'); };
+    let leaveArmed = 0;
+    const disarmLeave = () => {
+      leaveArmed = 0;
+      const b = $('btnLeave');
+      if (b) { b.classList.remove('armed'); b.textContent = 'Leave the convoy'; }
+    };
+    const openHelp = () => {
+      disarmLeave();
+      fillHelp();
+      $('settingsCard').classList.remove('hidden');
+    };
+    $('btnLeave').addEventListener('click', () => {
+      if (!leaveArmed || Date.now() - leaveArmed > 4000) {
+        leaveArmed = Date.now();
+        $('btnLeave').classList.add('armed');
+        $('btnLeave').textContent = 'Tap again to leave';
+        return;
+      }
+      disarmLeave();
+      $('settingsCard').classList.add('hidden');
+      leaveConvoy();
+    });
     $('connState').addEventListener('pointerdown', () => {
       connHold = setTimeout(openHelp, 550);
     });
@@ -2601,6 +2677,7 @@
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
                   bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
+                  leaveConvoy,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),

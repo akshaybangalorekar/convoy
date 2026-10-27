@@ -240,6 +240,17 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 }
 .dest-main:active { opacity: 0.75; }
 /* Clearing is a small, quiet cross on the row itself — not a big button in the search flow. */
+/* Leaving lives here, not on the four buttons: those are all used in a hurry, and a
+   mis-tap on one of them must never take you out of the convoy. */
+.leave-btn {
+  appearance: none; border: 0; width: 100%; margin: 0 0 8px;
+  padding: 13px; border-radius: 14px;
+  background: rgba(255, 59, 48, 0.14); color: var(--danger);
+  font-size: 16px; font-weight: 600; cursor: pointer;
+}
+.leave-btn:active { opacity: 0.7; }
+.leave-btn.armed { background: var(--danger); color: #fff; }
+
 .dest-clear {
   appearance: none; border: 0; background: none; color: var(--muted);
   flex: 0 0 auto; padding: 10px 14px 10px 10px;

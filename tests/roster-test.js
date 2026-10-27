@@ -122,14 +122,10 @@ async function testClosingIsNotLeaving() {
         r && Object.keys(r.members).length === 2, JSON.stringify(r && Object.keys(r.members)));
 }
 
-async function testNothingCanLeave() {
-  // There is no Leave button and no goodbye message: closing the app is the only way out,
-  // and it looks like a phone that went quiet. Only the week, or the pin phone, removes
+async function testLeavingIsPossibleAndReversible() {
+  // Leaving is voluntary and reversible: it says goodbye, comes off the roster, and puts
+  // this phone back on the Join button. Only the week, the pin phone, or this removes
   // anyone from the roster.
-  const app = io_read('app.js');
-  check('nothing sends a goodbye', !/t: 'bye'/.test(app));
-  check('and nothing handles one either', !/onBye/.test(app));
-
   const api = boot();
   api.join('Akshay');
   api.fix(-33.86, 151.2);
@@ -137,7 +133,26 @@ async function testNothingCanLeave() {
   api.recv(pos('p1', 'Priya', -33.87, 151.21));
   await sleep(30);
   check('the roster has both of you', Object.keys(rec(api).members).length === 2);
-  check('and nobody is announced as having left', !/left/.test(titles(api)), titles(api));
+
+  // Priya leaves.
+  api.recv({ t: 'bye', id: 'p1', name: 'Priya' });
+  await sleep(30);
+  check('leaving is announced', /Priya left/.test(titles(api)), titles(api));
+  const r = rec(api);
+  check('and takes them off the roster', r && !r.members.p1,
+        JSON.stringify(r && Object.keys(r.members)));
+  check('and off the list', !/Priya/.test(api.document.getElementById('people').textContent),
+        api.document.getElementById('people').textContent);
+
+  // And they can come back: nothing about leaving is a block.
+  api.recv(pos('p1', 'Priya', -33.88, 151.22));
+  await sleep(40);
+  check('and they can come straight back', /Priya/.test(
+        api.document.getElementById('people').textContent),
+        api.document.getElementById('people').textContent);
+  // They did join again, so it is announced — that is information, not a block.
+  check('and coming back is announced as a join, which it is',
+        /Priya joined/.test(titles(api).split('Priya left')[1] || ''), titles(api));
 }
 
 async function testRosterComesBack() {
@@ -228,7 +243,7 @@ async function testAForceResetStillLands() {
     await testTheDropHappensOnItsOwn();
     await testNobodyIsDropped();
     await testClosingIsNotLeaving();
-    await testNothingCanLeave();
+    await testLeavingIsPossibleAndReversible();
     await testRosterComesBack();
     await testOneIdentityPerDevice();
     await testAForceResetStillLands();

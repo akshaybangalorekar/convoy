@@ -288,6 +288,17 @@ relays, so it walks the list.
 **What happens when the phone with the pin goes away.** Tested with one, two, seven and all
 ten phones holding it:
 
+- **Leaving is voluntary and reversible, and it lives in Help, not on the four buttons.**
+  Those four — Invite, Sharing, Location, Help — are all used in a hurry, and a mis-tap on one
+  of them must never take you out of the convoy. Help is the one you open deliberately, so
+  that is where it goes: a red "Leave the convoy" above Done, which arms on the first tap and
+  acts on the second, so brushing it on the way to Done does nothing. Leaving says goodbye,
+  takes you off everyone's list and roster, and puts your phone back on Join.
+
+  **Leaving is not a ban.** The pin phone never put you on its removed list, so asking again
+  puts you straight back in without anyone approving it. Being removed with the cross is the
+  other thing entirely, and that does need approval.
+
 - **A phone that was kicked out can always come back.** It shows Join the convoy (not
   Cancel), the request reaches every pin phone, any of them can let it back in, and being let
   back in clears the removal everywhere — so it lands on every list, with its four buttons.
@@ -680,7 +691,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1044 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1059 checks:
 
 ```bash
 npm install

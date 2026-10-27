@@ -164,8 +164,13 @@ try {
   check('the clear button lives on the destination row, not in the search sheet',
         /id="btnClearDest"/.test(html) &&
         html.indexOf('id="btnClearDest"') < html.indexOf('id="search"'));
-  check('there is no join form at all, and no Leave button',
-        !/id="join"/.test(html) && !/btnLeave/.test(html) && !/id="btnGo"/.test(html));
+  check('there is no join form and no code field',
+        !/id="join"/.test(html) && !/id="btnGo"/.test(html));
+  // Leaving exists, but it lives in Help rather than on one of the four buttons: those are
+  // all used in a hurry, and a mis-tap on one of them must never take you out.
+  check('and leaving is in Help, behind a second tap',
+        /id="btnLeave"/.test(html) && /Tap again to leave/.test(app) &&
+        html.indexOf('id="btnLeave"') > html.indexOf('id="settingsCard"'));
   check('a long press on the map sets the destination',
         /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
   check('and looks up what is there', /function reverse/.test(read('route.js')) &&
@@ -290,7 +295,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v73/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v74/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 
