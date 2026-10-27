@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v45',             // must match VERSION in sw.js; a test holds them together
+    build: 'v46',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -91,6 +91,7 @@
     arrived: false,       // we have reached the destination (or said we have)
     focused: '',          // the car whose name is showing because it was tapped
     headingUp: true,      // turn the map so the way you are going is up
+    relay: '',            // which relay we are on, shown in Help
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
     allowed: new Set(),   // ids the master has let in; nobody else is in the room
@@ -737,6 +738,7 @@
   function sendState() {
     send({ t: 'hello' });
     if (state.allowed.size) send({ t: 'allowed', ids: Array.from(state.allowed) });
+    if (state.removed.size) send({ t: 'removed', ids: Array.from(state.removed) });
     publishNow(true);
     if (state.dest) {
       send({ t: 'dest', lat: state.dest.lat, lng: state.dest.lng,
@@ -902,6 +904,9 @@
     if (now - allowedAt < 5000) return;      // a burst of hellos should not become a storm
     allowedAt = now;
     send({ t: 'allowed', ids: Array.from(state.allowed) });
+    // Whoever is arriving needs to know who is out as well as who is in, or a removal that
+    // went out while they were not listening is one they will never hear.
+    if (state.removed.size) send({ t: 'removed', ids: Array.from(state.removed) });
   }
 
   function onHello(msg) {
@@ -1152,6 +1157,7 @@
 
   function connect() {
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
+    state.relay = b.name;
     setConn('', connLabel('connecting'));
     let settled = false;
     let counted = false;
@@ -1379,13 +1385,15 @@
     $('peopleCount').textContent = inRoom
       ? people + (people === 1 ? ' person' : ' people') +
         (state.dest ? '' : ' · no destination')
-      : 'waiting to be let in';
+      : (state.me && state.removed.has(state.me.id) ? 'not in the room' : 'waiting to be let in');
 
     const el = document.activeElement;
     const editing = !!(el && el.classList && el.classList.contains('myname'));
     if (!editing) {
       if (!inRoom) {
-        ul.innerHTML = '<li class="empty">Waiting for someone to let you in…</li>';
+        ul.innerHTML = '<li class="empty">' + (state.me && state.removed.has(state.me.id)
+          ? 'Press Join to ask to be let back in.'
+          : 'Waiting for someone to let you in…') + '</li>';
       } else {
         ul.innerHTML = rows.length ? rows.join('')
           : '<li class="empty">Waiting for others to join…</li>';
@@ -1534,6 +1542,10 @@
     const inRoom = !!(state.me && state.allowed.has(state.me.id));
     const join = $('btnJoin');
     if (join) join.classList.toggle('hidden', inRoom);
+    const joinLabel = $('joinLabel');
+    if (joinLabel) {
+      joinLabel.textContent = (state.me && state.removed.has(state.me.id)) ? 'Join back' : 'Join';
+    }
     ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
       const b = $(id);
       if (b) b.classList.toggle('hidden', !inRoom);
@@ -1972,7 +1984,8 @@
 
     // The gear: a version, and a field that does not say what it is for.
     $('btnSettings').addEventListener('click', () => {
-      $('settingsVersion').textContent = 'Version ' + CFG.build;
+      $('settingsVersion').textContent = 'Version ' + CFG.build +
+        (state.relay ? ' · relay ' + state.relay : '');
       $('inPin').value = '';
       const note = $('pinNote');
       if (state.master) {

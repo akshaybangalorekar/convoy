@@ -208,8 +208,16 @@ Everyone already in the room can still be removed by the master:
   cross is not the first of two steps, and there is no add-back control beside it. They are
   also struck off the allowed list and remembered as removed, so they cannot put themselves
   back. The removal is broadcast, so it happens on every phone and survives a restart.
-  **A removal is not a life sentence:** the person can press Join and ask again, and you can
-  let them back in. Being out of the room is not the same as being banned from asking.
+  **A removal is not a life sentence:** the person can press **Join back** and ask again, and
+  you can let them back in. Nothing says they were kicked out — the room simply goes away,
+  the sheet says "not in the room", and the button offers to ask again.
+  **The removal travels in the state push too**, not only in its one broadcast: a master who
+  was briefly offline when they removed someone had nothing to send it with, and the push on
+  reconnecting never carried it, so the removed phone never heard. That is why a removal
+  could look like it had not happened.
+  **Help shows which relay you are on.** Two phones on different relays can never see each
+  other, and there is no way to tell from the map — so if someone is "lost network" while
+  you are plainly online, compare that line on both phones.
   There is no other difference between a master phone and any other.
 
 Two honest limits. **The pin is obfuscated, not secure**: what the code holds is a hash of it,
@@ -425,7 +433,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 702 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 706 checks:
 
 ```bash
 npm install

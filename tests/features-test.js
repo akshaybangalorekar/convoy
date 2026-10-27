@@ -500,6 +500,34 @@ async function testBeingRemovedReachesThatPhone() {
   check('and it is remembered, so a reload does not put it back',
         !JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}')
           .allowed.includes(me));
+  check('the button offers to join back', text(api, 'joinLabel') === 'Join back',
+        text(api, 'joinLabel'));
+  check('and nothing says they were kicked out',
+        !/kick|removed|thrown|banned/i.test(text(api, 'people') + text(api, 'peopleCount')),
+        text(api, 'people') + ' / ' + text(api, 'peopleCount'));
+}
+
+async function testTheRemovalIsAnnouncedAgainAfterAReconnect() {
+  // One broadcast is not enough: a master that was briefly offline when they removed
+  // someone had nothing to send it with, and the state push on reconnecting never
+  // carried the removal either — so the removed phone never heard.
+  const api = boot();
+  await sleep(20);
+  await unlock(api);
+  api.recv(pos('p1', 'Priya', -33.87, 151.21));
+  await sleep(20);
+  api.document.querySelector('[data-remove="p1"]').click();
+  await sleep(20);
+
+  const before = api.sentAll('removed').length;
+  api.window.Convoy._internals.sendState();          // what happens on every reconnect
+  await sleep(20);
+  check('the state push carries the removal, so it survives a reconnect',
+        api.sentAll('removed').length > before,
+        before + ' -> ' + api.sentAll('removed').length);
+  check('and the list carries the right id',
+        ((api.sent('removed') || {}).ids || []).indexOf('p1') >= 0,
+        JSON.stringify(api.sent('removed')));
 }
 
 async function testAStrangerIsInvisibleWithoutThePin() {
@@ -732,6 +760,7 @@ async function testBehindAndAhead() {
     await testOneButtonUntilYouAreIn();
     await testHelpStaysReachableWhileOutside();
     await testBeingRemovedReachesThatPhone();
+    await testTheRemovalIsAnnouncedAgainAfterAReconnect();
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
