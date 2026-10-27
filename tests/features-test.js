@@ -190,8 +190,8 @@ async function testPauseSharing() {
   await sleep(20);
   check('once off it says you are hidden',
         text(api, 'pauseLabel') === 'Hidden', text(api, 'pauseLabel'));
-  check('and the eye closes',
-        api.document.getElementById('btnPause').classList.contains('on'));
+  check('and the button inverts, bright orange with a dark eye',
+        api.document.getElementById('btnPause').classList.contains('hiding'));
   check('and a screen reader is told what tapping will do',
         /tap to share again/i.test(api.document.getElementById('btnPause').getAttribute('aria-label')),
         api.document.getElementById('btnPause').getAttribute('aria-label'));
@@ -437,6 +437,48 @@ async function testAPhoneOutsideTheRoomWaits() {
         !/Priya/.test(d.getElementById('people').textContent));
 }
 
+async function testOneButtonUntilYouAreIn() {
+  const out = boot({ outside: true });
+  await sleep(20);
+  const d = out.document;
+  const vis = (id) => !d.getElementById(id).classList.contains('hidden');
+
+  check('outside the room there is one button, and it says Join',
+        vis('btnJoin') && text(out, 'joinLabel') === 'Join', text(out, 'joinLabel'));
+  check('and none of the four', ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings']
+    .every((id) => !vis(id)));
+
+  const before = out.sentAll('hello').length;
+  d.getElementById('btnJoin').click();
+  await sleep(20);
+  check('pressing Join asks to be let in', out.sentAll('hello').length > before,
+        before + ' -> ' + out.sentAll('hello').length);
+  check('and the button says so', text(out, 'joinLabel') === 'Sent', text(out, 'joinLabel'));
+
+  const inside = boot();
+  await sleep(20);
+  const di = inside.document;
+  check('once you are in, the four buttons are back',
+        ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings']
+          .every((id) => !di.getElementById(id).classList.contains('hidden')) &&
+        di.getElementById('btnJoin').classList.contains('hidden'));
+}
+
+async function testHelpStaysReachableWhileOutside() {
+  // The pin field lives in Help, so a phone outside the room must still be able to reach it.
+  const api = boot({ outside: true });
+  await sleep(20);
+  const d = api.document;
+  check('Help is not in the row when you are outside', d.getElementById('btnSettings')
+    .classList.contains('hidden'));
+
+  d.getElementById('connState').dispatchEvent(new api.window.Event('pointerdown'));
+  await sleep(650);
+  check('but holding the connection word opens it',
+        !d.getElementById('settingsCard').classList.contains('hidden'));
+  check('with the pin field in it', !!d.getElementById('inPin'));
+}
+
 async function testAStrangerIsInvisibleWithoutThePin() {
   const api = boot();
   await sleep(20);
@@ -493,7 +535,9 @@ async function testTurningSomeoneAway() {
 
   api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
   await sleep(20);
-  check('and they are not asked about again', api.window.Convoy.state.pending.size === 0);
+  check('but they may ask again, so nobody is shut out for good',
+        api.window.Convoy.state.pending.size === 1,
+        String(api.window.Convoy.state.pending.size));
 }
 
 async function testTheListIsAnnouncedAgainWhenSomeoneArrives() {
@@ -662,6 +706,8 @@ async function testBehindAndAhead() {
     await testATouchRetriesARefusedScreenLock();
     await testItIsFineWithNoWakeLockApi();
     await testAPhoneOutsideTheRoomWaits();
+    await testOneButtonUntilYouAreIn();
+    await testHelpStaysReachableWhileOutside();
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();

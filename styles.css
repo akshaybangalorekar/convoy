@@ -9,12 +9,19 @@
   --muted: #8a8a8e;
   --sep: rgba(60, 60, 67, 0.13);
   --accent: #007aff;
+  --orange: #ff9f0a;      /* the symbol on every button, and the whole button when hidden */
+  --btn-bg: #23232a;      /* the rest of the button, which stays dark */
   --accent-text: #ffffff;
   --danger: #ff3b30;
   --shadow: 0 6px 22px rgba(0, 0, 0, 0.13);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* One utility for "not shown", and it has to win: several elements set their own display,
+   so a plain .hidden would lose to them on source order and the element would stay on
+   screen. That is exactly how the Join button failed to disappear. */
+.hidden { display: none !important; }
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -25,6 +32,7 @@
     --muted: #98989f;
     --sep: rgba(84, 84, 88, 0.5);
     --accent: #0a84ff;
+    --btn-bg: #2e2e35;
     --shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   }
   /* OpenStreetMap's standard tiles are the only keyless source, so the night map is
@@ -151,14 +159,18 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 /* The controls all live in one row at the foot of the sheet, leaving the top of the
    screen to the map and the destination. */
 .sheet-controls { display: flex; gap: 6px; padding: 8px 8px 6px; }
+/* Dark button, bright orange symbol: the thing you press is the symbol, and it is the
+   brightest thing on the screen. The Sharing switch inverts when you are hidden. */
 .tb {
   flex: 1 1 0; min-width: 0;
   appearance: none; border: 0; border-radius: 12px; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 8px 2px 7px;
-  background: rgba(0, 122, 255, 0.11); color: var(--accent);
-  font: inherit; font-size: 10.5px; font-weight: 600;
+  background: var(--btn-bg); color: var(--orange);
+  font: inherit; font-size: 10.5px; font-weight: 700;
 }
+.tb-wide { flex: 1 1 100%; padding: 11px 8px 10px; font-size: 12px; }
+.tb-wide svg { width: 22px; height: 22px; }
 .tb svg {
   width: 20px; height: 20px; flex: 0 0 auto;
   stroke: currentColor; fill: none;
@@ -166,11 +178,12 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 .tb span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb:active { opacity: 0.6; }
-/* Off the map: the eye closes and the button goes quiet. */
+/* Hidden: the whole button goes orange and the eye turns dark — the exact opposite of
+   sharing, so there is no reading it twice. */
 .tb .ic-off { display: none; }
-.tb.on { background: rgba(120, 120, 128, 0.16); color: var(--muted); }
-.tb.on .ic-on { display: none; }
-.tb.on .ic-off { display: block; }
+.tb.hiding { background: var(--orange); color: var(--btn-bg); }
+.tb.hiding .ic-on { display: none; }
+.tb.hiding .ic-off { display: block; }
 
 .dest-row {
   width: 100%; display: flex; align-items: center; padding: 0; overflow: hidden;

@@ -129,9 +129,11 @@ row of four equal buttons — **Invite**, **Sharing**, **Location** and **Help**
 over one short word so they all match whatever the state. The connection state sits in the
 sheet's header, beside the count. The top of the screen holds only the destination.
 
-- **Sharing** is the switch: an open eye while you are on the map, a crossed-out one and the
-  word **Hidden** when you are not. It says what state you are in rather than what the button
-  does, which is what lets it be the same size both ways.
+- **The buttons are dark with a bright orange symbol**, so the thing you press is the
+  brightest thing on the screen. **Sharing** inverts when you are hidden — the whole button
+  goes orange and the eye turns dark — which is the exact opposite of sharing, so there is no
+  reading it twice. It says what state you are in rather than what the button does, which is
+  what lets it be the same size both ways.
 - **There is no separate recenter button** — Location does that job, and a second circle
   doing nearly the same thing was one more thing on the map.
 - **There is no separate recenter button** — Location does that job, and a second circle
@@ -156,6 +158,10 @@ Nobody is in the room until the phone with the pin lets them in.
 
 - **Opening the app puts you in the waiting room**, not the room: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
+- **Outside the room there is one button, and it says Join.** The four only appear once you
+  have been let in. Pressing Join sends the ask and the button confirms with "Sent".
+- **Help stays reachable from outside**: hold the connection word in the sheet header. That
+  is where the pin field lives, so a new phone can still unlock itself without being in.
 - **The request goes to everyone, and only the master sees it.** It appears at the top of
   the list as *"Priya wants to join"* with **Let in** and a cross. On a phone without the
   pin the same message arrives and draws nothing at all.
@@ -192,6 +198,8 @@ Everyone already in the room can still be removed by the master:
   cross is not the first of two steps, and there is no add-back control beside it. They are
   also struck off the allowed list and remembered as removed, so they cannot put themselves
   back. The removal is broadcast, so it happens on every phone and survives a restart.
+  **A removal is not a life sentence:** the person can press Join and ask again, and you can
+  let them back in. Being out of the room is not the same as being banned from asking.
   There is no other difference between a master phone and any other.
 
 Two honest limits. **The pin is obfuscated, not secure**: what the code holds is a hash of it,
@@ -407,7 +415,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 683 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 691 checks:
 
 ```bash
 npm install

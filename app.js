@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v42',             // must match VERSION in sw.js; a test holds them together
+    build: 'v43',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -784,8 +784,6 @@
     if (msg.t === 'allowed') { onAllowed(msg); return; }
     if (msg.t === 'removed') { onRemoved(msg); return; }
 
-    if (state.removed.has(msg.id)) return;      // taken off the group by the master
-
     if (!state.allowed.has(msg.id)) {
       // Not in the room. Whoever is arriving needs the current list: the broadcast that
       // carried their approval may have gone out before they were listening, and that is
@@ -843,7 +841,7 @@
 
   // Someone is asking. Only a master ever gets this far.
   function askedToJoin(msg) {
-    if (!state.me || state.removed.has(msg.id)) return;
+    if (!state.me) return;
     const had = state.pending.get(msg.id);
     state.pending.set(msg.id, {
       id: msg.id, name: (msg.name || (had && had.name) || 'Someone').slice(0, 24),
@@ -1351,6 +1349,7 @@
   }
 
   function renderPeople() {
+    renderControls();      // one button or four, depending on whether you are in yet
     const ul = $('people');
     const me = state.me;
     const rows = [];
@@ -1521,9 +1520,18 @@
   // The one switch in the sheet. Internally this is still "paused"; on screen it says what
   // it actually does, which is take you off the map.
   function renderControls() {
+    // Not in the room yet: one Join button and nothing else to press.
+    const inRoom = !!(state.me && state.allowed.has(state.me.id));
+    const join = $('btnJoin');
+    if (join) join.classList.toggle('hidden', inRoom);
+    ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
+      const b = $(id);
+      if (b) b.classList.toggle('hidden', !inRoom);
+    });
+
     const el = $('btnPause');
     if (!el) return;
-    el.classList.toggle('on', !!state.paused);
+    el.classList.toggle('hiding', !!state.paused);
     // The button is an icon over one short word, so it keeps the same size either way.
     const label = $('pauseLabel');
     if (label) label.textContent = state.paused ? 'Hidden' : 'Sharing';
@@ -1994,6 +2002,32 @@
       renderPeople();
     });
 
+    $('btnJoin').addEventListener('click', () => {
+      send({ t: 'hello' });          // the ask: the phone with the pin sees this as a request
+      sendState();
+      const label = $('joinLabel');
+      if (label) {
+        const was = label.textContent;
+        label.textContent = 'Sent';
+        setTimeout(() => { label.textContent = was; }, 2000);
+      }
+    });
+    // Help holds the pin field, so it has to stay reachable while you are outside the room.
+    let connHold = null;
+    const openHelp = () => {
+      $('settingsVersion').textContent = 'Version ' + CFG.build;
+      $('inPin').value = '';
+      $('pinNote').classList.add('hidden');
+      $('settingsCard').classList.remove('hidden');
+    };
+    $('connState').addEventListener('pointerdown', () => {
+      connHold = setTimeout(openHelp, 550);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => {
+      $('connState').addEventListener(ev, () => {
+        if (connHold) { clearTimeout(connHold); connHold = null; }
+      });
+    });
     $('btnCentre').addEventListener('click', centreOnMe);
     $('btnHeading').addEventListener('click', () => {
       state.headingUp = !state.headingUp;
