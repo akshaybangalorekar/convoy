@@ -219,6 +219,11 @@ Everyone already in the room can still be removed by the master:
   cross is not the first of two steps, and there is no add-back control beside it. They are
   also struck off the allowed list and remembered as removed, so they cannot put themselves
   back. The removal is broadcast, so it happens on every phone and survives a restart.
+  **Letting someone back in clears the removal**, and that has to happen in two places: the
+  pin phone's removed list, or they stay filtered off its own list; and the removed phone's,
+  or it goes on broadcasting itself as removed and the pin phone puts it straight back. Both
+  were broken after the add-back button was removed, and both are covered by a test that
+  removes someone, has them ask again, and lets them back in.
   **A removal is not a life sentence:** the person can press **Join back** and ask again, and
   you can let them back in. Nothing says they were kicked out — the room simply goes away,
   the sheet says "not in the room", and the button offers to ask again.
@@ -505,7 +510,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 756 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 765 checks:
 
 ```bash
 npm install

@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v55',             // must match VERSION in sw.js; a test holds them together
+    build: 'v56',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -898,15 +898,22 @@
   // let in, and a newcomer finds out the moment the decision reaches it.
   function onAllowed(msg) {
     if (!Array.isArray(msg.ids)) return;
+    const wasInRoom = !!(state.me && state.allowed.has(state.me.id));
     const before = state.allowed.size;
     msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
     saveRoom({ allowed: Array.from(state.allowed) });
     state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
+    const justLetIn = !!(state.me && state.allowed.has(state.me.id) &&
+                         !wasInRoom);
     if (state.me && state.allowed.has(state.me.id)) {
       if (state.joinAsked) clearAsk();          // answered, so stop advertising it
       state.joinAsked = false;
       saveJoinAsked(false);
     }
+    // Having just been let in, say so at once. Otherwise the pin phone does not put us on
+    // its list until our next tick, which is up to half a minute of them wondering whether
+    // it worked.
+    if (justLetIn) sendState();
     renderPeople();
   }
 
@@ -934,11 +941,19 @@
 
   function letIn(id) {
     if (!state.master || !id) return;
-    state.allowed.add(String(id));
-    saveRoom({ allowed: Array.from(state.allowed) });
+    id = String(id);
+    state.allowed.add(id);
+    /* Letting someone in has to take them off the removed list as well. It used to, back
+       when there was a separate add-back button; when that button went, this was the only
+       place left that could do it, and it did not. The result was a person who was let in
+       staying filtered off the list, and — because the removed list is broadcast with the
+       allowed one — being pushed straight back out on their own phone, so they never got
+       the four buttons. */
+    state.removed.delete(id);
+    state.pending.delete(id);
+    saveRoom({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
     send({ t: 'allowed', ids: Array.from(state.allowed) });
-    const req = state.pending.get(String(id));
-    state.pending.delete(String(id));
+    send({ t: 'removed', ids: Array.from(state.removed) });
     renderPeople();
   }
 
@@ -955,13 +970,16 @@
   // The master's list of who is out, which every phone honours.
   function onRemoved(msg) {
     if (!Array.isArray(msg.ids)) return;
-    const ids = msg.ids.map(String).slice(0, 200);
-    setRemoved(ids);
-    ids.forEach((id) => { if (state.peers.has(id)) removePeer(id); });
-    // If it was me, my own phone has to know. Otherwise it keeps the allowed list it had
-    // and goes on showing the four buttons as if nothing happened.
-    if (state.me && ids.indexOf(state.me.id) >= 0 && state.allowed.has(state.me.id)) {
-      state.allowed.delete(state.me.id);
+    const mine = state.me ? state.me.id : '';
+    const all = msg.ids.map(String).slice(0, 200);
+    /* My own id is acted on but never kept in the list. Keeping it meant this phone went on
+       broadcasting itself as removed, and the pin phone — which is sent both lists — put it
+       straight back, undoing a let-in before it could take effect. */
+    setRemoved(all.filter((id) => id !== mine));
+    all.forEach((id) => { if (state.peers.has(id)) removePeer(id); });
+
+    if (mine && all.indexOf(mine) >= 0 && state.allowed.has(mine)) {
+      state.allowed.delete(mine);
       state.joinAsked = false;
       saveJoinAsked(false);
       clearAsk();

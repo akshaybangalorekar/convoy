@@ -784,6 +784,54 @@ async function testTheRequestCrossesToTheOtherPhone() {
         !guest.document.getElementById('btnInvite').classList.contains('hidden'));
 }
 
+async function testRemovedThenLetBackInWorks() {
+  // Remove someone, have them ask again, and let them back in. They have to come off the
+  // removed list as well as onto the allowed one, or they stay filtered off the pin phone's
+  // list and get pushed straight back out of the room on their own phone.
+  const broker = makeBroker();
+  const pin = boot({ broker });
+  const guest = boot({ broker, outside: true });
+  await sleep(30);
+  await unlock(pin);
+  pin.goLive();
+  guest.goLive();
+  await sleep(60);
+
+  const gid = guest.window.Convoy.state.me.id;
+  const listOf = (api) => api.document.getElementById('people').innerHTML;
+  const hasJoin = (api) => !api.document.getElementById('btnJoin').classList.contains('hidden');
+
+  guest.document.getElementById('btnJoin').click();
+  await sleep(90);
+  pin.document.querySelector('[data-yes]').click();
+  await sleep(120);
+  check('they are in to start with', guest.window.Convoy.state.allowed.has(gid));
+  check('and on the pin phone list', pin.window.Convoy.state.peers.has(gid),
+        listOf(pin).slice(0, 140));
+
+  pin.document.querySelector('[data-remove="' + gid + '"]').click();
+  await sleep(100);
+  check('removing takes them off the list', !pin.window.Convoy.state.peers.has(gid));
+  check('and back to the Join button on their own phone', hasJoin(guest));
+
+  guest.document.getElementById('btnJoin').click();
+  await sleep(120);
+  check('asking again comes through', pin.window.Convoy.state.pending.has(gid),
+        listOf(pin).slice(0, 140));
+
+  pin.document.querySelector('[data-yes]').click();
+  await sleep(150);
+  check('letting them back in clears the removal',
+        !pin.window.Convoy.state.removed.has(gid));
+  check('so they are on the pin phone list again', pin.window.Convoy.state.peers.has(gid),
+        listOf(pin).slice(0, 140));
+  check('and their phone gets the four buttons', !hasJoin(guest),
+        listOf(guest).slice(0, 120));
+  check('and they stay in, not pushed back out',
+        guest.window.Convoy.state.allowed.has(gid),
+        Array.from(guest.window.Convoy.state.allowed).join(','));
+}
+
 async function testAStaleAllowedListStillLetsTheRequestThrough() {
   // The pin phone still had them down as in — as if a removal made on another pin phone
   // never arrived. The phone asking knows it is outside, so its word wins.
@@ -1050,6 +1098,7 @@ async function testBehindAndAhead() {
     await testAPinPhoneIsToldOfARequestLeftWhileItWasAway();
     await testAMessageWithoutTheFlagStillCountsAsAsking();
     await testTheRequestCrossesToTheOtherPhone();
+    await testRemovedThenLetBackInWorks();
     await testAStaleAllowedListStillLetsTheRequestThrough();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
