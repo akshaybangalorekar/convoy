@@ -250,6 +250,85 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testTheBackgroundHeartbeat() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  const st = api.window.Convoy.state;
+  const I = api.window.Convoy._internals;
+
+  check('four hours, counted from when you were last on the app',
+        api.window.Convoy.CFG.bgForMs === 4 * 3600000 &&
+        api.window.Convoy.CFG.bgMs === 300000);
+
+  // Four hours of reporting after the last time you touched the app.
+  st.lastActive = Date.now();
+  I.startBgHeartbeat();
+  check('it keeps reporting for four hours from then',
+        Math.abs(st.bgUntil - (st.lastActive + 4 * 3600000)) < 1000, String(st.bgUntil));
+  check('and it is allowed to report now', I.bgAllowed() === true);
+  I.stopBgHeartbeat();
+
+  // Somebody who was last on the app five hours ago gets nothing.
+  st.lastActive = Date.now() - 5 * 3600000;
+  I.startBgHeartbeat();
+  check('but not once that window has passed', I.bgAllowed() === false, String(st.bgUntil));
+  I.stopBgHeartbeat();
+
+  // Arriving ends it early.
+  st.lastActive = Date.now();
+  st.arrived = true;
+  I.startBgHeartbeat();
+  check('and reaching the destination ends it', I.bgAllowed() === false);
+  I.stopBgHeartbeat();
+  st.arrived = false;
+
+  // A report from the background says so, and says how fresh the fix is.
+  st.lastActive = Date.now();
+  st.away = true;
+  I.publishNow(true);
+  await sleep(20);
+  const pos = api.sent('pos') || {};
+  check('a background report is marked as one', pos.bg === true, JSON.stringify(pos.bg));
+  check('and carries when the fix was actually taken',
+        typeof pos.fixTs === 'number', String(pos.fixTs));
+  st.away = false;
+}
+
+async function testABackgroundReportKeepsSomeoneOnTheList() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  const st = api.window.Convoy.state;
+
+  api.recv({ t: 'pos', id: 'p1', name: 'Priya', lat: -33.87, lng: 151.21,
+             spd: 0, hdg: 90, acc: 8, ts: Date.now(),
+             fixTs: Date.now() - 600000, bg: true });
+  await sleep(30);
+  const p1 = st.peers.get('p1');
+  check('a report from the background leaves them put away, not back on screen',
+        p1.away === true);
+  check('and they are not shown as out of contact',
+        api.window.Convoy._internals.presenceOf(p1) === 'away',
+        api.window.Convoy._internals.presenceOf(p1));
+  check('the row says they are in the background',
+        /In the background/.test(api.document.getElementById('people').textContent),
+        api.document.getElementById('people').textContent);
+  check('and says when the position itself is not new',
+        /no new position/.test(api.document.getElementById('people').textContent),
+        api.document.getElementById('people').textContent);
+
+  // A report from the foreground puts them back on screen.
+  api.recv({ t: 'pos', id: 'p1', name: 'Priya', lat: -33.87, lng: 151.21,
+             spd: 0, hdg: 90, acc: 8, ts: Date.now(), fixTs: Date.now() });
+  await sleep(30);
+  check('a report from the foreground puts them back', st.peers.get('p1').away === false);
+  check('and they are live again',
+        api.window.Convoy._internals.presenceOf(st.peers.get('p1')) === 'live');
+}
+
 async function testTheDestinationDotWearsTheSettersColour() {
   const api = boot();
   api.join('Akshay');
@@ -533,8 +612,8 @@ async function testSomeoneElseAway() {
   const before = api.notes.length;
   api.recv({ t: 'away', id: 'p1', name: 'Priya' });
   await sleep(20);
-  check('her app being put away shows on the list as shut down',
-        /Shut down app/.test(list(api)), list(api));
+  check('her app being put away shows on the list as in the background',
+        /In the background/.test(list(api)), list(api));
   check('but does not raise a notification', api.notes.length === before,
         String(api.notes.length - before));
 
@@ -597,8 +676,17 @@ async function testBackgroundedTooLongCountsAsLost() {
   api.recv({ t: 'away', id: 'p1', name: 'Priya' });
   await sleep(20);
 
-  // pretend the "away" note arrived long ago
-  api.window.Convoy.state.peers.get('p1').awayAt = Date.now() - 600000;
+  // A backgrounded phone now reports every five minutes, so it is given much longer before
+  // it counts as out of contact — six and a half minutes rather than three.
+  const p1 = api.window.Convoy.state.peers.get('p1');
+  p1.awayAt = Date.now() - 200000;          // three minutes: still fine now
+  api.window.Convoy._internals.sweepPresence();
+  await sleep(20);
+  check('three minutes quiet in the background is still in the background',
+        api.window.Convoy._internals.presenceOf(p1) === 'away',
+        api.window.Convoy._internals.presenceOf(p1));
+
+  p1.ts = Date.now() - 400000;              // past the background window
   const before = api.notes.length;
   api.window.Convoy._internals.sweepPresence();
   await sleep(20);
@@ -705,6 +793,8 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testTheBackgroundHeartbeat();
+    await testABackgroundReportKeepsSomeoneOnTheList();
     await testTheDestinationDotWearsTheSettersColour();
     await testTheRelayIsAskedWhatWentWrong();
     await testAWaitingPhoneLooksForTheGroupOnOtherRelays();

@@ -309,6 +309,27 @@ and anyone who reads the code can find a way round it. It keeps honest people ho
 every honest phone ignores them — it cannot stop them receiving. Both are consequences of
 there being no server, which is the same reason the app is free and needs no sign-up.
 
+## In the background it keeps reporting, on a slower beat
+
+Put the app away and it stops the 30-second position update and sends one every **five
+minutes** instead, for **four hours counted from the last time you were actually on the app**
+— not from when you put it away, so putting the phone down does not restart the clock. It
+stops early if you arrive, and stops for good once the four hours are up. Coming back to the
+front restores the fast beat.
+
+A backgrounded phone is given six and a half minutes of silence before it counts as out of
+contact, rather than ninety seconds, because that is how often it is now speaking. The list
+tells the two apart: **"In the background"** while it is still reporting, **"Shut down app"**
+once it has gone quiet, and **"In the background · no new position"** when it is reporting but
+the position it has is old.
+
+Be clear about the limit, because it is not ours: **a phone will suspend the app.** iOS stops a
+backgrounded page within seconds, and Android throttles timers hard. When that happens no
+heartbeat goes out and the phone falls to "Shut down app" — a suspended page cannot report,
+and nothing short of a native app or a server changes that. The heartbeat is best effort: it
+works while the browser is still letting the page run, which on Android is often a while and
+on iOS usually is not.
+
 ## The screen stays awake
 
 While Convoy is open — in a browser tab or as the installed app — it holds a screen wake
@@ -560,7 +581,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 895 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 909 checks:
 
 ```bash
 npm install

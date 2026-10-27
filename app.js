@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v64',             // must match VERSION in sw.js; a test holds them together
+    build: 'v65',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -55,6 +55,12 @@
     minMoveM: 12,
     askFreshMs: 1800000,     // a retained request older than half an hour is stale
     lostNoticeMs: 1800000,   // say "out of contact" about a person at most this often
+    // In the background a phone keeps reporting, so the group still knows roughly where
+    // everyone is: every five minutes, for four hours after you were last on the app, or
+    // until you arrive.
+    bgMs: 300000,
+    bgForMs: 14400000,
+    bgStaleMs: 390000,       // a backgrounded phone may be this quiet before it counts as lost
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
     // One tap zooms out, two zoom in. The wait is how long a single tap is held back to
@@ -92,6 +98,8 @@
     joinAsked: false,     // has this phone asked to be let in, and not withdrawn it
                           // (kept in localStorage too, so a reload does not lose it)
     lastHeard: 0,         // when anything last arrived from anyone
+    lastActive: 0,        // when you were last actually on the app
+    bgUntil: 0,           // keep reporting in the background until this moment
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
     allowed: new Set(),   // ids the pin has let in; everyone else is kept out
@@ -302,8 +310,12 @@
       // switched off. That is not being out of contact, and saying so would be wrong.
       return (Date.now() - (p.lastSeen || 0) > CFG.staleMs) ? 'lost' : 'noloc';
     }
-    if (p.away) return (Date.now() - (p.awayAt || 0) > CFG.awayMs) ? 'lost' : 'away';
-    return isStale(p) ? 'lost' : 'live';
+    /* A phone in the background reports every five minutes, so it is given much longer
+       before it counts as out of contact — and a fresh report always beats the away flag,
+       because a phone that is still talking is not a phone that is gone. */
+    const limit = p.away ? CFG.bgStaleMs : CFG.staleMs;
+    if (Date.now() - (p.ts || 0) > limit) return 'lost';
+    return p.away ? 'away' : 'live';
   }
 
   /* The destination is a decision, not a measurement, so it is the one piece of shared
@@ -755,7 +767,8 @@
     if (!force && last && haversine(last, me) < CFG.minMoveM &&
         Date.now() - state.lastPublish < CFG.publishMs) return;
     state.lastSentFix = { lat: me.lat, lng: me.lng };
-    send({ t: 'pos', lat: me.lat, lng: me.lng, spd: me.spd, hdg: me.hdg, acc: me.acc });
+    send({ t: 'pos', lat: me.lat, lng: me.lng, spd: me.spd, hdg: me.hdg, acc: me.acc,
+           fixTs: me.ts, bg: !!state.away });
   }
 
   // Announce everything this phone knows: who we are, where we are, where we are all
@@ -1056,7 +1069,10 @@
     if (typeof msg.hdg === 'number') p.hdg = msg.hdg;
     p.lat = msg.lat; p.lng = msg.lng; p.spd = msg.spd; p.hdg = msg.hdg;
     p.acc = msg.acc; p.ts = msg.ts || Date.now();
-    p.away = false; p.awayAt = 0;
+    if (typeof msg.fixTs === 'number') p.fixTs = msg.fixTs;
+    // A position sent from the background leaves them put away, not back on screen.
+    p.away = !!msg.bg;
+    p.awayAt = p.away ? Date.now() : 0;
     // Keep the roster's last-seen roughly current without writing on every fix.
     if (!p.savedAt || Date.now() - p.savedAt > 300000) {
       p.savedAt = Date.now();
@@ -1701,8 +1717,11 @@
       const seen = lastSeenOf(p);
       meta = seen ? 'Lost network · ' + fmtAgo(seen) : 'Lost network';
     } else if (kind === 'away') {
-      // They told us: the app was put away or shut down.
-      meta = 'Shut down app';
+      // Put away and still reporting is one thing; put away and silent is another.
+      const fresh = Date.now() - (p.ts || 0) <= CFG.staleMs;
+      const oldFix = p.fixTs && Date.now() - p.fixTs > CFG.staleMs;
+      meta = fresh ? (oldFix ? 'In the background · no new position' : 'In the background')
+        : 'Shut down app';
     } else if (kind === 'lost') {
       // Silence, which in practice means the network went, so say the thing people
       // actually want to know and keep the how-long beside it.
@@ -1981,7 +2000,10 @@
         // device still running the app somewhere — would otherwise announce itself every
         // few minutes, which is the noise this became.
         const quietSince = Date.now() - (p.lostNotifiedAt || 0);
-        if (watched && silentFor < CFG.awayMs * 2 && quietSince > CFG.lostNoticeMs) {
+        // The window is the longer of the two: a backgrounded phone only counts as out of
+        // contact after six and a half minutes, so it has to still be news then.
+        const fresh = Math.max(CFG.awayMs, CFG.bgStaleMs) * 2;
+        if (watched && silentFor < fresh && quietSince > CFG.lostNoticeMs) {
           p.lostNotifiedAt = Date.now();
           notify(p.name + ' — out of contact',
                  'No signal, or their app was closed. They reappear when they can.');
@@ -2059,6 +2081,7 @@
     };
     state.topic = CFG.topic;
     state.joined = true;
+    state.lastActive = Date.now();
     state.seen = new Set();
     state.away = false;
     state.focused = '';
@@ -2266,10 +2289,33 @@
 
   // "My app is going to the background." Best effort: a force-kill gives no chance to
   // send it, which is exactly why sweepPresence exists as the backstop.
+  let bgTimer = null;
+
+  const bgAllowed = () => !!state.me && !state.arrived && Date.now() < state.bgUntil;
+
+  /* Four hours counted from the last time you were actually on the app, not from now, so
+     putting the phone away does not restart the clock. */
+  function startBgHeartbeat() {
+    stopBgHeartbeat();
+    if (!state.me) return;
+    state.bgUntil = (state.lastActive || Date.now()) + CFG.bgForMs;
+    if (!bgAllowed()) return;
+    bgTimer = setInterval(() => {
+      if (!bgAllowed()) { stopBgHeartbeat(); return; }
+      publishNow(true);        // one position, and no more often than this
+    }, CFG.bgMs);
+  }
+
+  function stopBgHeartbeat() {
+    if (bgTimer) { clearInterval(bgTimer); bgTimer = null; }
+  }
+
   function goAway() {
-    if (!state.joined || demoTimer || state.away) return;
-    state.away = true;
-    send({ t: 'away' });
+    if (!state.joined || demoTimer) return;
+    if (!state.away) { state.away = true; send({ t: 'away' }); }
+    // While it is in the background, report on the slower beat instead of the fast one.
+    if (publishTimer) { clearInterval(publishTimer); publishTimer = null; }
+    startBgHeartbeat();
     renderPeople();
   }
 
@@ -2376,6 +2422,7 @@
     // which is what iOS needs before it will hand over a location.
     ['pointerdown', 'touchstart'].forEach((ev) => {
       window.addEventListener(ev, () => {
+        state.lastActive = Date.now();
         askWakeLock();      // a refused screen lock is often allowed after a touch
         askToNotify();      // and iOS only offers the permission prompt after a touch
         if (state.joined && !state.paused && !haveMyPosition()) startWatching();
@@ -2400,6 +2447,9 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;
+      state.lastActive = Date.now();
+      stopBgHeartbeat();
+      if (!publishTimer) publishTimer = setInterval(publishNow, CFG.publishMs);
       unlockAudio();          // iOS suspends the audio context when the app is put away
       // The screen lock is dropped while we are hidden, and the location watch is often
       // lost too. Both are taken again every time we come back.
@@ -2475,6 +2525,7 @@
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
+                  startBgHeartbeat, stopBgHeartbeat, bgAllowed,
                   renderWaiting,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
