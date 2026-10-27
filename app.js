@@ -7,7 +7,7 @@
  *   3. A notification when the destination changes, or someone joins or leaves.
  *
  * Positions, destinations and arrival times travel as small JSON messages on one
- * public MQTT topic per room. There is no server and no account.
+ * public MQTT topic. There is no server and no account.
  *
  * One honest limit: notifications only arrive while the app is open, because
  * without a server there is nothing to wake a closed app. The in-app banner and
@@ -17,7 +17,7 @@
   'use strict';
 
   const CFG = {
-    topicPrefix: 'sarvam-convoy/v1',
+    topic: 'sarvam-convoy/v1/convoy/bus',
     // Public, no-signup MQTT brokers over WebSocket. Tried in order.
     // Ordered by how likely each is to be reachable outdoors: the first listens on 443,
     // the one port a mobile network always lets through, and the rest sit on
@@ -29,11 +29,6 @@
       { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
       { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
     ],
-    // ONE room for everyone. There is no code to type and nothing to set up: open the app
-    // and you are in the same room as everyone else who has it open. The trade is that
-    // there is no way to keep two separate groups apart without an identifier, so this
-    // suits a group who all know each other rather than a public app.
-    room: 'convoy',
     // The master pin is not written here as a number: what is compared is a hash of it,
     // so the digits do not appear in the source. This keeps honest people honest; it is
     // not security, since anyone reading this file can find a way round it in a minute.
@@ -46,14 +41,15 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v56',             // must match VERSION in sw.js; a test holds them together
+    build: 'v57',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
     awayMs: 180000,           // backgrounded this long counts as out of contact too
-    // A room stays open this long after anyone last used it. Nobody is ever dropped
-    // from the room while it is open — a quiet phone just sits there as out of contact.
-    roomDays: 7,
+    // One blanket rule: anyone who has been in the convoy stays for this long after the
+    // last time they were heard from, and is then dropped off on their own. No codes, no
+    // lifetime to manage, nothing to administer.
+    keepDays: 7,
     arrivedM: 50,             // within this much of the destination counts as arrived
     behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,
@@ -70,14 +66,12 @@
   const PALETTE = ['#ff3b30', '#007aff', '#34c759', '#ff9500', '#af52de',
                    '#5ac8fa', '#b58900', '#ff2d55', '#30d158', '#5856d6'];
 
-  const LS = { name: 'convoy.name', room: 'convoy.room', id: 'convoy.me',
-               invite: 'convoy.invite' };
+  const LS = { name: 'convoy.name', id: 'convoy.me', record: 'convoy.record' };
 
   const state = {
     me: null,
     peers: new Map(),     // id -> person
     seen: new Set(),      // ids we have announced, so a join notifies once
-    room: null,
     topic: null,
     joined: false,
     dest: null,           // { lat, lng, label, by }
@@ -88,7 +82,6 @@
     lastSentFix: null,
     destTs: 0,            // when the destination was last set or cleared; newest wins
     away: false,          // true while our own app is in the background
-    roomExpires: 0,       // when this room lapses, for the note in the sheet
     paused: false,        // hidden from the map: deliberately not sharing our position
     arrived: false,       // we have reached the destination (or said we have)
     focused: '',          // the car whose name is showing because it was tapped
@@ -99,7 +92,7 @@
     lastHeard: 0,         // when anything last arrived from anyone
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
-    allowed: new Set(),   // ids the master has let in; nobody else is in the room
+    allowed: new Set(),   // ids the pin has let in; everyone else is kept out
     pending: new Map(),   // people asking to be let in — only a master ever fills this
   };
 
@@ -176,21 +169,6 @@
     } catch (e) { return 'c-' + rand(8); }
   }
 
-  // The room code can arrive as #r=... or ?r=... — some chat apps and link handlers keep
-  // only one of the two, so both are accepted.
-  function roomFromUrl() {
-    try {
-      const fromHash = new URLSearchParams(location.hash.replace(/^#/, '')).get('r');
-      if (fromHash) return fromHash;
-      return new URLSearchParams(location.search).get('r') || '';
-    } catch (e) { return ''; }
-  }
-
-  function normRoom(s) {
-    return String(s || '').trim().toLowerCase()
-      .replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
-  }
-
   function haversine(a, b) {
     const R = 6371000, toRad = Math.PI / 180;
     const dLat = (b.lat - a.lat) * toRad, dLng = (b.lng - a.lng) * toRad;
@@ -250,7 +228,7 @@
   }
 
   // Called on the sweep and on every fix. Whoever is within reach of the destination has
-  // arrived, and the room is told once.
+  // arrived, and the group is told once.
   function checkArrivals() {
     if (!state.dest) return;
     let changed = false;
@@ -330,76 +308,76 @@
      state worth keeping on the phone: a phone that comes back restores it and announces
      it, and no server has to hold it. Positions are deliberately not kept — a stale
      position is worse than none. */
-  /* The room itself is kept on the phone: the code, when it opened, when it lapses, the
-     destination, and everyone who has been in it. That is what stops a room closing or
-     anyone being quietly dropped — a phone that goes quiet stays on the list, and the
-     room is still there a week later. */
-  const roomKey = (room) => 'convoy.room.' + room;
-  const roomLifeMs = () => CFG.roomDays * 86400000;
+  /* One record on the phone, no rooms: who has been in the convoy and when they were last
+     heard from, who has been let in and who has been turned away, and the destination.
+     A phone that comes back restores all of it, and no server has to hold any of it.
+     Positions are deliberately not kept — a stale position is worse than none. */
+  const keepMs = () => CFG.keepDays * 86400000;
 
-  function loadRoom(room) {
+  function loadRecord() {
     try {
-      const raw = localStorage.getItem(roomKey(room));
+      const raw = localStorage.getItem(LS.record);
       if (!raw) return null;
       const j = JSON.parse(raw);
-      if (!j || typeof j.expiresAt !== 'number') return null;
-      if (Date.now() > j.expiresAt) {           // a week of nobody using it: it lapses
-        localStorage.removeItem(roomKey(room));
-        return null;
-      }
-      return j;
+      return (j && typeof j === 'object') ? j : null;
     } catch (e) { return null; }
   }
 
-  // Every write pushes the room's life forward, so it lapses a week after the last time
-  // anyone used it rather than a week after it was made. A room in use never closes.
-  function saveRoom(patch) {
-    if (!state.room || state.room === 'demo') return null;
+  function saveRecord(patch) {
     try {
-      const now = Date.now();
-      const cur = loadRoom(state.room) || { code: state.room, startedAt: now, members: {} };
+      const cur = loadRecord() || { members: {} };
       const next = Object.assign({}, cur, patch || {});
-      next.expiresAt = now + roomLifeMs();
-      next.updatedAt = now;
-      localStorage.setItem(roomKey(state.room), JSON.stringify(next));
-      state.roomExpires = next.expiresAt;
+      localStorage.setItem(LS.record, JSON.stringify(next));
       return next;
     } catch (e) { return null; }
   }
 
   function saveDest() {
-    saveRoom({ dest: state.dest, destTs: state.destTs });
+    saveRecord({ dest: state.dest, destTs: state.destTs });
   }
 
-  function loadDest(room) {
-    const r = loadRoom(room);
+  function loadDest() {
+    const r = loadRecord();
     if (!r) return null;
     return { dest: r.dest || null, ts: typeof r.destTs === 'number' ? r.destTs : 0 };
   }
 
-  // Who has been in this room. Written when someone first appears, and refreshed now and
+  // Who has been in the convoy. Written when someone first appears, and refreshed now and
   // then — not on every position, which would hammer the phone's storage.
   function rememberMember(id, name, seenAt) {
-    if (!state.room || !id) return;
-    const r = loadRoom(state.room);
+    if (!id) return;
+    const r = loadRecord();
     const members = Object.assign({}, (r && r.members) || {});
     const prev = members[id] || {};
     members[id] = { name: name || prev.name || 'Someone', lastSeen: seenAt || Date.now() };
-    saveRoom({ members });
+    saveRecord({ members });
   }
 
-  // Pressing Leave is the one thing that takes someone off the roster.
   function forgetMember(id) {
-    if (!state.room || !id) return;
-    const r = loadRoom(state.room);
+    if (!id) return;
+    const r = loadRecord();
     if (!r || !r.members || !r.members[id]) return;
     const members = Object.assign({}, r.members);
     delete members[id];
-    saveRoom({ members });
+    saveRecord({ members });
   }
 
-  // There is one room and it never closes, so there is no lifetime to report. The roster
-  // is still kept on the phone, which is what stops anyone being quietly dropped.
+  /* The blanket rule, applied to the roster as well as the list: anyone whose last sign of
+     life is older than a week is taken off both, so they do not come back on a reload. */
+  function pruneRoster() {
+    const r = loadRecord();
+    if (!r || !r.members) return;
+    const cut = Date.now() - keepMs();
+    const members = {};
+    let changed = false;
+    Object.keys(r.members).forEach((id) => {
+      const m = r.members[id] || {};
+      if (typeof m.lastSeen === 'number' && m.lastSeen < cut) { changed = true; return; }
+      members[id] = m;
+    });
+    if (changed) saveRecord({ members });
+  }
+
   /* ---------------------------------------------------------------- *
    * Colours: unique per person, and the same on every phone
    * ---------------------------------------------------------------- */
@@ -638,7 +616,11 @@
     });
   }
 
+  const hasFix = (o) => !!o && typeof o.lat === 'number' && typeof o.lng === 'number' &&
+    isFinite(o.lat) && isFinite(o.lng);
+
   function updateMarker(p) {
+    if (!hasFix(p)) return;              // restored from the roster, no position yet
     const m = ensureMarker(p);
     m.setLatLng([p.lat, p.lng]);
     const el = m.getElement();
@@ -653,16 +635,14 @@
     refreshColors();
   }
 
-  // Only people whose position we actually know. A phone brought back from the room's
+  // Only people whose position we actually know. A phone brought back from the
   // roster has no coordinates yet, and a null in a bounds calculation throws inside
   // Leaflet — which used to take the whole screen down with it, leaving the search sheet
   // stuck open over a destination that had in fact been set.
   function allPeople() {
     const list = [];
-    if (state.me && state.me.lat != null && state.me.lng != null) list.push(state.me);
-    state.peers.forEach((p) => {
-      if (p.lat != null && p.lng != null) list.push(p);
-    });
+    if (hasFix(state.me)) list.push(state.me);
+    state.peers.forEach((p) => { if (hasFix(p)) list.push(p); });
     return list;
   }
 
@@ -672,7 +652,7 @@
     lastAutoView = Date.now();
     if (people.length === 1) { map.setView([people[0].lat, people[0].lng], 16); return; }
     const bounds = L.latLngBounds(people.map((p) => [p.lat, p.lng]));
-    if (state.dest) bounds.extend([state.dest.lat, state.dest.lng]);
+    if (hasFix(state.dest)) bounds.extend([state.dest.lat, state.dest.lng]);
     // fitBounds already zooms in when the cars are close and out when they are spread
     // out; maxZoom is what decides how far in it is allowed to go for a tight group.
     map.fitBounds(bounds, { padding: [64, 64], maxZoom: 18, animate: true });
@@ -690,7 +670,7 @@
 
   function drawDest() {
     if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
-    if (!state.dest) return;
+    if (!hasFix(state.dest)) return;
     destMarker = L.marker([state.dest.lat, state.dest.lng], {
       icon: L.divIcon({ className: 'mk-dest', html: '<span class="pin"></span>',
                         iconSize: [0, 0], iconAnchor: [0, 0] }),
@@ -762,7 +742,7 @@
     if (state.paused) return;          // deliberately not sharing
     if (me.lat == null) {
       // Nothing to place on the map — but a phone whose location is switched off is still
-      // in the room, and staying quiet would age it into "out of contact" while it sits
+      // in the group, and staying quiet would age it into "out of contact" while it sits
       // there. sendState() has already said hello, so only the periodic tick does this.
       if (!force) send({ t: 'hello' });
       return;
@@ -776,7 +756,7 @@
 
   // Announce everything this phone knows: who we are, where we are, where we are all
   // going, and how long we will take. This is what makes a server unnecessary — every
-  // phone re-pushes its own state, so the room rebuilds itself from the people in it.
+  // phone re-pushes its own state, so the group rebuilds itself from the people in it.
   function sendState() {
     send({ t: 'hello' });
     if (state.allowed.size) send({ t: 'allowed', ids: Array.from(state.allowed) });
@@ -796,7 +776,7 @@
   }
 
   /* A phone whose location is switched off has no position to give, but it is still in the
-     room — it says hello, it can read the destination, it can set one. Positions are only
+     convoy — it says hello, it can read the destination, it can set one. Positions are only
      one thing a person can tell us, so anyone we hear from at all goes on the list. Until
      this, a laptop with location off got a "joined" notification and then never appeared. */
   function ensurePeer(msg) {
@@ -829,7 +809,7 @@
     if (!msg || !msg.id || (state.me && msg.id === state.me.id)) return;
     state.lastHeard = Date.now();
 
-    // Who is in the room is decided by the phone with the pin, so the two messages that
+    // Who is in the group is decided by the phone with the pin, so the two messages that
     // carry that decision are honoured from anyone — they are how a newcomer learns it has
     // been let in.
     if (msg.t === 'allowed') { onAllowed(msg); return; }
@@ -843,7 +823,7 @@
     }
 
     if (msg.ask === true) {
-      // It says it is outside the room, and it would know. Trust that over our own list,
+      // It says it is outside, and it would know. Trust that over our own list,
       // which can be stale. Only the pin phone is shown the request.
       announceAllowed();
       if (state.master) askedToJoin(msg);
@@ -851,7 +831,7 @@
     }
 
     if (!state.allowed.has(msg.id)) {
-      // Not in the room. Whoever is arriving needs the current list: the broadcast that
+      // Not in yet. Whoever is arriving needs the current list: the broadcast that
       // carried their approval may have gone out before they were listening, and that is
       // what leaves a phone waiting for ever.
       announceAllowed();
@@ -886,9 +866,9 @@
   function announceJoin(id, name) {
     if (state.seen.has(id)) return false;
     state.seen.add(id);
-    // Someone already on the room's roster is coming back, not joining for the first
+    // Someone already on the roster is coming back, not joining for the first
     // time, so they get a quiet return rather than a "joined" ping.
-    const rec = loadRoom(state.room);
+    const rec = loadRecord();
     if (rec && rec.members && rec.members[id]) return false;
     notify(name + ' joined', 'They can see the map and set the destination.');
     return true;
@@ -898,13 +878,13 @@
   // let in, and a newcomer finds out the moment the decision reaches it.
   function onAllowed(msg) {
     if (!Array.isArray(msg.ids)) return;
-    const wasInRoom = !!(state.me && state.allowed.has(state.me.id));
+    const wasInConvoy = !!(state.me && state.allowed.has(state.me.id));
     const before = state.allowed.size;
     msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
-    saveRoom({ allowed: Array.from(state.allowed) });
+    saveRecord({ allowed: Array.from(state.allowed) });
     state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
     const justLetIn = !!(state.me && state.allowed.has(state.me.id) &&
-                         !wasInRoom);
+                         !wasInConvoy);
     if (state.me && state.allowed.has(state.me.id)) {
       if (state.joinAsked) clearAsk();          // answered, so stop advertising it
       state.joinAsked = false;
@@ -951,7 +931,7 @@
        the four buttons. */
     state.removed.delete(id);
     state.pending.delete(id);
-    saveRoom({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
     send({ t: 'allowed', ids: Array.from(state.allowed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
     renderPeople();
@@ -962,7 +942,7 @@
     const req = state.pending.get(String(id));
     state.pending.delete(String(id));
     state.removed.add(String(id));
-    saveRoom({ removed: Array.from(state.removed) });
+    saveRecord({ removed: Array.from(state.removed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
     renderPeople();
   }
@@ -983,7 +963,7 @@
       state.joinAsked = false;
       saveJoinAsked(false);
       clearAsk();
-      saveRoom({ allowed: Array.from(state.allowed) });
+      saveRecord({ allowed: Array.from(state.allowed) });
     }
     renderPeople();
   }
@@ -1245,23 +1225,46 @@
     renderWaiting();
   }
 
-  /* Outside the room, say what is actually happening in plain words and keep a bar moving,
-     so a wait never looks like a dead app. Inside the room none of this is needed. */
+  /* While you are not in, say what is actually happening in plain words and keep a bar
+     moving, so a wait never looks like a dead app. Once you are in, none of this is needed. */
+  /* Everything the Help card reports about this phone: the version and relay it is on,
+     whether it holds the pin, and whether notifications can arrive at all. All three were
+     otherwise invisible, and all three are the first things to check when something is not
+     working. */
+  function fillHelp() {
+    const v = $('settingsVersion');
+    if (v) v.textContent = 'Version ' + CFG.build + (state.relay ? ' · relay ' + state.relay : '');
+    const pin = $('pinState');
+    if (pin) {
+      pin.textContent = state.master
+        ? 'This phone can let people in'
+        : 'This phone cannot let anyone in';
+    }
+    const note = $('notifyNote');
+    if (note) {
+      const perm = (typeof Notification === 'function') ? Notification.permission : 'unsupported';
+      note.textContent = perm === 'granted' ? 'Notifications on'
+        : perm === 'denied' ? 'Notifications blocked in this browser'
+        : perm === 'default' ? 'Notifications not allowed yet'
+        : 'Notifications not available here';
+    }
+  }
+
   function renderWaiting() {
     const sheet = $('sheet');
     const me = state.me;
-    const inRoom = !!(me && state.allowed.has(me.id));
-    if (sheet) sheet.classList.toggle('outside', !inRoom);
+    const inConvoy = !!(me && state.allowed.has(me.id));
+    if (sheet) sheet.classList.toggle('outside', !inConvoy);
 
     const bar = $('waitBar');
     const line = $('waitLine');
     if (!bar || !line) return;
 
     const conn = state.conn || 'waiting';
-    const waiting = !inRoom && (conn !== 'live' || state.joinAsked);
+    const waiting = !inConvoy && (conn !== 'live' || state.joinAsked);
     bar.classList.toggle('hidden', !waiting);
 
-    if (inRoom) { line.classList.add('hidden'); return; }
+    if (inConvoy) { line.classList.add('hidden'); return; }
     line.classList.remove('hidden');
 
     if (conn === 'down') {
@@ -1528,9 +1531,9 @@
     const ul = $('people');
     const me = state.me;
     const rows = [];
-    const inRoom = !!(me && state.allowed.has(me.id));
+    const inConvoy = !!(me && state.allowed.has(me.id));
 
-    if (inRoom) {
+    if (inConvoy) {
       if (me) rows.push(rowFor(me, null));
       Array.from(state.peers.values())
         .filter((p) => !state.removed.has(p.id))
@@ -1541,15 +1544,15 @@
     // Requests come first: they are the only thing anyone has to act on.
     if (state.master) state.pending.forEach((r) => rows.unshift(pendingRow(r)));
 
-    $('peopleCount').textContent = inRoom
+    $('peopleCount').textContent = inConvoy
       ? people + (people === 1 ? ' person' : ' people') +
         (state.dest ? '' : ' · no destination')
-      : (state.me && state.removed.has(state.me.id) ? 'not in the room' : 'waiting to be let in');
+      : (state.me && state.removed.has(state.me.id) ? 'not in the convoy' : 'waiting to be let in');
 
     const el = document.activeElement;
     const editing = !!(el && el.classList && el.classList.contains('myname'));
     if (!editing) {
-      if (!inRoom) {
+      if (!inConvoy) {
         ul.innerHTML = '<li class="empty">' +
           (state.joinAsked ? 'The phone with the pin has been asked.'
             : 'Nobody outside can see the map until they let you in.') + '</li>';
@@ -1595,12 +1598,12 @@
     return fmtDist(Math.abs(diff)) + (diff > 0 ? ' behind you' : ' ahead of you');
   }
 
-  // When we last heard from someone: this session if we have, otherwise what the room's
+  // When we last heard from someone: this session if we have, otherwise what the roster
   // roster remembered from last time. "Out of contact" on its own is too vague to act on.
   function lastSeenOf(p) {
     if (p.lastSeen) return p.lastSeen;
     if (p.lat != null && p.ts) return p.ts;
-    const rec = loadRoom(state.room);
+    const rec = loadRecord();
     const m = rec && rec.members && rec.members[p.id];
     return (m && m.lastSeen) || p.ts || 0;
   }
@@ -1698,17 +1701,17 @@
   // it actually does, which is take you off the map.
   function renderControls() {
     renderWaiting();
-    // Not in the room yet: one Join button and nothing else to press.
-    const inRoom = !!(state.me && state.allowed.has(state.me.id));
+    // Not in yet: one Join button and nothing else to press.
+    const inConvoy = !!(state.me && state.allowed.has(state.me.id));
     const join = $('btnJoin');
-    if (join) join.classList.toggle('hidden', inRoom);
+    if (join) join.classList.toggle('hidden', inConvoy);
     const joinLabel = $('joinLabel');
     if (joinLabel) {
       joinLabel.textContent = state.joinAsked ? 'Cancel request' : 'Join the convoy';
     }
     ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
       const b = $(id);
-      if (b) b.classList.toggle('hidden', !inRoom);
+      if (b) b.classList.toggle('hidden', !inConvoy);
     });
 
     const el = $('btnPause');
@@ -1761,7 +1764,7 @@
      — but they can still receive, because there is no server to stop them. */
   function setRemoved(ids) {
     state.removed = new Set(ids);
-    saveRoom({ removed: Array.from(state.removed) });
+    saveRecord({ removed: Array.from(state.removed) });
   }
 
   /* The cross is the whole action: the person comes off the group, off the list and off
@@ -1775,7 +1778,7 @@
     state.pending.delete(id);
     removePeer(id);            // the row and the car on the map
     forgetMember(id);          // and the roster, so a reopened app does not bring them back
-    saveRoom({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
     send({ t: 'allowed', ids: Array.from(state.allowed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
     renderPeople();
@@ -1795,13 +1798,6 @@
     return (deviceName() + ' ' + myId().slice(-2)).slice(0, 24);
   }
 
-  function extractRoomCode(text) {
-    const m = String(text || '').match(/[#?&]r=([^&\s]+)/i);
-    if (!m) return '';
-    try { return normRoom(decodeURIComponent(m[1])); }
-    catch (e) { return normRoom(m[1]); }
-  }
-
   /* ---------------------------------------------------------------- *
    * Destination
    * ---------------------------------------------------------------- */
@@ -1817,7 +1813,7 @@
     state.myEta = null;
     resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
-    // From here on it is drawing and telling the room. None of that may be allowed to
+    // From here on it is drawing and telling the group. None of that may be allowed to
     // stop the caller: a map or network hiccup must never leave a screen stuck.
     try {
       drawDest();
@@ -1906,12 +1902,16 @@
     stopTimers();
     publishTimer = setInterval(publishNow, CFG.publishMs);
     renderTimer = setInterval(() => {
-      // Nobody is dropped from the room while it is open. A phone that goes quiet stays
-      // on the list as out of contact; only the room itself lapsing clears the roster,
-      // and that takes a week of nobody using it.
+      // The blanket rule: a week after their last sign of life, someone is dropped from
+      // the list and from the roster, on every phone, without anyone having to act.
       state.peers.forEach((p, id) => {
-        if (Date.now() - p.ts > roomLifeMs()) { removePeer(id); state.seen.delete(id); }
+        if (Date.now() - (p.ts || 0) > keepMs()) {
+          removePeer(id);
+          state.seen.delete(id);
+          forgetMember(id);
+        }
       });
+      pruneRoster();
       huntForTheGroup();
       sweepPresence();
       checkArrivals();
@@ -1947,14 +1947,13 @@
   }
 
 
-  function join(name, room) {
+  function join(name) {
     state.me = {
       id: myId(), name, color: PALETTE[0],
       lat: null, lng: null, spd: null, hdg: null, acc: null,
       ts: Date.now(), isMe: true, _first: true,
     };
-    state.room = room;
-    state.topic = CFG.topicPrefix + '/' + room + '/bus';
+    state.topic = CFG.topic;
     state.joined = true;
     state.seen = new Set();
     state.away = false;
@@ -1965,27 +1964,26 @@
     state.peers.forEach((p) => { if (p._marker) map.removeLayer(p._marker); });
     state.peers = new Map();
 
-    // Restore the destination this phone last knew for this room, so a returning phone
-    // can put it straight back on the air without asking anybody.
-    const saved = loadDest(room);
+    // Restore the destination this phone last knew, so a returning phone can put it
+    // straight back on the air without asking anybody.
+    const saved = loadDest();
     state.destTs = saved ? saved.ts : 0;
     state.dest = saved ? saved.dest : null;
     state.myEta = null;
 
-    // And bring back everyone who has been in this room. They have no position yet, so
-    // they sit on the list as out of contact until they publish one — nobody silently
-    // vanishes just because they were quiet.
-    const rec = loadRoom(room);
-    state.roomExpires = rec ? rec.expiresAt : 0;
+    // And bring back everyone who has been in the convoy within the last week. They have
+    // no position yet, so they sit on the list as out of contact until they publish one.
+    pruneRoster();
+    const rec = loadRecord();
     state.removed = new Set((rec && Array.isArray(rec.removed)) ? rec.removed.map(String) : []);
     state.allowed = new Set((rec && Array.isArray(rec.allowed)) ? rec.allowed.map(String) : []);
     state.pending = new Map();
-    // The phone holding the pin is in the room by definition; everyone else waits to be
+    // The phone holding the pin is in by definition; everyone else waits to be
     // let in by it.
     if (state.master) state.allowed.add(state.me.id);
     // An ask that was still standing when the app was last closed is still standing.
     state.joinAsked = loadJoinAsked() && !state.allowed.has(state.me.id);
-    // A name the room was given last time, and nobody has arrived yet.
+    // A name this phone went by last time, and nobody has arrived yet.
     state.arrived = false;
     if (rec && rec.members) {
       Object.keys(rec.members).forEach((id) => {
@@ -2007,10 +2005,7 @@
 
     try {
       localStorage.setItem(LS.name, name);
-      localStorage.setItem(LS.room, room);
     } catch (e) { /* ignore */ }
-
-    try { history.replaceState(null, '', location.pathname + '#r=' + encodeURIComponent(room)); } catch (e) {}
 
     renderTop();
     renderControls();
@@ -2096,6 +2091,9 @@
 
   function startDemo() {
     const c = CFG.fallbackCenter;
+    // A preview of a populated map is only worth anything if you can see the list, so the
+    // demo puts you in the convoy first.
+    if (state.me) state.allowed.add(state.me.id);
     state.me.lat = c.lat; state.me.lng = c.lng;
     state.me.spd = 11; state.me.hdg = 90; state.me.ts = Date.now();
     updateMarker(state.me);
@@ -2111,7 +2109,9 @@
         away: false, awayAt: 0, presence: 'live',
         _spd: 10 + i * 1.5,
       });
+      rememberMember(id, name);      // so the preview behaves like the real thing
     });
+    rememberMember(state.me.id, state.me.name);
     refreshColors();
     state.peers.forEach(updateMarker);
     renderPeople();
@@ -2176,8 +2176,7 @@
 
     // The gear: a version, and a field that does not say what it is for.
     $('btnSettings').addEventListener('click', () => {
-      $('settingsVersion').textContent = 'Version ' + CFG.build +
-        (state.relay ? ' · relay ' + state.relay : '');
+      fillHelp();
       $('inPin').value = '';
       const note = $('pinNote');
       if (state.master) {
@@ -2199,7 +2198,7 @@
       try { localStorage.setItem('convoy.master', '1'); } catch (e) { /* ignore */ }
       if (state.me) {
         state.allowed.add(state.me.id);
-        saveRoom({ allowed: Array.from(state.allowed) });
+        saveRecord({ allowed: Array.from(state.allowed) });
         send({ t: 'allowed', ids: Array.from(state.allowed) });
       }
       const note = $('pinNote');
@@ -2215,27 +2214,9 @@
       else { clearAsk(); send({ t: 'hello' }); }            // withdrawn
       renderControls();
     });
-    // Help holds the pin field, so it has to stay reachable while you are outside the room.
+    // Help holds the pin field, so it has to stay reachable while you are not in yet.
     let connHold = null;
-    const openHelp = () => {
-      $('settingsVersion').textContent = 'Version ' + CFG.build;
-      const pinNote = $('pinState');
-      if (pinNote) {
-        pinNote.textContent = state.master ? 'Pin set on this phone'
-          : 'No pin on this phone';
-      }
-      const note = $('notifyNote');
-      if (note) {
-        const perm = (typeof Notification === 'function') ? Notification.permission : 'unsupported';
-        note.textContent = perm === 'granted' ? 'Notifications on'
-          : perm === 'denied' ? 'Notifications blocked in this browser'
-          : perm === 'default' ? 'Notifications not allowed yet'
-          : 'Notifications not available here';
-      }
-      $('inPin').value = '';
-      $('pinNote').classList.add('hidden');
-      $('settingsCard').classList.remove('hidden');
-    };
+    const openHelp = () => { fillHelp(); $('settingsCard').classList.remove('hidden'); };
     $('connState').addEventListener('pointerdown', () => {
       connHold = setTimeout(openHelp, 550);
     });
@@ -2294,7 +2275,7 @@
       setTimeout(renderPeople, 240);
     });
 
-    // Closing the app is NOT leaving the room. It sends the same "away" note as
+    // Closing the app is NOT leaving the convoy. It sends the same "away" note as
     // backgrounding does, so the group sees a phone that has gone quiet rather than
     // someone who walked out — and nobody comes off the roster for it.
     // (pagehide above handles that. Only the Leave button sends a real "bye".)
@@ -2350,7 +2331,7 @@
       savedName = localStorage.getItem(LS.name) || '';
     } catch (e) { /* ignore */ }
     if (!savedName) {
-      const rec = loadRoom(CFG.room);
+      const rec = loadRecord();
       const mine = rec && rec.members && rec.members[myId()];
       if (mine && mine.name) savedName = mine.name;
     }
@@ -2358,21 +2339,21 @@
     // Opening the app puts you straight on the map. The name is the only thing anyone
     // needs, and it has a sensible default, so there is nothing to fill in and no code
     // to type — the first launch included.
-    join(savedName || defaultName(), CFG.room);
+    join(savedName || defaultName());
   }
 
   window.Convoy = {
     CFG, state, esc, setDest, clearDest, join, share, copyText, inviteLink,
-    map: () => map, haversine, bearing, fmtDist, fmtClock, normRoom, roomFromUrl,
+    map: () => map, haversine, bearing, fmtDist, fmtClock,
     _internals: { PALETTE, assignColors, refreshColors, fitAll, maybeAutoView,
                   onMessage, onFix, notify, startDemo, stopDemo, colorFor,
                   presenceOf, sweepPresence, sendState, goAway, saveDest, loadDest, allPeople,
                   handleTap, wireTapZoom, tap,
-                  loadRoom, saveRoom, rememberMember, forgetMember,
-                  roomLifeMs,
+                  loadRecord, saveRecord, rememberMember, forgetMember,
+                  keepMs, pruneRoster,
                   // The switches, the arrival logic, and the small helpers behind them.
                   setPaused, checkArrivals, resetArrivals,
-                  distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
+                  distToDest, focusPeer, behindAhead, lastSeenOf,
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,

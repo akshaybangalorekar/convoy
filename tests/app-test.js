@@ -27,9 +27,11 @@ async function testStartAGroup() {
         api.window.Convoy.state.joined === true &&
         !d.getElementById('sheet').classList.contains('hidden'));
   check('with no code to type and nothing to set up',
-        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+        typeof api.window.Convoy.state.room === 'undefined' &&
+        api.window.Convoy.state.topic === api.window.Convoy.CFG.topic,
+        api.window.Convoy.state.topic);
   check('a connection was opened', api.clients.length > 0, String(api.clients.length));
-  check('and it subscribes to the one room',
+  check('and it subscribes to the one topic',
         (api.clients[api.clients.length - 1].subscriptions || [])
           .indexOf(api.window.Convoy.state.topic) >= 0,
         JSON.stringify(api.clients[api.clients.length - 1].subscriptions));
@@ -61,17 +63,19 @@ async function testYouCanRenameYourself() {
   check('it is remembered for next time',
         api.window.localStorage.getItem('convoy.name') === 'Akshay',
         api.window.localStorage.getItem('convoy.name'));
-  check('and the room is told, so their lists update',
+  check('and the group is told, so their lists update',
         (api.sent('hello') || {}).t === 'hello');
 }
 
 async function testAnOldLinkStillWorks() {
-  // Links with a code in them were shared before there was one room. They should still
-  // open the app and land you in it, not break or ask for anything.
+  // Links with a code in them were shared before there were no rooms. They should still
+  // open the app and land you on the map, not break or ask for anything.
   const api = boot({ setup: (w) => { w.history.replaceState(null, '', '/?r=ride-7f3k9'); } });
   await sleep(20);
   check('an old invite link still opens the app',
-        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+        api.window.Convoy.state.joined === true &&
+        typeof api.window.Convoy.state.room === 'undefined',
+        String(api.window.Convoy.state.room));
   check('and puts you on the map with no questions',
         api.window.Convoy.state.joined === true);
 }
@@ -137,7 +141,7 @@ async function testArrivalTimes() {
         JSON.stringify(api.window.Convoy.state.myEta));
 
   const eta = api.sent('eta');
-  check('your arrival time is shared with the room', !!eta, JSON.stringify(eta));
+  check('your arrival time is shared with the group', !!eta, JSON.stringify(eta));
   check('it carries the duration', eta && eta.dur === 1200, JSON.stringify(eta));
   check('it carries the distance', eta && eta.dist === 12000, JSON.stringify(eta));
 
@@ -164,7 +168,7 @@ async function testDestinationShared() {
   api.window.Convoy.setDest(15.6, 73.9, 'Goa');
   await sleep(20);
   const d = api.sent('dest');
-  check('setting a destination tells the room', !!d, JSON.stringify(d));
+  check('setting a destination tells the group', !!d, JSON.stringify(d));
   check('it carries the place', d && d.label === 'Goa', JSON.stringify(d));
   check('it carries who set it', d && d.by === 'Akshay', JSON.stringify(d));
 
@@ -308,13 +312,15 @@ async function testTheLinkIsShownWhenNothingElseWorks() {
 }
 
 async function testOldLinksAreHarmless() {
-  // Links with a code in them were shared before there was one room. Opening one should
-  // still land you on the map, in the one room, asking for nothing.
+  // Links with a code in them were shared before there were no rooms. Opening one should
+  // still land you on the map, asking for nothing.
   for (const url of ['/#r=hash-room', '/?r=query-room']) {
     const api = boot({ setup: (w) => { w.history.replaceState(null, '', url); } });
     await sleep(20);
     check('a link of any old shape still opens the app (' + url + ')',
-          api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+          api.window.Convoy.state.joined === true &&
+          api.window.Convoy.state.topic === api.window.Convoy.CFG.topic,
+          String(api.window.Convoy.state.topic));
     check('and puts you straight on the map (' + url + ')',
           api.window.Convoy.state.joined === true);
   }
@@ -361,7 +367,7 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
     .map((el) => el.id || el.className);
   check('the sheet is the people, then the one switch',
         order[0] === 'people' && order[1] === 'sheet-controls', JSON.stringify(order));
-  check('and there is no room-name field to be confused by',
+  check('and no field to name anything',
         !api.document.getElementById('inRoomName'));
 }
 

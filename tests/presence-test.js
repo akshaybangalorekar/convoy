@@ -557,11 +557,11 @@ async function testDestinationSurvivesRestart() {
   api.window.Convoy.setDest(-33.90, 151.30, 'Bondi');
   await sleep(20);
 
-  const raw = api.window.localStorage.getItem('convoy.room.goa-trip');
+  const raw = api.window.localStorage.getItem('convoy.record');
   check('the destination is kept on the phone', !!raw, String(raw));
   check('with the place in it', /Bondi/.test(raw || ''), String(raw));
-  check('inside the room record, so it lapses with the room',
-        /expiresAt/.test(raw || ''), String(raw));
+  check('inside the one record on the phone, beside the roster',
+        /"members"/.test(raw || '') && !/expiresAt/.test(raw || ''), String(raw));
 
   // There is no Leave to press, so reopening is the only way the app ever restarts.
   api.window.Convoy.state.dest = null;

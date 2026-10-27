@@ -288,7 +288,7 @@
    * Recent places
    *
    * The last few places this phone chose. Kept on the phone and nowhere else —
-   * it is never sent to the room, so it is yours alone, not the group's.
+   * it is never sent to anyone, so it is yours alone, not the group's.
    * ---------------------------------------------------------------- */
   const RECENT_KEY = 'convoy.recent';
   const RECENT_MAX = 5;

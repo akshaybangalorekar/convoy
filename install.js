@@ -22,7 +22,7 @@
   const LS = {
     dismissed: 'convoy.install.dismissed',
     name: 'convoy.name',
-    room: 'convoy.room',
+    record: 'convoy.record',
   };
 
   let deferred = null;    // the browser's install event, held for our button
@@ -68,8 +68,8 @@
     } catch (e) { return false; }
   }
 
-  // Never used it on this phone: no name and no room kept.
-  const isFirstTime = () => !read(LS.name) && !read(LS.room);
+  // Never used it on this phone: no name and nothing remembered.
+  const isFirstTime = () => !read(LS.name) && !read(LS.record);
 
   function hide() {
     const card = $('installCard');

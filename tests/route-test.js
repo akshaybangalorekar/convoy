@@ -500,7 +500,7 @@ async function testSelectingWorksWithAQuietPhoneInTheRoom() {
   // drawn but before the sheet was told to close. So the sheet stuck open over a
   // destination that had visibly changed, and the screen looked frozen.
   const api = boot({ fetch: photonCarnegie });
-  api.window.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
+  api.window.localStorage.setItem('convoy.record', JSON.stringify({
     code: 'goa-trip', startedAt: Date.now(), expiresAt: Date.now() + 86400000,
     updatedAt: Date.now(),
     members: { ghost: { name: 'Ravi', lastSeen: Date.now() - 600000 } },
@@ -533,7 +533,7 @@ async function testAQuietPhoneIsNeverHandedToTheMap() {
   // The root of it: a phone with no coordinates yet must never reach Leaflet, because a
   // null in a bounds calculation throws.
   const api = boot({ fetch: photonCarnegie });
-  api.window.localStorage.setItem('convoy.room.goa-trip', JSON.stringify({
+  api.window.localStorage.setItem('convoy.record', JSON.stringify({
     code: 'goa-trip', startedAt: Date.now(), expiresAt: Date.now() + 86400000,
     updatedAt: Date.now(), members: { ghost: { name: 'Ravi', lastSeen: Date.now() } },
   }));

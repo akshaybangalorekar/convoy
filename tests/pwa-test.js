@@ -58,8 +58,8 @@ try {
   check('the app says when it goes to the background', /t: 'away'/.test(app));
   check('and when it comes back', /t: 'back'/.test(app));
   check('a phone pushes its whole state on reconnecting', /function sendState/.test(app));
-  check('the room, and the destination in it, are remembered on the phone',
-        /convoy\.room\./.test(app));
+  check('the roster and the destination are remembered in one record on the phone',
+        /convoy\.record/.test(app) && !/convoy\.room/.test(app));
   check('install.js is precached and loaded',
         /install\.js/.test(sw) && /install\.js/.test(html));
   check('the app offers to go on the home screen', /function maybeOffer/.test(install));
@@ -68,8 +68,8 @@ try {
   check('and instructions for iOS, where it is not',
         /Add to Home Screen/.test(install));
   check('the offer is remembered once dismissed', /install\.dismissed/.test(install));
-  check('an invite link is kept, so installing does not lose the room',
-        /convoy\.invite/.test(app));
+  check('there is no room to remember, and no invite code to keep',
+        !/convoy\.invite/.test(app) && !/convoy\.room/.test(app));
 
   /* ---------- Same on both kinds of phone ---------- */
   check('a link opened inside a chat app is noticed', /function appBrowser/.test(install));
@@ -88,14 +88,14 @@ try {
         /navigator\.wakeLock\.request\('screen'\)/.test(app));
   check('and the lock is taken again on coming back, since the browser drops it',
         /askWakeLock\(\);/.test(app) && /addEventListener\('release'/.test(app));
-  check('codes are folded down, so capitals and spaces do not matter',
-        /function normRoom/.test(app) && /toLowerCase\(\)/.test(app));
+  check('there are no room codes left anywhere in the app',
+        !/normRoom|roomFromUrl|extractRoomCode|state\.room\b/.test(app));
   check('the old copy method is kept for browsers that block the clipboard',
         /execCommand/.test(app));
   check('the link is shown to copy by hand when nothing else works',
         /id="shareUrl"/.test(html) && /function showLink/.test(app));
-  check('both link shapes are accepted, hash and query',
-        /function roomFromUrl/.test(app) && /location\.search/.test(app));
+  check('and a link with an old code in it is simply ignored',
+        !/location\.hash/.test(app) && !/history\.replaceState\(null, '', location\.pathname/.test(app));
   check('the back button closes the search sheet rather than leaving the app',
         /convoySheet/.test(read('route.js')) && /popstate/.test(read('route.js')));
   check('the map does not let a double tap zoom the page on iOS',
@@ -192,7 +192,7 @@ try {
         /state\.paused \? 'paused' : 'sharing'/.test(app));
   check('a notification makes a sound', /function ping/.test(app) && /AudioContext/.test(app));
   check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
-  check('pasting the invite link into the code box works', /function extractRoomCode/.test(app));
+  check('there is no code box to paste into', !/inRoom/.test(html) && !/extractRoomCode/.test(app));
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
   check('a relay on 443 is offered, since mobile networks block the usual ports',
         /mqtt\.eclipseprojects\.io:443/.test(app));
@@ -224,13 +224,16 @@ try {
   check('our own row says when we are waiting for a location',
         /waiting for your location/.test(app));
   check('a phone with no position is kept away from the map',
-        /function allPeople/.test(app) && /p\.lat != null && p\.lng != null/.test(app));
+        /function allPeople/.test(app) && /hasFix\(p\)/.test(app) &&
+        /typeof o\.lat === 'number'/.test(app));
   check('and the dimmed area closes the search sheet', /e\.target === \$\('search'\)/.test(read('route.js')));
   check('the new messages are all handled',
         /case 'paused'/.test(app) && /case 'sharing'/.test(app) &&
         /case 'arrived'/.test(app) && /case 'paused'/.test(app));
-  check('a room lasts a week by default', /roomDays: 7/.test(app));
-  check('nobody is dropped from the room while it is open', /roomLifeMs/.test(app));
+  check('one blanket rule: a week after their last sign of life',
+        /keepDays: 7/.test(app) && /const keepMs = /.test(app));
+  check('applied to the roster as well as the list, so a reload cannot bring them back',
+        /function pruneRoster/.test(app) && /forgetMember\(id\)/.test(app));
   check('closing the app is not treated as leaving', !/beforeunload/.test(app));
   check('silence is reported honestly, not as a kill',
         /out of contact/.test(app) && !/was killed/.test(app));
@@ -287,7 +290,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v56/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v57/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

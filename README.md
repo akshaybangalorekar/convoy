@@ -64,8 +64,8 @@ not something we chose.
 appears whenever the app is not already installed on that phone, which includes after someone
 deletes it, and never inside an app that is already on the home screen. "Not now" is remembered.
 
-If someone installs from an invite link, they land in the one room, so the
-installed app still offers them the right room rather than starting a new one.
+If someone installs from an invite link, they land on the map like anyone else, so the
+installed app opens in the same place rather than starting somewhere new.
 
 On the map: **one tap zooms out, two zoom in.** A tap on a car or a button belongs to that
 instead, and a finger that moves was panning, not tapping.
@@ -75,16 +75,16 @@ point, so the row reads as an address rather than a pair of numbers.
 
 Searching for a destination keeps your **last five places** at the top of the search sheet,
 ready to tap again. That history is kept on your phone and nowhere else — it is never sent to
-the room, so it is yours alone rather than the group's. Picking somewhere you have been before
+anyone, so it is yours alone rather than the group's. Picking somewhere you have been before
 moves it back to the top instead of listing it twice.
 
-The sheet under the map puts **the people first**, then the one switch, then the room name —
+The sheet under the map puts **the people first**, then the switches —
 which is only a label and does not deserve the best space in the sheet. When there is no
 destination it says so once, in the header, rather than on every row.
 
 It holds one switch:
 
-- **Hide my location** takes you off everyone's map without leaving the room, and *tells* the
+- **Hide my location** takes you off everyone's map without leaving the convoy, and *tells* the
   group you have hidden rather than going quiet — so nobody thinks you have been lost.
 
 There is deliberately no battery switch: sharing every 30 seconds is simply the setting, chosen
@@ -128,7 +128,7 @@ brings the map to it. Tapping a name in the list does the same. A car within 50 
 *"next to you"* rather than `0 m N`. Each row
 says how long ago you last heard from them, and — once a destination is set — who is ahead of
 you and who has fallen behind: *"3.2 km behind you"*. When someone comes within 50 m of the
-destination the room is told, *"Priya has arrived"*, and their arrival time is replaced by
+destination the group is told, *"Priya has arrived"*, and their arrival time is replaced by
 "arrived" — nobody has to press anything.
 
 **Everything lives at the bottom of the screen**, and the sheet is the bottom-most thing —
@@ -153,34 +153,33 @@ sheet's header, beside the count. The top of the screen holds only the destinati
   edited by tapping it in the list — your row is the only editable one, and it carries a
   dashed underline.
 
-**There is no code and nothing to set up.** Open the app and you are in the same room as
-everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
+**There is no code and nothing to set up.** Open the app and you are in the same convoy as
+everyone else who has it open: no invite code, no group name, no sign-in. Your name is the one
 thing anyone needs, and it is taken from the device — an iPhone shows as "iPhone 4a" — so even
 the first launch asks for nothing. You can change it in the sheet.
 
 The trade is worth stating plainly: keeping two separate groups apart requires an identifier,
-so with none there is only ever one room. That suits a group who all know each other, which is
+so with none there is only ever one convoy. That suits a group who all know each other, which is
 what this is for. An invite is now just the app's own address.
 
 ## The pin: who gets in, and who gets out
 
-Nobody is in the room until the phone with the pin lets them in.
+Nobody is in until the phone with the pin lets them in.
 
-- **Opening the app puts you in the waiting room**, not the room: you see "waiting for
+- **Opening the app puts you outside**, not in: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
-- **While you are outside the room, the connection state stops being a quiet word.** It
+- **The connection state is a pill, in or out.** It
   becomes a dark pill with a coloured dot — amber and pulsing while connecting, red when
   there is no link, green once live — and a sweeping bar sits across the top of the sheet
   whenever something is genuinely in progress. Under it, one plain line says what is
   happening: "Connecting to the relay…", "Request sent. Waiting for the phone with the pin…",
   or "No connection. Your request is kept and will go out when the link is back." The bar
-  stops the moment nothing is being waited for, so it never means nothing. Inside the room it
-  all goes back to the small quiet word, because by then you can see the map.
-- **Outside the room there is one button, and it says Join the convoy.** The four only appear once you
+  stops the moment nothing is being waited for, so it never means nothing.
+- **While you are not in there is one button, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
   ask and the row disappears from the pin phone's list too, because the ask is a flag on
-  every message a phone outside the room sends rather than a single shout.
+  every message a phone that is not in sends rather than a single shout.
 - **Help stays reachable from outside**: hold the connection word in the sheet header. That
   is where the pin field lives, so a new phone can still unlock itself without being in.
 - **The request goes to everyone, and only the master sees it.** It appears at the top of
@@ -195,7 +194,7 @@ Nobody is in the room until the phone with the pin lets them in.
   it can go out before the approved phone is listening, which leaves it waiting for ever.
   Every phone that knows the list re-sends it on hearing from someone new, so an approved
   phone learns even when the master is not around.
-- The phone with the pin is in the room by definition, and anyone else who unlocks with the
+- The phone with the pin is in by definition, and anyone else who unlocks with the
   pin joins it.
 
 The cost of this is worth being clear about: **the master's phone has to be open** for
@@ -203,7 +202,7 @@ anyone new to get in. There is no server to hold a pending request, so a request
 the master is away waits until they open the app. And a brand-new group has to start with
 the phone that has the pin — nothing can approve it otherwise.
 
-Everyone already in the room can still be removed by the master:
+Everyone already in can still be removed by the master:
 
 - **Help** is a blue button in the row at the foot of the sheet. It carries five short lines —
   zoom, checking the signal, setting the destination, following a car, inviting — then the
@@ -225,8 +224,8 @@ Everyone already in the room can still be removed by the master:
   were broken after the add-back button was removed, and both are covered by a test that
   removes someone, has them ask again, and lets them back in.
   **A removal is not a life sentence:** the person can press **Join back** and ask again, and
-  you can let them back in. Nothing says they were kicked out — the room simply goes away,
-  the sheet says "not in the room", and the button offers to ask again.
+  you can let them back in. Nothing says they were kicked out — the convoy simply goes away,
+  the sheet says "not in the convoy", and the button offers to ask again.
   **The removal travels in the state push too**, not only in its one broadcast: a master who
   was briefly offline when they removed someone had nothing to send it with, and the push on
   reconnecting never carried it, so the removed phone never heard. That is why a removal
@@ -375,7 +374,7 @@ The app does not pretend they are live just because they were here yesterday.
 ## A refresh, and closing the browser
 
 A force refresh keeps everything that matters, because it is all on the phone rather than in
-the page: the device id (so you are still you, still in the room), your name, whether this
+the page: the device id (so you are still you, still in), your name, whether this
 phone has the pin, who is in and who is out, the destination, your recent searches, and any
 join request still waiting. GPS and the relay come back on their own. The people list is
 emptied by the reload and refilled within a second — anyone not already known is answered at
@@ -384,7 +383,7 @@ once when you say hello, rather than leaving you looking at an empty map until t
 Closing the browser window is simply the app being gone. No position, no messages, no
 notifications; everyone else sees **Lost network · a few minutes** after ninety seconds. The
 destination is untouched, because it lives on every phone, not on a server. Open the page again
-and you are back in the room under the same id, with your name and the pin still set.
+and you are back in under the same id, with your name and the pin still set.
 
 The one thing that does not survive is **iOS Safari deleting a website's storage after seven
 days without a visit** — Apple's rule for sites not added to the home screen, and it takes the
@@ -399,28 +398,33 @@ actually seen going quiet, only while that is recent, and at most **once every h
 person**. A phone that keeps flapping — an old device still running the app somewhere — is the
 case that made this noisy.
 
-The person still appears on the list as **Lost network · a while ago** until the room record
-expires, which is deliberate, as below.
+The person still appears on the list as **Lost network · a while ago** until the week is up,
+which is deliberate, as below.
 
-## Nobody is dropped
+## One blanket rule: a week
 
-There is one room and no server holding it, so the app makes sure it never closes by
-accident:
+**Anyone who has been in the convoy stays for a week after the last time anyone heard from
+them, and is then dropped off on their own.** No codes, no lifetimes to administer, nothing
+for anyone to press.
 
-- **Nobody is dropped.** A phone that goes quiet stays on the list as out of contact. There
-  is no timer quietly removing people, and no expiry on the room itself.
-- **There is no Leave button, and nothing to leave.** Closing the tab or force-quitting
-  sends the same "away" note as backgrounding does, so you look like a phone that went quiet
-  rather than someone who walked out. Nobody can remove themselves or anyone else.
-- **The roster is kept on the phone.** Reopening puts the whole group back on the list,
-  marked out of contact until they reappear — so a phone that comes back after an hour
-  rejoins a room that already knows who was in it.
+- **It applies to the roster as well as the list**, so a reload cannot bring them back: the
+  entry is deleted from the record on the phone, not just hidden.
+- **Every phone applies it to itself**, so there is no server deciding it and no phone that
+  has to be awake for it to happen.
+- **Before that week, nobody is dropped.** A phone that goes quiet sits on the list as out of
+  contact and comes back when it comes back.
+- **There is no Leave button, and nothing to leave.** Closing the tab or force-quitting sends
+  the same "away" note as backgrounding does, so you look like a phone that went quiet rather
+  than someone who walked out.
+- **The roster is kept on the phone.** Reopening puts the whole group back on the list, marked
+  out of contact until they reappear — so a phone that comes back after an hour rejoins a
+  convoy that already knows who was in it.
 
-The week is `CFG.roomDays` in `app.js`.
+The week is `CFG.keepDays` in `app.js`.
 
 ## Where the state lives: on the phones
 
-The room has no server, so the shared state lives on the phones and is rebuilt by everyone
+There is no server, so the shared state lives on the phones and is rebuilt by everyone
 re-announcing it. When a phone reconnects — after a tunnel, a background spell, or being
 reopened — it pushes everything it knows in one go: who it is, where it is, the
 destination, and its arrival time.
@@ -429,7 +433,7 @@ That works because the two kinds of state are treated differently:
 
 - **The destination is a decision, so it is kept.** Each phone stores the destination and
 the moment it was decided. Reopening the app restores it and puts it back on the air, so a
-room can outlive every phone in it. Every destination carries its timestamp, so the newest
+convoy can outlive every phone in it. Every destination carries its timestamp, so the newest
 decision wins and a phone coming back cannot overwrite it with what it remembered from
 before. Clearing counts as a decision too.
 - **Positions are measurements, so they are not kept.** A remembered position is a lie — it
@@ -446,16 +450,16 @@ makes a server unnecessary here rather than merely absent.
 | Piece | What it does |
 |---|---|
 | **Leaflet + OpenStreetMap** | Draws the map and the cars. Free, no API key. |
-| **MQTT over WebSocket** | One topic per room carries positions, the destination and arrival times. Four public relays, tried in turn — and one of them listens on port 443, because mobile networks routinely block the 8081/8084/8884 the others use. That is why a laptop on Wi-Fi can go live while a phone on mobile data never connects. |
+| **MQTT over WebSocket** | One topic carries positions, the destination and arrival times. Four public relays, tried in turn — and one of them listens on port 443, because mobile networks routinely block the 8081/8084/8884 the others use. That is why a laptop on Wi-Fi can go live while a phone on mobile data never connects. |
 | **Photon / Nominatim** | Place search. Photon is asked first, always — it is quick and has no rate limit. A street address (a query starting with a number) that comes back without a postcode is then looked up through Nominatim, which keeps the suburb and postcode that Photon often drops; the quick answer shows first and the fuller one swaps in when it lands. Both free, no key. Results are reassembled from the parts each service returns: number and street, then the suburb, then state and postcode, so `92 mimosa road` reads `92 Mimosa Road, Carnegie, Victoria 3163`. Whatever is more local than the city wins. The search leans towards where the phone is, and Nominatim calls are spaced a second apart. **If the country restriction hides everything, the question is asked again without it** — a preference must never be the reason for "nothing found". |
 | **FOSSGIS OSRM** | The car route from you to the destination, which gives your arrival time. Free, no key. |
 | **Notifications API** | The system ping, with an on-screen banner and vibration as well. |
 | **Service worker** | Installable, works offline, and keeps the map tiles you have already seen. |
 
-Messages are small JSON blobs on one topic per room:
+Messages are small JSON blobs on one topic:
 
 ```
-sarvam-convoy/v1/<room-code>/bus
+sarvam-convoy/v1/convoy/bus
 
 { "t":"hello",      "id":"c-9f2k...", "name":"Priya" }
 { "t":"pos",        "id":"c-9f2k...", "name":"Priya", "lat":-33.86, "lng":151.20,
@@ -473,7 +477,7 @@ Each phone works out **its own** arrival time — it routes itself to the destin
 publishes how long it will take. Everyone else just displays it, so the times stay accurate
 and nobody has to route the whole group.
 
-Nothing is stored anywhere. When the last person leaves, the room is empty.
+Nothing is stored anywhere. When the last person closes the app, nobody is on the map.
 
 ---
 
@@ -495,7 +499,7 @@ publishMs: 5000,        // how often a phone shares its position
 etaMs: 60000,           // how often it recomputes its arrival time
 staleMs: 90000,         // silence before someone counts as out of contact
 awayMs: 180000,         // backgrounded this long counts as out of contact too
-roomDays: 7,            // a room lapses this long after anyone last used it
+keepDays: 7,             // a person is dropped this long after their last sign of life
 tapZoom: { delayMs: 260, moveTolerancePx: 12 },   // one tap out, two taps in
 fallbackCenter: { lat: -33.8688, lng: 151.2093 },   // shown before GPS arrives
 ```
@@ -510,7 +514,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 765 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 761 checks:
 
 ```bash
 npm install
@@ -526,9 +530,10 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
-- `tests/room-test.js` — the roster behind the one room: that it is kept on the phone, that
-  using the app keeps it current, that a phone quiet for an hour is still on it, that closing
-  the app is not leaving, and that the whole group comes back when you reopen.
+- `tests/roster-test.js` — the roster and the one rule: that it is kept on the phone, that a
+  week after their last sign of life someone is dropped from both the list and the roster,
+  that a phone quiet for an hour is still on it, that closing the app is not leaving, and that
+  the whole group comes back when you reopen.
 - `tests/install-test.js` — who gets offered the install and who does not, the browser's own
   prompt being fired from our button, dismissing it being remembered, the iOS instructions
   where there is no prompt to fire, installing not losing your place, and a link opened
@@ -536,7 +541,7 @@ npm test
 - `tests/features-test.js` — last-seen times, arrival announcements and their reset, that
   arriving is automatic and has no button, the sharing rate and that there is no switch for it,
   the sound, the hide-my-location switch, a long press setting the destination, pasting an
-  invite link into the code box, naming the room, tapping a person, who is behind whom, and
+  tapping a person, who is behind whom, and
   that a phone with no position yet is never handed to the map.
 - `tests/route-test.js` — place search, the suburb beating the city, the postcode, a fuller
   answer arriving after the quick one, a service answering with an empty list not hiding one
@@ -589,26 +594,26 @@ npm test
   8084 and 8884; carriers block everything but 80 and 443. The app now includes one relay on
   443 and, after a few failures, says "relay unreachable" rather than sitting on "connecting"
   for ever. If a phone cannot connect, try Wi-Fi first.
-- **The relay is public, and there is only one room.** Anyone who opens this app, or who
-  subscribes to the same topic on the public broker, sees the same room. That is the price of
+- **The relay is public, and there is only one convoy.** Anyone who opens this app, or who
+  subscribes to the same topic on the public broker, sees the same group. That is the price of
   having no code: there is nothing to guess because there is nothing to protect. Share the app
   only with people you would show your location to.
 - **Coming back from the background re-arms the location watch.** iOS in particular can
   drop it while the app is away, and without it you are on nobody's map — not even your own.
   It is armed again every time the app returns, and on any touch while you still have no
   position, since iOS will not hand over a location until the page has been touched.
-- **A force-quit still lands you back in the room.** The room, your identity and your name
+- **A force-quit still lands you back in.** Your identity, your name and the roster
   all live on the phone, so reopening puts you straight back in. If the name ever went
-  missing, the room's own roster has it, because you were added to it when you joined.
+  missing, the roster has it, because you were added to it when you joined.
 - **Clearing the destination is a small cross on the destination row**, not a button inside
   the search sheet, so search keeps one job.
-- **Your recent places live on your phone.** They are not shared with the room and are not
+- **Your recent places live on your phone.** They are not shared with anyone and are not
   on any server, so a phone that is wiped loses them.
-- **The roster lives on each phone.** A phone that has never had the room does not know who
+- **The roster lives on each phone.** A phone that has never opened the app does not know who
   was in it, so the group reappears only on phones that were there — which is every phone
-  that had the room, since each one keeps its own copy.
+  that has, since each one keeps its own copy.
 - **Colours repeat past ten cars.** There are ten in the palette.
-- **Ten cars or so is the comfortable ceiling** for a room.
+- **Ten cars or so is the comfortable ceiling** for a convoy.
 
 ## License
 

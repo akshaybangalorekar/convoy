@@ -81,17 +81,16 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
   font-size: 15px; font-weight: 700; letter-spacing: -0.2px; color: var(--text);
   white-space: nowrap;
 }
+/* The connection state is a pill with a coloured dot — the same size and shape whether you
+   are in or still waiting, because it means the same thing either way. */
 .conn {
-  appearance: none; border: 0; background: none; color: var(--muted);
-  font: inherit; font-size: 11px; letter-spacing: 0.04em;
-  padding: 8px 4px; cursor: pointer; flex: 0 0 auto;
-  max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  appearance: none; border: 0; font: inherit; cursor: pointer; flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 6px 11px 6px 9px; border-radius: 980px;
+  background: var(--btn-bg); color: var(--orange);
+  max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.conn.live { color: var(--accent); }
-
-/* While you are outside the room the connection state is the most important thing on
-   screen, so it stops being a quiet word and becomes a pill with a coloured dot. */
-.conn { display: inline-flex; align-items: center; gap: 6px; }
 .conn::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: currentColor; flex: 0 0 auto;
@@ -100,13 +99,8 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .conn.down::before { background: var(--danger); }
 .conn.live::before { background: #30d158; }
 
-#sheet.outside .conn {
-  font-size: 13px; font-weight: 700; letter-spacing: 0.01em;
-  padding: 6px 11px 6px 9px; border-radius: 980px;
-  background: var(--btn-bg); color: var(--orange); max-width: none;
-}
-#sheet.outside .conn.live { color: #30d158; }
-#sheet.outside .conn.down { color: var(--danger); }
+#sheet .conn.live { color: #30d158; }
+#sheet .conn.down { color: var(--danger); }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
@@ -507,7 +501,7 @@ input:focus { outline: none; border-color: var(--accent); }
 
 label .hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); }
 
-/* ---------- Naming the room, and the switches in the sheet ---------- */
+/* ---------- The switches in the sheet ---------- */
 
 .ctl {
   flex: 1 1 40%; min-width: 0;

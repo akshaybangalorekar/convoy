@@ -7,13 +7,17 @@ const { boot, check, sleep, pos, finish, crash } = require('./harness');
 async function testRejoinOnLaunch() {
   const api = boot({ setup: (w) => {
     w.localStorage.setItem('convoy.name', 'Akshay');
-    w.localStorage.setItem('convoy.room', 'goa-trip');
+    w.localStorage.setItem('convoy.record', JSON.stringify({
+      members: { 'c-returning': { name: 'Priya', lastSeen: Date.now() - 3600000 } },
+    }));
   } });
   await sleep(40);
   const d = api.document;
 
-  check('a returning phone rejoins by itself',
-        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+  check('a returning phone rejoins by itself from the roster',
+        api.window.Convoy.state.peers.has('c-returning') &&
+        typeof api.window.Convoy.state.room === 'undefined',
+        Array.from(api.window.Convoy.state.peers.keys()).join(','));
   check('there is no join screen at all', !d.getElementById('join'));
   check('you land on the map', !d.getElementById('sheet').classList.contains('hidden'));
   check('and the name it kept is used', api.window.Convoy.state.me.name === 'Akshay',
@@ -22,7 +26,7 @@ async function testRejoinOnLaunch() {
   const c = api.clients[0];
   if (c) c.connect_();
   await sleep(20);
-  check('and it subscribes to the one room',
+  check('and it subscribes to the one topic',
         (api.clients[api.clients.length - 1].subscriptions || [])
           .indexOf(api.window.Convoy.state.topic) >= 0,
         JSON.stringify(api.clients[api.clients.length - 1].subscriptions));

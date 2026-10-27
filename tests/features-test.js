@@ -1,5 +1,5 @@
 /* The features added after the first version: last seen, arrivals, the switches, a long
-   press on the map, room names, tapping a person, and who is behind whom. */
+   press on the map, tapping a person, and who is behind whom. */
 'use strict';
 
 const { boot, check, sleep, pos, finish, crash, makeBroker } = require('./harness');
@@ -9,8 +9,8 @@ const I = (api) => api.window.Convoy._internals;
 const text = (api, id) => api.document.getElementById(id).textContent;
 const banner = (api) => api.document.getElementById('banner').textContent;
 
-async function joinRoom(api, name, room) {
-  api.join(name || 'Akshay', room || 'goa-trip');
+async function joinAs(api, name) {
+  api.join(name || 'Akshay');
   await sleep(20);
   return api;
 }
@@ -18,7 +18,7 @@ async function joinRoom(api, name, room) {
 /* ---------- Last seen ---------- */
 async function testSomeoneGoneQuietSaysHowLong() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.recv(pos('p1', 'Priya', -37.91, 145.06));
   await sleep(20);
   check('someone we can still hear from shows where they are',
@@ -41,14 +41,14 @@ async function testTheRosterRemembersLastSeen() {
   // A phone that was here earlier: no position this session, but the room's roster knows
   // when it was last heard from. "Out of contact" on its own is too vague to act on.
   const api = boot();
-  api.window.localStorage.setItem('convoy.room.old-trip', JSON.stringify({
+  api.window.localStorage.setItem('convoy.record', JSON.stringify({
     code: 'old-trip',
     startedAt: Date.now() - 3600000,
     expiresAt: Date.now() + 86400000,
     updatedAt: Date.now(),
     members: { ghost: { name: 'Ravi', lastSeen: Date.now() - 3600000 } },
   }));
-  await joinRoom(api, 'Akshay', 'old-trip');
+  await joinAs(api, 'Akshay', 'old-trip');
 
   const list = text(api, 'people');
   check('a phone from earlier is still listed', /Ravi/.test(list), list);
@@ -62,7 +62,7 @@ async function testTheRosterRemembersLastSeen() {
 // fifty-metre line, so the threshold is tested rather than assumed.
 async function testArrivingIsAnnounced() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
 
@@ -94,7 +94,7 @@ async function testArrivingIsAnnounced() {
 
 async function testTheArrivalTimeStaysUntilTheyArrive() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
   const row = () => api.document.querySelector('#people li[data-id="p1"]').textContent;
@@ -115,7 +115,7 @@ async function testTheArrivalTimeStaysUntilTheyArrive() {
 
 async function testAnotherPhoneAnnouncingItsArrival() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
 
@@ -136,7 +136,7 @@ async function testAnotherPhoneAnnouncingItsArrival() {
 
 async function testANewDestinationResetsArrivals() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
   api.recv(pos('p1', 'Priya', DEST.lat + 0.0003, DEST.lng));
@@ -153,7 +153,7 @@ async function testANewDestinationResetsArrivals() {
 
 async function testThereIsNoArrivedButton() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');
   await sleep(20);
 
@@ -176,7 +176,7 @@ async function testThereIsNoArrivedButton() {
 /* ---------- Not sharing ---------- */
 async function testPauseSharing() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.fix(-37.90, 145.05);
   await sleep(20);
   const shared = () => api.sentAll('pos').length;
@@ -213,7 +213,7 @@ async function testPauseSharing() {
 
 async function testAPausedPhoneIsNotJustQuiet() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.recv(pos('p1', 'Priya', -37.91, 145.06));
   await sleep(20);
   api.recv({ t: 'paused', id: 'p1' });
@@ -233,7 +233,7 @@ async function testAPausedPhoneIsNotJustQuiet() {
 /* ---------- How often we share ---------- */
 async function testTheSharingRateIsChosenForBattery() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   const CFG = api.window.Convoy.CFG;
 
   check('we share every thirty seconds, not every five', CFG.publishMs === 30000,
@@ -332,6 +332,10 @@ async function testTheGearIsJustAVersionAndAField() {
   check('and no visible word for it on the card',
         !/pin/i.test(d.getElementById('settingsCard').textContent),
         d.getElementById('settingsCard').textContent.slice(0, 120));
+  check('it says what the phone can do instead, without naming the pin',
+        /can let people in|cannot let anyone in/.test(
+          d.getElementById('pinState').textContent),
+        d.getElementById('pinState').textContent);
 }
 
 async function testAWrongPinDoesNothing() {
@@ -387,7 +391,7 @@ async function testTheMasterCanRemoveSomeoneForGood() {
   check('the name goes off the list entirely',
         !/Priya/.test(text(api, 'people')), text(api, 'people'));
   check('and off the map', !api.window.Convoy.state.peers.has('p1'));
-  const roster = JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}');
+  const roster = JSON.parse(api.window.localStorage.getItem('convoy.record') || '{}');
   check('and off the roster, so reopening does not bring them back',
         !roster.members || !roster.members.p1, JSON.stringify(roster.members));
   check('and they are no longer allowed in',
@@ -600,7 +604,7 @@ async function testBeingRemovedReachesThatPhone() {
         d.getElementById('btnInvite').classList.contains('hidden') &&
         !d.getElementById('btnJoin').classList.contains('hidden'));
   check('and it is remembered, so a reload does not put it back',
-        !JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}')
+        !JSON.parse(api.window.localStorage.getItem('convoy.record') || '{}')
           .allowed.includes(me));
   check('the button offers the same door as anyone else',
         text(api, 'joinLabel') === 'Join the convoy', text(api, 'joinLabel'));
@@ -962,7 +966,7 @@ async function testOnceLetInTheyAppearForEveryone() {
 /* ---------- Sound ---------- */
 async function testTheNotificationSound() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
 
   check('nothing is played before the page has been touched', api.pings.length === 0,
         String(api.pings.length));
@@ -994,7 +998,7 @@ const reverseOk = (url) => {
 
 async function testALongPressSetsTheDestination() {
   const api = boot({ fetch: reverseOk });
-  await joinRoom(api);
+  await joinAs(api);
 
   api.mapFire('contextmenu', { latlng: { lat: -37.90, lng: 145.05 } });
   await sleep(80);
@@ -1009,7 +1013,7 @@ async function testALongPressSetsTheDestination() {
 
 async function testALongPressWorksWithNoLookup() {
   const api = boot();                       // every lookup fails
-  await joinRoom(api);
+  await joinAs(api);
   api.mapFire('contextmenu', { latlng: { lat: -37.90, lng: 145.05 } });
   await sleep(80);
 
@@ -1022,7 +1026,7 @@ async function testALongPressWorksWithNoLookup() {
 /* ---------- Tapping a person ---------- */
 async function testTappingAPerson() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.recv(pos('p1', 'Priya', -37.95, 145.10));
   await sleep(20);
 
@@ -1044,7 +1048,7 @@ async function testTappingAPerson() {
 /* ---------- Who is behind whom ---------- */
 async function testBehindAndAhead() {
   const api = boot();
-  await joinRoom(api);
+  await joinAs(api);
   api.fix(-37.94, 145.05);                  // we are about 4.4 km short
   await sleep(20);
   api.window.Convoy.setDest(DEST.lat, DEST.lng, 'Carnegie');

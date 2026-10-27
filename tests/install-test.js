@@ -23,7 +23,7 @@ async function testTheOfferComesBackIfTheAppIsDeleted() {
   // why this no longer depends on remembering whether the phone is new.
   const api = boot({ setup: (w) => {
     w.localStorage.setItem('convoy.name', 'Akshay');
-    w.localStorage.setItem('convoy.room', 'goa-trip');
+    w.localStorage.setItem('convoy.record', 'goa-trip');
   } });
   await sleep(20);
   check('nothing is offered before the browser says it can be installed', !shown(api));
@@ -106,7 +106,8 @@ async function testInviteIsRemembered() {
   await sleep(20);
   check('opening an old invite link just opens the app',
         api.window.Convoy.state.joined === true &&
-        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+        typeof api.window.Convoy.state.room === 'undefined',
+        String(api.window.Convoy.state.room));
 }
 
 async function testInviteSurvivesInstalling() {
@@ -118,7 +119,8 @@ async function testInviteSurvivesInstalling() {
   await sleep(20);
   const d = api.document;
   check('installing cannot lose your place, because there is no code to lose',
-        api.window.Convoy.state.room === 'convoy', api.window.Convoy.state.room);
+        api.window.Convoy.state.topic === api.window.Convoy.CFG.topic,
+        String(api.window.Convoy.state.topic));
   check('and the app opens straight onto the map',
         api.window.Convoy.state.joined === true);
 }
@@ -184,7 +186,7 @@ async function testTheAppBrowserNoteRepeats() {
 async function testItIsShownEvenToSomeoneWhoHasUsedTheApp() {
   const api = boot({ setup: (w) => {
     w.localStorage.setItem('convoy.name', 'Akshay');
-    w.localStorage.setItem('convoy.room', 'goa-trip');
+    w.localStorage.setItem('convoy.record', 'goa-trip');
     withUA(APP_IOS)(w);
   } });
   await sleep(30);
