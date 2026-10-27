@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v71',             // must match VERSION in sw.js; a test holds them together
+    build: 'v72',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -755,11 +755,12 @@
   function send(obj) {
     if (!client || !client.connected || !state.topic) return;
     const body = Object.assign({ id: state.me.id, name: state.me.name, ts: Date.now() }, obj);
-    // Every message says whether we are asking to be let in. This deliberately does not
-    // consult the allowed list: a phone whose list still contained its own id — after being
-    // removed, say — used to send no ask at all, and the pin phone never knew there was a
-    // request to show.
-    body.ask = !!state.joinAsked;
+    /* Only ever "yes, still asking". Withdrawing is a deliberate act and it is sent as its
+       own message. It used to be `ask: !!state.joinAsked` on every message, which meant that
+       anything clearing that flag — and several things do — silently cancelled the request
+       on the very next position tick. From the outside that looked like the Join button
+       doing nothing at all. */
+    if (state.joinAsked) body.ask = true;
     try { client.publish(state.topic, JSON.stringify(body)); } catch (e) { /* ignore */ }
     state.lastPublish = Date.now();
   }
@@ -2423,7 +2424,7 @@
       state.joinAsked = !state.joinAsked;
       saveJoinAsked(state.joinAsked);
       if (state.joinAsked) sendState();             // retained, and on the bus
-      else { clearAsk(); send({ t: 'hello' }); }            // withdrawn
+      else { clearAsk(); send({ t: 'hello', ask: false }); }   // withdrawn, deliberately
       renderControls();
     });
     // Help holds the pin field, so it has to stay reachable while you are not in yet.

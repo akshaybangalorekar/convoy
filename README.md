@@ -343,6 +343,14 @@ Three more of the same kind:
   the other half of the Hide switch, and removing it would have left anyone who unhid their
   location marked as hidden for ever.
 
+**A bug the ten-phone simulation found, which the smaller suites could not.** A phone that had
+been removed and then pressed Join again sent a request the pin phones never showed. The cause
+was that every message carried `ask: !!state.joinAsked`, and several things clear that flag —
+so the request was made, then silently withdrawn by the very next position tick, which arrived
+a fraction of a second later. From the outside it looked like the Join button doing nothing at
+all. Only a deliberate withdrawal is sent now (`hello` with `ask: false`); a position tick can
+never cancel a request.
+
 And one real bug the audit turned up: **the retained join request was published without its
 type**, so the pin phone could not tell a fresh request from one left on the broker days ago,
 and the half-hour freshness rule never ran. It is published as `t: 'ask'` now.
@@ -663,7 +671,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 973 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1017 checks:
 
 ```bash
 npm install
@@ -679,6 +687,12 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
+- `tests/sim-test.js` — a whole journey with ten phones on one broker: they join, a
+  destination is set by someone without the pin, the convoy drives, one phone goes to the
+  background, one loses its link and comes back, one is removed and asks again, one arrives,
+  the destination is cleared and set again, a pin phone leaves and a latecomer is let in by
+  the one that is left. At every step **every phone's view has to agree with every other's**.
+  44 checks.
 - `tests/heartbeat-test.js` — every branch of the background heartbeat: arriving, the four
   hours, no destination, no destination *and* too late, changing the destination, someone
   else setting or clearing it, the foreground, what the others see, and a background report
