@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v72',             // must match VERSION in sw.js; a test holds them together
+    build: 'v73',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -106,6 +106,7 @@
                           // (kept in localStorage too, so a reload does not lose it)
     lastHeard: 0,         // when anything last arrived from anyone
     lastActive: 0,        // when you were last actually on the app
+    allDone: false,       // everyone arrived, and we have said so
     liveAt: 0,            // when the connection last came up, for the green flash
     connWas: '',          // so a transition can be noticed
     bgUntil: 0,           // keep reporting in the background until this moment
@@ -248,6 +249,17 @@
 
   // Called on the sweep and on every fix. Whoever is within reach of the destination has
   // arrived, and the group is told once.
+  /* Have we all got there? This is what ends a trip: only then does the destination clear
+     itself and the reporting stop. A phone with no position — location switched off — cannot
+     arrive, so it is left out of the question rather than holding the convoy open for ever;
+     the four-hour cap is the backstop for anything else. */
+  function everyoneArrived() {
+    if (!state.dest) return false;
+    const here = allPeople().filter((p) => p.isMe || !p.paused);
+    if (!here.length) return false;
+    return here.every((p) => (p.isMe ? state.arrived === true : p.arrived === true));
+  }
+
   function checkArrivals() {
     if (!state.dest) return;
     let changed = false;
@@ -269,6 +281,17 @@
     // Redraw here rather than leaving it to the caller, so the arrival time on screen is
     // replaced by "arrived" the moment it happens.
     if (changed) renderPeople();
+
+    /* The last person in. Now the destination has done its job, so it clears itself on every
+       phone — which is also what stops the five-minute reporting, since there is nowhere
+       left to go. Said once, so it is not a notification per tick. */
+    if (everyoneArrived()) {
+      if (!state.allDone) {
+        state.allDone = true;
+        notify('Everyone has arrived', state.dest ? state.dest.label : '');
+      }
+      clearDest(true);
+    }
   }
 
   function onArrived(msg) {
@@ -804,7 +827,7 @@
     } else if (state.destTs) {
       // We know it was cleared more recently than anyone's destination, so say so —
       // otherwise a phone that was away would put a stale destination back on the air.
-      send({ t: 'dest-clear', ts: state.destTs });
+      send({ t: 'dest-clear', ts: state.destTs, auto: !!auto });
     }
     if (state.myEta) send({ t: 'eta', dur: state.myEta.dur, dist: state.myEta.dist });
     if (state.paused) send({ t: 'paused' });
@@ -1132,7 +1155,8 @@
     drawMyLine(null);
     renderPeople();
     saveDest();
-    if (had) notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
+    // The automatic clear at the end of a trip is not somebody clearing it by hand.
+    if (had && !msg.auto) notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
   }
 
   /* ---------------------------------------------------------------- *
@@ -1818,6 +1842,7 @@
      local path and the one from someone else's phone had drifted apart. */
   function applyDest(next) {
     state.dest = next;
+    state.allDone = false;           // a new trip: nobody has finished it yet
     state.myEta = null;
     resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
@@ -1989,7 +2014,7 @@
     } catch (e) { /* the destination is set; the rest is best effort */ }
   }
 
-  function clearDest() {
+  function clearDest(auto) {
     if (!state.dest) return;
     state.destTs = Date.now();
     state.dest = null;
@@ -2349,12 +2374,13 @@
 
   /* Whether there is anything to report while the phone is in the background. Three things
      end it, and any one of them ending stops it:
-       1. having arrived at the destination;
+       1. everyone having arrived at the destination — arriving yourself is not enough, the
+          last person still needs the convoy to see where they are;
        2. four hours since you were last actually on the app;
        3. no destination at all — nobody needs a five-minute position with nowhere to go,
           and setting one again inside the four hours brings it straight back. */
-  const bgAllowed = () => !!state.me && !state.arrived && !!state.dest &&
-    Date.now() < state.bgUntil;
+  const bgAllowed = () => !!state.me && !!state.dest && Date.now() < state.bgUntil &&
+    !everyoneArrived();
 
   function goAway() {
     if (!state.joined || demoTimer) return;
@@ -2574,7 +2600,7 @@
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
-                  bgAllowed, schedulePublish, stopPublishTimer, cadenceMs,
+                  bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),

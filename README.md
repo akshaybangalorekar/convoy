@@ -288,6 +288,10 @@ relays, so it walks the list.
 **What happens when the phone with the pin goes away.** Tested with one, two, seven and all
 ten phones holding it:
 
+- **A phone that was kicked out can always come back.** It shows Join the convoy (not
+  Cancel), the request reaches every pin phone, any of them can let it back in, and being let
+  back in clears the removal everywhere — so it lands on every list, with its four buttons.
+
 - **Existing members carry on.** Everyone still sees everyone, nobody is dropped, the map and
   the destination are untouched. Losing a pin phone is not losing the convoy.
 - **With two or more pin phones, nothing changes.** The others still get requests and any of
@@ -399,7 +403,12 @@ Put the app away and it stops the 30-second position update and sends one every 
 minutes** instead. Three things have to hold for it to run, and any one of them ending stops
 it:
 
-1. **You have not arrived** at the destination.
+1. **Not everyone has arrived** at the destination. Arriving yourself is not enough: the last
+   person still needs the convoy to see where they are. When the last one gets there the
+   destination clears itself on every phone — which is also what stops the reporting — and
+   "Everyone has arrived" is said once. A phone with location switched off cannot arrive, so it
+   is left out of the question rather than holding the trip open for ever; the four-hour cap is
+   the backstop for anything else.
 2. **It is under four hours since you were last actually on the app** — not since you put it
    away, so putting the phone down does not restart the clock.
 3. **There is a destination at all.** Nobody needs a five-minute position while the group has
@@ -671,7 +680,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1017 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1044 checks:
 
 ```bash
 npm install

@@ -82,8 +82,13 @@ async function testArrivingIsAnnounced() {
   api.recv(pos('p1', 'Priya', DEST.lat + 0.0003, DEST.lng));   // ~33 m out
   await sleep(20);
   I(api).checkArrivals();
-  const last = api.notes[api.notes.length - 1];
-  check('inside fifty metres it is announced', /Priya has arrived/.test(last.title), last.title);
+  const titles = api.notes.map((n) => n.title).join(' | ');
+  check('inside fifty metres it is announced', /Priya has arrived/.test(titles), titles);
+  // Everyone is there now, so the trip is finished: said once, and the destination clears
+  // itself, which is what stops the reporting.
+  check('and the whole trip is finished', /Everyone has arrived/.test(titles), titles);
+  check('so the destination clears itself', !api.window.Convoy.state.dest,
+        JSON.stringify(api.window.Convoy.state.dest));
 
   const after = api.notes.length;
   I(api).checkArrivals();

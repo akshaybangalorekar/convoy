@@ -14,6 +14,54 @@ const isIn = (api) => {
   return !!(st.me && st.allowed.has(st.me.id));
 };
 
+/* ---------- A phone that was kicked out can always come back ---------- */
+async function testAKickedOutPhoneCanAlwaysRejoin() {
+  const broker = makeBroker();
+  const pin = boot({ broker });
+  const pin2 = boot({ broker, outside: true });
+  const out = boot({ broker, outside: true });
+  await sleep(40);
+  await unlockPin(pin);
+  await unlockPin(pin2);
+  pin.goLive(); pin2.goLive(); out.goLive();
+  await sleep(120);
+
+  out.document.getElementById('btnJoin').click();
+  await sleep(120);
+  pin.document.querySelector('[data-yes]').click();
+  await sleep(200);
+  check('12a it is in to start with', isIn(out));
+
+  pin.document.querySelector('[data-remove="' + out.window.Convoy.state.me.id + '"]').click();
+  await sleep(200);
+  check('12b it is out', !isIn(out));
+  check('12c and its button says Join the convoy, not Cancel',
+        /Join the convoy/.test(out.document.getElementById('joinLabel').textContent),
+        out.document.getElementById('joinLabel').textContent);
+  check('12d and it is not shown as still asking', out.window.Convoy.state.joinAsked === false);
+
+  // It asks again.
+  out.document.getElementById('btnJoin').click();
+  await sleep(250);
+  check('12e the request reaches the pin phone that removed it',
+        pin.window.Convoy.state.pending.has(out.window.Convoy.state.me.id),
+        pin.document.getElementById('people').textContent.slice(0, 120));
+  check('12f and the other pin phone as well',
+        pin2.window.Convoy.state.pending.has(out.window.Convoy.state.me.id));
+
+  // Either of them can let it back in.
+  pin2.document.querySelector('[data-yes]').click();
+  await sleep(300);
+  check('12g either pin phone can let it back in', isIn(out));
+  check('12h and it is on the removing phone\'s list again',
+        pin.window.Convoy.state.peers.has(out.window.Convoy.state.me.id));
+  check('12i and it is no longer remembered as removed anywhere',
+        !pin.window.Convoy.state.removed.has(out.window.Convoy.state.me.id) &&
+        !out.window.Convoy.state.removed.has(out.window.Convoy.state.me.id));
+  check('12j and it is back to the four buttons',
+        !out.document.getElementById('btnPause').classList.contains('hidden'));
+}
+
 async function unlockPin(api) {
   const d = api.document;
   d.getElementById('btnSettings').click();
@@ -376,6 +424,7 @@ async function testRemovedWhileOffline() {
     await testOneRemovedTheOtherStays();
     await testAskingWhileThePinPhoneIsOffline();
     await testSomeoneAlreadyInIsNotARequest();
+    await testAKickedOutPhoneCanAlwaysRejoin();
     await testRemovalSeenFromTheOtherPinPhone();
     await testRemovedWhileOffline();
   } catch (e) { crash(e); }

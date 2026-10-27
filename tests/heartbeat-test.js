@@ -4,6 +4,7 @@
 'use strict';
 
 const { boot, check, sleep, pos, finish, crash } = require('./harness');
+const DEST = { lat: -33.80, lng: 151.10 };
 
 const HOUR = 3600000;
 const list = (api) => api.document.getElementById('people').textContent;
@@ -206,6 +207,81 @@ async function testWhatTheCheapLocationDoes() {
   check('while taking a good one', st.me.lat === -33.8602, String(st.me.lat));
 }
 
+/* ---------- 7c. the heartbeat waits for the last person ---------- */
+async function testItKeepsGoingUntilTheLastPersonArrives() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(30);
+  const st = api.window.Convoy.state;
+  const I = api.window.Convoy._internals;
+  api.window.Convoy.setDest(DEST.lat, DEST.lng, DEST.label);
+  await sleep(30);
+  api.recv(pos('p1', 'Priya', -33.90, 151.25));      // a long way off
+  await sleep(30);
+  st.lastActive = Date.now();
+  I.goAway();
+  await sleep(30);
+  check('7c-1 put away with a destination, it reports', I.bgAllowed() === true);
+
+  // I get there first. That must NOT stop it: Priya still needs to be seen.
+  api.fix(DEST.lat, DEST.lng);
+  await sleep(40);
+  I.checkArrivals();
+  await sleep(30);
+  check('7c-2 arriving first does not stop it', st.arrived === true && I.bgAllowed() === true);
+  check('7c-3 and the destination is still there', !!st.dest, JSON.stringify(st.dest));
+  check('7c-4 so the car is still reporting', I.bgRunning() === true);
+
+  // Now Priya arrives too.
+  api.recv(pos('p1', 'Priya', DEST.lat + 0.0002, DEST.lng));
+  await sleep(40);
+  I.checkArrivals();
+  await sleep(40);
+  // The marker, not everyoneArrived(): once the destination clears itself there is nothing
+  // left to be arrived at, so that question is false by definition.
+  check('7c-5 when the last one arrives, the trip is marked finished', st.allDone === true);
+  check('7c-6 the destination clears itself', !st.dest, JSON.stringify(st.dest));
+  check('7c-7 and the reporting stops', I.bgAllowed() === false && I.bgRunning() === false);
+  check('7c-8 and it is not announced as somebody clearing it by hand',
+        !/cleared the destination/.test(api.notes.map((n) => n.title).join(' | ')),
+        api.notes.map((n) => n.title).join(' | '));
+  check('7c-9 but as the trip being finished',
+        /Everyone has arrived/.test(api.notes.map((n) => n.title).join(' | ')),
+        api.notes.map((n) => n.title).join(' | '));
+
+  // A new destination is a new trip.
+  api.window.Convoy.setDest(-33.70, 151.05, 'Cronulla');
+  await sleep(40);
+  check('7c-10 a new destination starts the reporting again', I.bgAllowed() === true);
+  check('7c-11 and resets the finished flag', st.allDone === false);
+  check('7c-12 and nobody counts as arrived yet', I.everyoneArrived() === false);
+}
+
+async function testAPhoneWithNoLocationDoesNotHoldTheTripOpen() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(30);
+  const st = api.window.Convoy.state;
+  const I = api.window.Convoy._internals;
+  api.window.Convoy.setDest(DEST.lat, DEST.lng, DEST.label);
+  await sleep(30);
+
+  // Someone with location switched off: they can never arrive.
+  api.recv({ t: 'hello', id: 'p1', name: 'Priya' });
+  await sleep(30);
+  check('7d-1 they are on the list without a position',
+        st.peers.has('p1') && st.peers.get('p1').lat == null);
+
+  api.fix(DEST.lat, DEST.lng);
+  await sleep(40);
+  I.checkArrivals();
+  await sleep(30);
+  check('7d-2 everyone who can arrive has, so the trip is finished', st.allDone === true);
+  check('7d-3 and the destination clears', !st.dest);
+}
+
 /* ---------- 8. what the others see ---------- */
 async function testWhatTheOthersSee() {
   const api = boot();
@@ -280,6 +356,8 @@ async function testABackgroundReportFromSomeoneRemoved() {
     await testSomeoneElseSettingItResumesTheHeartbeat();
     await testTheForegroundDoesNotUseTheSlowBeat();
     await testWhatTheCheapLocationDoes();
+    await testItKeepsGoingUntilTheLastPersonArrives();
+    await testAPhoneWithNoLocationDoesNotHoldTheTripOpen();
     await testWhatTheOthersSee();
     await testABackgroundReportFromSomeoneRemoved();
   } catch (e) { crash(e); }
