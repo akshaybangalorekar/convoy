@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v41',             // must match VERSION in sw.js; a test holds them together
+    build: 'v42',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1264,12 +1264,47 @@
     if (me._first) { me._first = false; map.setView([me.lat, me.lng], 15); }
     maybeAutoView();
     applyHeading();
+    applySun();
   }
 
   /* The map is turned so the way you are going is up, the way a sat-nav does it — but only
      while the view is following you. Once you have taken the map yourself it is left alone.
      The badge in the corner says which way that is, and turns it off. */
   const canRotate = () => !!(map && typeof map.setBearing === 'function');
+
+  /* How high the sun is, in degrees, for a time and a place. Low-precision solar position —
+     good to about a hundredth of a degree, which is far more than day or night needs. */
+  function sunElevation(ms, lat, lng) {
+    const rad = Math.PI / 180;
+    const n = ms / 86400000 + 2440587.5 - 2451545.0;        // days since J2000
+    const L = 280.46 + 0.9856474 * n;                        // mean longitude
+    const g = (357.528 + 0.9856003 * n) * rad;               // mean anomaly
+    const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad;
+    const eps = (23.439 - 0.0000004 * n) * rad;
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda));
+    const dec = Math.asin(Math.sin(eps) * Math.sin(lambda));
+    const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const ha = (gmst * 15 + lng) * rad - ra;                 // hour angle
+    const sinEl = Math.sin(lat * rad) * Math.sin(dec) +
+                  Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha);
+    return Math.asin(Math.max(-1, Math.min(1, sinEl))) / rad;
+  }
+
+  /* Day or night, by the sun where you are, not by a clock or a phone setting. Sunset is
+     when the sun's upper edge drops below the horizon, which is -0.833 degrees. */
+  function applySun() {
+    const el = $('map');
+    if (!el) return;
+    const me = state.me;
+    const at = me && me.lat != null ? me : CFG.fallbackCenter;
+    const up = sunElevation(Date.now(), at.lat, at.lng);
+    const night = up < -0.833;
+    if (el.classList.contains('night-tiles') !== night) {
+      el.classList.toggle('night-tiles', night);
+    }
+    state.sunUp = up;
+    state.night = night;
+  }
 
   function applyHeading() {
     const me = state.me;
@@ -2046,6 +2081,7 @@
       return;
     }
     initMap();
+    applySun();          // day or night before the first fix arrives
     wire();
     if (window.ConvoyRoute) {
       window.ConvoyRoute.init({
@@ -2087,7 +2123,7 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
-                  centreOnMe, applyHeading, canRotate,
+                  centreOnMe, applyHeading, canRotate, applySun, sunElevation,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,

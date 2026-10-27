@@ -27,6 +27,17 @@ pin is around, it lets you in; until then you see a waiting note and nothing els
 To bring someone in, tap **Invite**. The message is just the link — a link can be tapped and
 needs no typing at all.
 
+**The search bar rides above the keyboard.** A phone shrinks the visible area when the
+keyboard opens, but a fixed overlay stays put in the layout viewport — so a bottom-anchored
+sheet ends up behind the keyboard with the field you are typing into invisible. The sheet is
+lifted by exactly the height the keyboard takes, measured from `visualViewport`.
+
+**The map goes dark after sunset.** Not on a clock and not on a phone setting: the sun's
+elevation is worked out for where you are, and the tiles are darkened when it drops below
+-0.833°, which is the standard definition of sunset. Only the tile pane is filtered, so the
+cars keep their own colours — they are what you are reading the map for. It follows the sun
+as you drive, so a long trip at dusk changes over on its own.
+
 **Search results lead with the name of the place** when the map service gives one — the hotel,
 the lookout, the station — with the address underneath. That is what tells you a result is the
 place you meant; an address alone could be any building on the street. A plain street address
@@ -396,7 +407,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 675 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 683 checks:
 
 ```bash
 npm install

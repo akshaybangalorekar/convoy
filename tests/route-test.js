@@ -642,6 +642,24 @@ async function testDrive() {
 }
 
 /* ---------- The search sheet ---------- */
+async function testTheSheetRidesAboveTheKeyboard() {
+  const api = boot();
+  await sleep(20);
+  const search = api.document.getElementById('search');
+
+  Object.defineProperty(api.window, 'visualViewport', {
+    configurable: true, value: { height: 500, offsetTop: 0, addEventListener: () => {} },
+  });
+  api.window.ConvoyRoute.openSearch();
+  await sleep(20);
+  check('opening search measures the keyboard', search.style.getPropertyValue('--kb') === '268px',
+        search.style.getPropertyValue('--kb') || '(none)');
+
+  api.window.ConvoyRoute.closeSearch();
+  check('and closing it puts the sheet back', search.style.getPropertyValue('--kb') === '0px',
+        search.style.getPropertyValue('--kb') || '(none)');
+}
+
 async function testSearchSheet() {
   const api = boot({ fetch: (url) => (
     url.indexOf('photon.komoot.io') >= 0 ? photonOk(url) : driveOk(url)) });
@@ -861,6 +879,7 @@ async function testHistoryIsPerPhone() {
     await testRepeatsAreCached();
     await testSearchBiasedToYou();
     await testDrive();
+    await testTheSheetRidesAboveTheKeyboard();
     await testSearchSheet();
     await testTheBackButtonClosesTheSheet();
     await testRecentPlaces();

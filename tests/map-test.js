@@ -210,6 +210,46 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- Day and night ---------- */
+async function testTheSunIsWhereItShouldBe() {
+  const api = boot();
+  const I = api.window.Convoy._internals;
+  const at = (y, mo, d, h, la, ln) => I.sunElevation(Date.UTC(y, mo, d, h), la, ln);
+
+  const noon = at(2026, 0, 15, 2, -33.87, 151.21);        // 1pm in Sydney, midsummer
+  check('the sun is high over Sydney at one in the afternoon', noon > 70 && noon < 85,
+        noon.toFixed(1));
+  const night = at(2026, 0, 15, 14, -33.87, 151.21);      // 1am
+  check('and well below the horizon at one in the morning', night < -30, night.toFixed(1));
+  const winter = at(2026, 0, 15, 12, 51.5, -0.12);        // noon in London in January
+  check('a winter noon in London is low but up', winter > 10 && winter < 25, winter.toFixed(1));
+}
+
+async function testTheMapGoesDarkAfterSunset() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const map = api.document.getElementById('map');
+  const realNow = api.window.Date.now;
+
+  api.window.Date.now = () => Date.UTC(2026, 0, 15, 2, 0, 0);      // 1pm Sydney
+  api.fix(-33.87, 151.21);
+  await sleep(20);
+  check('by day the map is not darkened', !map.classList.contains('night-tiles'));
+
+  api.window.Date.now = () => Date.UTC(2026, 0, 15, 14, 0, 0);     // 1am Sydney
+  api.fix(-33.8701, 151.2101);
+  await sleep(20);
+  check('after sunset it is', map.classList.contains('night-tiles'));
+
+  api.window.Date.now = realNow;
+  api.fix(-33.8702, 151.2102);
+  await sleep(20);
+  check('and it follows the sun, not a switch',
+        map.classList.contains('night-tiles') ===
+        (api.window.Convoy._internals.sunElevation(Date.now(), -33.8702, 151.2102) < -0.833));
+}
+
 /* ---------- Heading up, and the direction badge ---------- */
 async function testTheBadgeSaysWhichWayYouAreGoing() {
   const api = boot();
@@ -389,6 +429,8 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testTheSunIsWhereItShouldBe();
+    await testTheMapGoesDarkAfterSunset();
     await testTheBadgeSaysWhichWayYouAreGoing();
     await testTheMapTurnsSoYourHeadingIsUp();
     await testTheMapIsLeftAloneOnceYouTakeIt();

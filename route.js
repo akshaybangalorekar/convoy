@@ -360,8 +360,29 @@
   // the swipe-back gesture fires the same event, so both behave alike.
   let pushed = false;
 
+  /* Phones shrink the visible area when the keyboard opens, and a fixed overlay stays put
+     in the layout viewport — so a bottom-anchored sheet ends up behind the keyboard. The
+     visual viewport knows how much is left, so the sheet is lifted by the difference. */
+  function watchKeyboard() {
+    const vv = window.visualViewport;
+    const set = () => {
+      const el = $('search');
+      if (!el) return;
+      const covered = vv
+        ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+        : 0;
+      el.style.setProperty('--kb', covered + 'px');
+    };
+    set();
+    if (!vv || vv._convoyWatched) return;
+    vv._convoyWatched = true;
+    vv.addEventListener('resize', set);
+    vv.addEventListener('scroll', set);
+  }
+
   function openSearch() {
     $('search').classList.remove('hidden');
+    watchKeyboard();
     $('inSearch').value = '';
     showRecent();
     if (!pushed) {
@@ -372,6 +393,7 @@
 
   function closeSearch() {
     $('search').classList.add('hidden');
+    $('search').style.setProperty('--kb', '0px');
     try { $('inSearch').blur(); } catch (e) {}
     if (pushed) {
       pushed = false;
@@ -482,6 +504,7 @@
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
-                  shownList: () => shown, reverse, renderResults, rowHtml, rowText },
+                  shownList: () => shown, reverse, renderResults, rowHtml, rowText,
+                  watchKeyboard },
   };
 })();

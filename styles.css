@@ -230,6 +230,13 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 .heading.up { background: var(--accent); color: var(--accent-text); }
 .heading:active { opacity: 0.65; }
 
+/* After sunset the map itself goes dark. Only the tile pane is filtered, so the cars keep
+   their own colours — they are what you are reading the map for. */
+#map.night-tiles { background: #0d1319; }
+#map.night-tiles .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.7);
+}
+
 /* ---------- People sheet ---------- */
 #sheet {
   position: fixed; z-index: 28;
@@ -311,7 +318,10 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 .search-card { max-height: 82vh; display: flex; flex-direction: column; }
 /* One sheet rises from the bottom; the other should too, rather than floating mid-screen
    like a dialog. */
-#search { padding-bottom: 0; }
+/* The keyboard covers the bottom of a fixed overlay, so the sheet is lifted by exactly
+   the height the keyboard takes. --kb is measured from the visual viewport. */
+#search { padding-bottom: var(--kb, 0px); transition: padding-bottom 0.12s ease; }
+@media (prefers-reduced-motion: reduce) { #search { transition: none; } }
 #search .search-card { margin: auto auto 0; border-radius: 18px 18px 0 0; }
 
 .logo { display: block; width: 46px; height: 46px; margin-bottom: 14px; }
