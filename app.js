@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v46',             // must match VERSION in sw.js; a test holds them together
+    build: 'v47',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -92,6 +92,7 @@
     focused: '',          // the car whose name is showing because it was tapped
     headingUp: true,      // turn the map so the way you are going is up
     relay: '',            // which relay we are on, shown in Help
+    joinAsked: false,     // has this phone asked to be let in, and not withdrawn it
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
     allowed: new Set(),   // ids the master has let in; nobody else is in the room
@@ -708,6 +709,9 @@
   function send(obj) {
     if (!client || !client.connected || !state.topic) return;
     const body = Object.assign({ id: state.me.id, name: state.me.name, ts: Date.now() }, obj);
+    // Outside the room, every message says whether we are asking to be let in. That is
+    // what makes "cancel request" mean something: stop saying yes.
+    if (state.me && !state.allowed.has(state.me.id)) body.ask = !!state.joinAsked;
     try { client.publish(state.topic, JSON.stringify(body)); } catch (e) { /* ignore */ }
     state.lastPublish = Date.now();
   }
@@ -843,13 +847,18 @@
     msg.ids.map(String).slice(0, 500).forEach((id) => state.allowed.add(id));
     saveRoom({ allowed: Array.from(state.allowed) });
     state.pending.forEach((v, id) => { if (state.allowed.has(id)) state.pending.delete(id); });
-    if (state.allowed.size !== before) renderPeople();
-    else renderPeople();
+    if (state.me && state.allowed.has(state.me.id)) state.joinAsked = false;
+    renderPeople();
   }
 
   // Someone is asking. Only a master ever gets this far.
   function askedToJoin(msg) {
     if (!state.me) return;
+    if (!msg.ask) {
+      // They withdrew. Stop showing them as a request rather than leaving a stale row.
+      if (state.pending.delete(msg.id)) renderPeople();
+      return;
+    }
     const had = state.pending.get(msg.id);
     state.pending.set(msg.id, {
       id: msg.id, name: (msg.name || (had && had.name) || 'Someone').slice(0, 24),
@@ -889,6 +898,7 @@
     // and goes on showing the four buttons as if nothing happened.
     if (state.me && ids.indexOf(state.me.id) >= 0 && state.allowed.has(state.me.id)) {
       state.allowed.delete(state.me.id);
+      state.joinAsked = false;
       saveRoom({ allowed: Array.from(state.allowed) });
     }
     renderPeople();
@@ -1544,7 +1554,8 @@
     if (join) join.classList.toggle('hidden', inRoom);
     const joinLabel = $('joinLabel');
     if (joinLabel) {
-      joinLabel.textContent = (state.me && state.removed.has(state.me.id)) ? 'Join back' : 'Join';
+      joinLabel.textContent = state.joinAsked ? 'Cancel request'
+        : (state.me && state.removed.has(state.me.id)) ? 'Join back' : 'Join';
     }
     ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
       const b = $(id);
@@ -2017,14 +2028,10 @@
     });
 
     $('btnJoin').addEventListener('click', () => {
-      send({ t: 'hello' });          // the ask: the phone with the pin sees this as a request
-      sendState();
-      const label = $('joinLabel');
-      if (label) {
-        const was = label.textContent;
-        label.textContent = 'Sent';
-        setTimeout(() => { label.textContent = was; }, 2000);
-      }
+      state.joinAsked = !state.joinAsked;
+      if (state.joinAsked) sendState();            // the ask, with ask: true on it
+      else send({ t: 'hello' });                   // the withdrawal, with ask: false
+      renderControls();
     });
     // Help holds the pin field, so it has to stay reachable while you are outside the room.
     let connHold = null;

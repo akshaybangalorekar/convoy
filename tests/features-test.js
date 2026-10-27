@@ -453,7 +453,15 @@ async function testOneButtonUntilYouAreIn() {
   await sleep(20);
   check('pressing Join asks to be let in', out.sentAll('hello').length > before,
         before + ' -> ' + out.sentAll('hello').length);
-  check('and the button says so', text(out, 'joinLabel') === 'Sent', text(out, 'joinLabel'));
+  check('and it turns into a cancel, so Join is not offered twice',
+        text(out, 'joinLabel') === 'Cancel request', text(out, 'joinLabel'));
+
+  d.getElementById('btnJoin').click();
+  await sleep(20);
+  check('cancelling puts Join back', text(out, 'joinLabel') === 'Join', text(out, 'joinLabel'));
+  const lastHello = out.sentAll('hello')[out.sentAll('hello').length - 1];
+  check('and stops the asking', lastHello && lastHello.ask === false,
+        JSON.stringify(lastHello && lastHello.ask));
 
   const inside = boot();
   await sleep(20);
@@ -533,7 +541,7 @@ async function testTheRemovalIsAnnouncedAgainAfterAReconnect() {
 async function testAStrangerIsInvisibleWithoutThePin() {
   const api = boot();
   await sleep(20);
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(20);
 
   check('someone who has not been let in never reaches the list',
@@ -551,7 +559,7 @@ async function testTheMasterIsAskedByName() {
   await sleep(20);
   await unlock(api);
 
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(20);
 
   check('the master is shown the request, by name',
@@ -576,7 +584,7 @@ async function testTurningSomeoneAway() {
   const d = api.document;
   await sleep(20);
   await unlock(api);
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(20);
 
   d.querySelector('[data-no="newbie"]').click();
@@ -584,7 +592,7 @@ async function testTurningSomeoneAway() {
   check('turning them away marks them out', api.window.Convoy.state.removed.has('newbie'));
   check('and stops the request', api.window.Convoy.state.pending.size === 0);
 
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(20);
   check('but they may ask again, so nobody is shut out for good',
         api.window.Convoy.state.pending.size === 1,
@@ -599,7 +607,7 @@ async function testTheListIsAnnouncedAgainWhenSomeoneArrives() {
   await unlock(api);
   const before = api.sentAll('allowed').length;
 
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(30);
   check('a phone that arrives is told who is in',
         api.sentAll('allowed').length > before,
@@ -614,11 +622,27 @@ async function testAnyPhoneWithTheListPassesItOn() {
   const api = boot();
   await sleep(20);
   const before = api.sentAll('allowed').length;
-  api.recv({ t: 'hello', id: 'newbie', name: 'Priya' }, { asStranger: true });
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
   await sleep(30);
   check('a phone in the room passes the list on to whoever arrives',
         api.sentAll('allowed').length > before,
         before + ' -> ' + api.sentAll('allowed').length);
+}
+
+async function testWithdrawingClearsTheRequest() {
+  const api = boot();
+  const d = api.document;
+  await sleep(20);
+  await unlock(api);
+
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: true }, { asStranger: true });
+  await sleep(20);
+  check('an ask shows up', api.window.Convoy.state.pending.has('newbie'));
+
+  api.recv({ t: 'hello', id: 'newbie', name: 'Priya', ask: false }, { asStranger: true });
+  await sleep(20);
+  check('withdrawing takes it off again', !api.window.Convoy.state.pending.has('newbie'));
+  check('and the row goes', !/wants to join/.test(text(api, 'people')), text(api, 'people'));
 }
 
 async function testOnceLetInTheyAppearForEveryone() {
@@ -766,6 +790,7 @@ async function testBehindAndAhead() {
     await testTurningSomeoneAway();
     await testTheListIsAnnouncedAgainWhenSomeoneArrives();
     await testAnyPhoneWithTheListPassesItOn();
+    await testWithdrawingClearsTheRequest();
     await testOnceLetInTheyAppearForEveryone();
     await testTheGearIsJustAVersionAndAField();
     await testAWrongPinDoesNothing();
