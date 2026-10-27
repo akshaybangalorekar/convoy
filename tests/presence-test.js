@@ -250,6 +250,57 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testTheDestinationDotWearsTheSettersColour() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -33.88, 151.22));
+  await sleep(30);
+
+  const st = api.window.Convoy.state;
+  const p1 = st.peers.get('p1');
+  const pin = () => api.document.querySelector('.dest-pin');
+  const same = (got, want) => {
+    if (got === want) return true;
+    const n = parseInt(String(want).replace('#', ''), 16);
+    return got === 'rgb(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ')';
+  };
+
+  // Priya sets the destination.
+  api.recv({ t: 'dest', id: 'p1', name: 'Priya', by: 'Priya', byId: 'p1',
+             lat: -33.9, lng: 151.3, label: 'Bondi', ts: Date.now() });
+  await sleep(40);
+  check('the dot wears the colour that person has on this phone',
+        same(pin().style.background, p1.color), pin().style.background + ' vs ' + p1.color);
+  check('and that is the colour beside their name on the list',
+        new RegExp(p1.color, 'i').test(api.document.getElementById('people').innerHTML),
+        p1.color);
+  check('with a soft ring in the same colour',
+        /rgba\(/.test(pin().style.boxShadow), pin().style.boxShadow);
+
+  // Now it is set from this phone.
+  api.window.Convoy.setDest(-33.7, 151.1, 'Manly');
+  await sleep(40);
+  check('when you set it, the dot wears your own colour',
+        same(pin().style.background, st.me.color), pin().style.background + ' vs ' + st.me.color);
+  check('and the message says who set it',
+        ((api.sent('dest') || {}).byId) === st.me.id, JSON.stringify(api.sent('dest')));
+
+  // An older phone sends no id at all.
+  api.recv({ t: 'dest', id: 'p1', name: 'Priya', by: 'Priya',
+             lat: -33.5, lng: 151.0, label: 'Brighton', ts: Date.now() + 5 });
+  await sleep(40);
+  check('a destination from an older phone still finds the right colour by name',
+        same(pin().style.background, p1.color), pin().style.background + ' vs ' + p1.color);
+
+  // Clearing it puts the dot back to how it looks with no destination.
+  api.window.Convoy.clearDest();
+  await sleep(40);
+  check('clearing the destination resets the dot',
+        !pin().style.background, pin().style.background);
+}
+
 async function testTheRelayIsAskedWhatWentWrong() {
   // The error used to be thrown away: a refused connection looked exactly like a blocked
   // port, and there was no way to tell them apart.
@@ -654,6 +705,7 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testTheDestinationDotWearsTheSettersColour();
     await testTheRelayIsAskedWhatWentWrong();
     await testAWaitingPhoneLooksForTheGroupOnOtherRelays();
     await testOutOfContactIsSaidOnceAndOnlyWhileItIsNews();

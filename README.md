@@ -59,6 +59,13 @@ elevation is worked out for where you are, and the tiles are darkened when it dr
 cars keep their own colours — they are what you are reading the map for. It follows the sun
 as you drive, so a long trip at dusk changes over on its own.
 
+**The dot on the destination row wears the colour of whoever set it** — as that person
+appears on *your* list, not as they appear on theirs. Colours are assigned per phone (your own
+car is always the first one on your own screen), so the dot is a lookup rather than a hash: if
+Priya is green on your list, the dot beside the address is green too; if you set it, the dot
+wears your own colour. The map pin and the row's ring follow the same colour. A phone running
+an older build sends no id with the destination, so it falls back to matching the name.
+
 **Search results lead with the name of the place** when the map service gives one — the hotel,
 the lookout, the station — with the address underneath. That is what tells you a result is the
 place you meant; an address alone could be any building on the street. A plain street address
@@ -553,7 +560,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 888 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 895 checks:
 
 ```bash
 npm install

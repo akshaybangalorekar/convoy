@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v63',             // must match VERSION in sw.js; a test holds them together
+    build: 'v64',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -413,7 +413,9 @@
   }
 
   function refreshColors() {
-    if (!assignColors()) return;
+    const changed = assignColors();
+    renderDest();                 // the destination dot wears the setter's colour
+    if (!changed) return;
     allPeople().forEach((p) => {
       if (p._marker) p._marker.setIcon(makeIcon(p));
       if (p._line) p._line.setStyle({ color: p.color });
@@ -1084,7 +1086,7 @@
     const ts = typeof msg.ts === 'number' ? msg.ts : Date.now();
     if (ts < state.destTs) return;               // an older announcement: ignore it
     const next = { lat: msg.lat, lng: msg.lng, label: msg.label || 'Destination',
-                   by: msg.by || msg.name };
+                   by: msg.by || msg.name, byId: msg.byId || '' };
     if (sameDest(state.dest, next)) { state.destTs = ts; return; }   // already have it
     state.destTs = ts;
     state.dest = next;
@@ -1733,6 +1735,31 @@
     '</li>';
   }
 
+  /* The dot on the destination row wears the colour of whoever set it, as they appear on
+     this phone's list — so it is the same green or purple you see beside their name. Colours
+     are assigned per phone, so this is a lookup, not a hash: your own car is always the first
+     colour on your own screen, and someone else's is whatever they were given here. */
+  function destColor() {
+    const d = state.dest;
+    if (!d) return '';
+    const byId = d.byId || '';
+    if (byId && state.me && byId === state.me.id) return state.me.color || '';
+    const p = byId ? state.peers.get(byId) : null;
+    if (p && p.color) return p.color;
+    // An older phone sends no id, so fall back to the name; failing that, a stable colour.
+    const named = Array.from(state.peers.values()).find((x) => x.name && x.name === d.by);
+    if (named && named.color) return named.color;
+    return byId ? colorFor(byId) : '';
+  }
+
+  const tint = (hex, a) => {
+    const h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return 'transparent';
+    const n = parseInt(h, 16);
+    if (!isFinite(n)) return 'transparent';
+    return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + a + ')';
+  };
+
   function renderDest() {
     const el = $('destText');
     if (state.dest) {
@@ -1744,6 +1771,13 @@
     }
     const clear = $('btnClearDest');
     if (clear) clear.style.display = state.dest ? '' : 'none';
+
+    const pin = document.querySelector('.dest-pin');
+    if (pin) {
+      const c = destColor();
+      pin.style.background = c || '';
+      pin.style.boxShadow = c ? '0 0 0 3px ' + tint(c, 0.18) : '';
+    }
   }
 
   function renderTop() {
@@ -1874,7 +1908,11 @@
     if (!isFinite(la) || !isFinite(ln)) return;
     lat = la; lng = ln;
     state.destTs = Date.now();
-    state.dest = { lat, lng, label: label || 'Destination', by: state.me ? state.me.name : '' };
+    state.dest = {
+      lat, lng, label: label || 'Destination',
+      by: state.me ? state.me.name : '',
+      byId: state.me ? state.me.id : '',     // whose colour the dot wears
+    };
     state.myEta = null;
     resetArrivals();                 // a new destination: nobody is there yet
     renderDest();
@@ -1884,7 +1922,8 @@
       drawDest();
       refreshRoute();
       saveDest();
-      send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by, ts: state.destTs });
+      send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by,
+             byId: state.dest.byId, ts: state.destTs });
       state.autoFit = true;
       lastFitAt = 0;
       fitAll();
