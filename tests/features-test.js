@@ -2,7 +2,7 @@
    press on the map, room names, tapping a person, and who is behind whom. */
 'use strict';
 
-const { boot, check, sleep, pos, finish, crash } = require('./harness');
+const { boot, check, sleep, pos, finish, crash, makeBroker } = require('./harness');
 
 const DEST = { lat: -37.90, lng: 145.05 };
 const I = (api) => api.window.Convoy._internals;
@@ -724,6 +724,63 @@ async function testAMessageWithoutTheFlagStillCountsAsAsking() {
         /data-yes="old"/.test(d.getElementById('people').innerHTML));
 }
 
+async function testTheRequestCrossesToTheOtherPhone() {
+  // Two apps on one broker, as two phones on one relay. Everything before this tested one
+  // phone talking to itself, which is exactly the gap that let a broken request path pass.
+  const broker = makeBroker();
+  const pin = boot({ broker });
+  const guest = boot({ broker, outside: true });
+  await sleep(30);
+  await unlock(pin);
+  pin.goLive();
+  guest.goLive();
+  await sleep(60);
+
+  guest.document.getElementById('btnJoin').click();
+  await sleep(80);
+
+  check('the pin phone is asked', pin.window.Convoy.state.pending.size === 1,
+        String(pin.window.Convoy.state.pending.size));
+  check('with a button to let them in',
+        /data-yes=/.test(pin.document.getElementById('people').innerHTML),
+        pin.document.getElementById('people').innerHTML.slice(0, 160));
+  check('and it notifies', /wants to join/.test(titles(pin)), titles(pin));
+
+  pin.document.querySelector('[data-yes]').click();
+  await sleep(80);
+  const guestMe = guest.window.Convoy.state.me.id;
+  check('letting them in reaches their phone',
+        guest.window.Convoy.state.allowed.has(guestMe),
+        Array.from(guest.window.Convoy.state.allowed).join(','));
+  check('so the four buttons appear and Join goes away',
+        guest.document.getElementById('btnJoin').classList.contains('hidden') &&
+        !guest.document.getElementById('btnInvite').classList.contains('hidden'));
+}
+
+async function testAStaleAllowedListStillLetsTheRequestThrough() {
+  // The pin phone still had them down as in — as if a removal made on another pin phone
+  // never arrived. The phone asking knows it is outside, so its word wins.
+  const broker = makeBroker();
+  const pin = boot({ broker });
+  const guest = boot({ broker, outside: true });
+  await sleep(30);
+  await unlock(pin);
+  pin.window.Convoy.state.allowed.add(guest.window.Convoy.state.me.id);
+  pin.goLive();
+  guest.goLive();
+  await sleep(60);
+
+  guest.document.getElementById('btnJoin').click();
+  await sleep(120);
+  // Either the pin phone shows the request, or the stale list admits them straight away.
+  // What must not happen is the person being stranded with a button that does nothing.
+  const guestMe2 = guest.window.Convoy.state.me.id;
+  check('a stale list cannot strand them',
+        pin.window.Convoy.state.pending.size === 1 ||
+        guest.window.Convoy.state.allowed.has(guestMe2),
+        'pending ' + pin.window.Convoy.state.pending.size);
+}
+
 async function testTheMasterIsAskedByName() {
   const api = boot();
   const d = api.document;
@@ -965,6 +1022,8 @@ async function testBehindAndAhead() {
     await testAnAskMadeWhileTheLinkIsDownIsNotLost();
     await testAPinPhoneIsToldOfARequestLeftWhileItWasAway();
     await testAMessageWithoutTheFlagStillCountsAsAsking();
+    await testTheRequestCrossesToTheOtherPhone();
+    await testAStaleAllowedListStillLetsTheRequestThrough();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
     await testTheListIsAnnouncedAgainWhenSomeoneArrives();

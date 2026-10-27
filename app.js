@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v52',             // must match VERSION in sw.js; a test holds them together
+    build: 'v53',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -838,6 +838,14 @@
     if (msg.t === 'ask') {
       if (Date.now() - (msg.ts || 0) > CFG.askFreshMs) { return; }
       if (!state.allowed.has(msg.id) && state.master) askedToJoin(msg);
+      return;
+    }
+
+    if (msg.ask === true) {
+      // It says it is outside the room, and it would know. Trust that over our own list,
+      // which can be stale. Only the pin phone is shown the request.
+      announceAllowed();
+      if (state.master) askedToJoin(msg);
       return;
     }
 
@@ -1790,7 +1798,7 @@
     if (!state.joinAsked) return;                 // not asking, so nothing to wait for
     if (!client || !client.connected) return;
     const quiet = Date.now() - (state.lastHeard || 0);
-    if (quiet < 20000 || Date.now() - lastHop < 20000) return;
+    if (quiet < 8000 || Date.now() - lastHop < 8000) return;
     lastHop = Date.now();
     brokerIdx++;                                  // the next relay in the list
     try { client.end(true); } catch (e) { /* ignore */ }
@@ -2142,6 +2150,11 @@
     let connHold = null;
     const openHelp = () => {
       $('settingsVersion').textContent = 'Version ' + CFG.build;
+      const pinNote = $('pinState');
+      if (pinNote) {
+        pinNote.textContent = state.master ? 'Pin set on this phone'
+          : 'No pin on this phone';
+      }
       const note = $('notifyNote');
       if (note) {
         const perm = (typeof Notification === 'function') ? Notification.permission : 'unsupported';

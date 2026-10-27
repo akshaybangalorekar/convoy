@@ -78,6 +78,55 @@ function makeStream() {
  *                      (use it to pre-seed localStorage)
  * opts.fetch(url, opts) — replaces the network stub
  */
+/**
+ * A broker two apps can share: topics, wildcards, retained messages and all. Two boots
+ * given the same broker really do hear each other, which is the only way to test that a
+ * request reaches the other phone.
+ */
+function makeBroker() {
+  const subs = new Map();          // client -> [topic filters]
+  const retained = new Map();      // topic -> payload string
+  const matches = (filter, topic) => {
+    const f = filter.split('/');
+    const t = topic.split('/');
+    if (f.length !== t.length) return false;
+    return f.every((seg, i) => seg === '+' || seg === t[i]);
+  };
+  const deliver = (client, topic, payload) => {
+    if (!client.connected) return;
+    const filters = subs.get(client) || [];
+    if (!filters.some((f) => matches(f, topic))) return;
+    client._emit('message', topic, Buffer.from(String(payload)));
+  };
+  return {
+    subs, retained,
+    subscribe(client, filter) {
+      const list = subs.get(client) || [];
+      if (list.indexOf(filter) < 0) list.push(filter);
+      subs.set(client, list);
+      // A real broker sends what it is holding as soon as you subscribe.
+      retained.forEach((payload, topic) => {
+        if (matches(filter, topic)) deliver(client, topic, payload);
+      });
+    },
+    publish(from, topic, payload, o) {
+      if (o && o.retain) {
+        if (payload === '' || payload == null) retained.delete(topic);
+        else retained.set(topic, payload);
+      }
+      subs.forEach((_list, client) => deliver(client, topic, payload));
+    },
+    /** Everyone connected at once, as if both phones were on the same relay. */
+    goLive(clients) {
+      clients.forEach((c) => {
+        if (c.connected) return;
+        c.connected = true;
+        c._emit('connect');
+      });
+    },
+  };
+}
+
 function boot(opts = {}) {
   const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
   const dom = new JSDOM(html, {
@@ -109,6 +158,7 @@ function boot(opts = {}) {
   };
 
   const clients = [];
+  const broker = opts.broker || null;
   window.mqtt = {
     connect(url, opts) {
       const h = {};
@@ -116,8 +166,18 @@ function boot(opts = {}) {
         url, opts: opts || {}, connected: false, published: [], subscribed: null, ended: false,
         publishes: [], subscriptions: [],
         on(e, f) { (h[e] = h[e] || []).push(f); return c; },
-        subscribe(t, o, cb) { c.subscribed = t; c.subscriptions.push(t); if (cb) cb(null); return c; },
-        publish(t, msg, o) { c.published.push(msg); c.publishes.push({ topic: t, msg, opts: o || {} }); return c; },
+        subscribe(t, o, cb) {
+          c.subscribed = t; c.subscriptions.push(t);
+          if (broker) broker.subscribe(c, t);
+          if (cb) cb(null);
+          return c;
+        },
+        publish(t, msg, o) {
+          c.published.push(msg);
+          c.publishes.push({ topic: t, msg, opts: o || {} });
+          if (broker) broker.publish(c, t, msg, o || {});
+          return c;
+        },
         end() { c.ended = true; return c; },
         _emit(e, ...a) { (h[e] || []).forEach((f) => f(...a)); },
         connect_() { c.connected = true; c._emit('connect'); },
@@ -250,6 +310,13 @@ function boot(opts = {}) {
     notes,
     geo,
     tileLayers,
+    /** Bring this phone's link up, and let the broker hand it anything it is holding. */
+    goLive() {
+      const c = clients[clients.length - 1];
+      if (!c) return;
+      c.connected = true;
+      c._emit('connect');
+    },
 
     /** Fire a Leaflet map event, as the user dragging or zooming would. */
     mapFire(ev, arg) { (mapHandlers[ev] || []).forEach((fn) => fn(arg)); },
@@ -355,4 +422,5 @@ function crash(e) {
                 extra: e.stack ? String(e.stack).split('\n')[1] : '' });
 }
 
-module.exports = { boot, check, sleep, pos, finish, crash, DIR, layer, makeStream };
+module.exports = {
+  makeBroker, boot, check, sleep, pos, finish, crash, DIR, layer, makeStream };
