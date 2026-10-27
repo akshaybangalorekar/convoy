@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v65',             // must match VERSION in sw.js; a test holds them together
+    build: 'v66',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1112,6 +1112,7 @@
     drawDest();
     refreshRoute();
     saveDest();
+    if (state.away) startBgHeartbeat();      // a destination again: report again
     notify((msg.by || msg.name || 'Someone') + ' set the destination', next.label);
   }
 
@@ -1127,6 +1128,7 @@
     drawMyLine(null);
     renderPeople();
     saveDest();
+    if (state.away) stopBgHeartbeat();       // nowhere to go: no need to report
     if (had) notify((msg.by || msg.name || 'Someone') + ' cleared the destination', '');
   }
 
@@ -1941,6 +1943,7 @@
       drawDest();
       refreshRoute();
       saveDest();
+      if (state.away) startBgHeartbeat();      // a destination again: report again
       send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by,
              byId: state.dest.byId, ts: state.destTs });
       state.autoFit = true;
@@ -1959,6 +1962,7 @@
     drawMyLine(null);
     renderPeople();
     saveDest();
+    if (state.away) stopBgHeartbeat();       // nowhere to go: no need to report
     send({ t: 'dest-clear', ts: state.destTs });
   }
 
@@ -2291,7 +2295,14 @@
   // send it, which is exactly why sweepPresence exists as the backstop.
   let bgTimer = null;
 
-  const bgAllowed = () => !!state.me && !state.arrived && Date.now() < state.bgUntil;
+  /* Three things end it, and all three have to hold for it to run:
+       1. not having arrived at the destination;
+       2. fewer than four hours since you were last on the app;
+       3. there is a destination at all. Nobody needs a five-minute position while the
+          group has nowhere to go — and setting one again inside the four hours brings it
+          straight back. */
+  const bgAllowed = () => !!state.me && !state.arrived && !!state.dest &&
+    Date.now() < state.bgUntil;
 
   /* Four hours counted from the last time you were actually on the app, not from now, so
      putting the phone away does not restart the clock. */
@@ -2525,7 +2536,7 @@
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
-                  startBgHeartbeat, stopBgHeartbeat, bgAllowed,
+                  startBgHeartbeat, stopBgHeartbeat, bgAllowed, bgRunning: () => !!bgTimer,
                   renderWaiting,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,

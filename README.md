@@ -312,10 +312,16 @@ there being no server, which is the same reason the app is free and needs no sig
 ## In the background it keeps reporting, on a slower beat
 
 Put the app away and it stops the 30-second position update and sends one every **five
-minutes** instead, for **four hours counted from the last time you were actually on the app**
-— not from when you put it away, so putting the phone down does not restart the clock. It
-stops early if you arrive, and stops for good once the four hours are up. Coming back to the
-front restores the fast beat.
+minutes** instead. Three things have to hold for it to run, and any one of them ending stops
+it:
+
+1. **You have not arrived** at the destination.
+2. **It is under four hours since you were last actually on the app** — not since you put it
+   away, so putting the phone down does not restart the clock.
+3. **There is a destination at all.** Nobody needs a five-minute position while the group has
+   nowhere to go, so clearing it stops the heartbeat on every phone. Setting one again inside
+   the four hours brings it straight back, and a destination that merely *changes* keeps it
+   running. Coming back to the front restores the fast beat.
 
 A backgrounded phone is given six and a half minutes of silence before it counts as out of
 contact, rather than ninety seconds, because that is how often it is now speaking. The list
@@ -581,7 +587,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 909 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 948 checks:
 
 ```bash
 npm install
@@ -597,6 +603,10 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
+- `tests/heartbeat-test.js` — every branch of the background heartbeat: arriving, the four
+  hours, no destination, no destination *and* too late, changing the destination, someone
+  else setting or clearing it, the foreground, what the others see, and a background report
+  from someone who has been removed. 39 checks.
 - `tests/fleet-test.js` — a convoy of eight or ten phones on one broker, with one, two, seven
   or all of them holding the pin, and what happens when a pin phone goes away. 44 checks.
 - `tests/scenario-test.js` — two and three phones on one broker, going through the sequences

@@ -262,6 +262,10 @@ async function testTheBackgroundHeartbeat() {
         api.window.Convoy.CFG.bgForMs === 4 * 3600000 &&
         api.window.Convoy.CFG.bgMs === 300000);
 
+  // There has to be a destination: nobody needs a five-minute position with nowhere to go.
+  api.window.Convoy.setDest(-33.89, 151.27, 'Bondi Beach');
+  await sleep(20);
+
   // Four hours of reporting after the last time you touched the app.
   st.lastActive = Date.now();
   I.startBgHeartbeat();
