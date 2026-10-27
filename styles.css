@@ -35,12 +35,6 @@
     --btn-bg: #2e2e35;
     --shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   }
-  /* OpenStreetMap's standard tiles are the only keyless source, so the night map is
-     those same tiles darkened. Point the tile layer at a real dark basemap and drop
-     this rule for a proper night map — those need an API key. */
-  .leaflet-tile {
-    filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.55);
-  }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -246,9 +240,6 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 /* After sunset the map itself goes dark. Only the tile pane is filtered, so the cars keep
    their own colours — they are what you are reading the map for. */
 #map.night-tiles { background: #0d1319; }
-#map.night-tiles .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.7);
-}
 
 /* ---------- People sheet ---------- */
 #sheet {

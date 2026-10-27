@@ -479,6 +479,29 @@ async function testHelpStaysReachableWhileOutside() {
   check('with the pin field in it', !!d.getElementById('inPin'));
 }
 
+async function testBeingRemovedReachesThatPhone() {
+  // The removal is broadcast, so the phone it happened to has to act on it. Otherwise it
+  // keeps the allowed list it had and goes on showing four buttons as if nothing happened.
+  const api = boot();
+  await sleep(20);
+  const d = api.document;
+  const me = api.window.Convoy.state.me.id;
+  check('to start with, this phone is in and has four buttons',
+        api.window.Convoy.state.allowed.has(me) &&
+        !d.getElementById('btnInvite').classList.contains('hidden'));
+
+  api.recv({ t: 'removed', id: 'master', ids: [me] });
+  await sleep(20);
+  check('being removed takes this phone out of the room',
+        !api.window.Convoy.state.allowed.has(me));
+  check('so the four buttons go and Join comes back',
+        d.getElementById('btnInvite').classList.contains('hidden') &&
+        !d.getElementById('btnJoin').classList.contains('hidden'));
+  check('and it is remembered, so a reload does not put it back',
+        !JSON.parse(api.window.localStorage.getItem('convoy.room.convoy') || '{}')
+          .allowed.includes(me));
+}
+
 async function testAStrangerIsInvisibleWithoutThePin() {
   const api = boot();
   await sleep(20);
@@ -708,6 +731,7 @@ async function testBehindAndAhead() {
     await testAPhoneOutsideTheRoomWaits();
     await testOneButtonUntilYouAreIn();
     await testHelpStaysReachableWhileOutside();
+    await testBeingRemovedReachesThatPhone();
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();

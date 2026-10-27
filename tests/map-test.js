@@ -128,14 +128,12 @@ async function testTakingControl() {
   check('and then the map is left alone', api.calls.fitBounds.length === 0,
         String(api.calls.fitBounds.length));
 
-  // The Location button is the way back: it puts the map on you and keeps everyone in
-  // frame, without turning the chasing back on.
+  // The All button is the way back: it frames everyone and starts following again.
   api.document.getElementById('btnCentre').click();
   await sleep(10);
-  check('the Location button puts the map back on you',
-        api.calls.setView.length > 0, String(api.calls.setView.length));
-  check('without switching the chasing back on',
-        api.window.Convoy.state.autoFit === false);
+  check('the All button frames everyone again', api.calls.fitBounds.length === 1,
+        String(api.calls.fitBounds.length));
+  check('and the view follows again', api.window.Convoy.state.autoFit === true);
 }
 
 /* ---------- One tap out, two taps in ---------- */
@@ -210,6 +208,40 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- The tiles ---------- */
+async function testTheTilesLookLikeAPhoneMap() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const layer = api.tileLayers[0];
+  check('by day the map uses the light, Google-like style',
+        /basemaps\.cartocdn\.com\/rastertiles\/voyager/.test(layer.url), layer.url);
+  check('at twice the pixels on a phone that can show them', layer.opts.detectRetina === true);
+
+  api.window.Convoy._internals.applySun.call(null);
+  const realNow = api.window.Date.now;
+  api.window.Date.now = () => Date.UTC(2026, 0, 15, 14, 0, 0);      // 1am Sydney
+  api.fix(-33.87, 151.21);
+  await sleep(20);
+  check('at night it switches to a real dark basemap, not an inverted one',
+        /dark_all/.test(layer.url), layer.url);
+  api.window.Date.now = realNow;
+}
+
+async function testTheTilesFallBackRatherThanGoBlank() {
+  const api = boot();
+  await sleep(20);
+  const layer = api.tileLayers[0];
+  for (let i = 0; i < 5; i++) layer.fire('tileerror');
+  check('a few failures are tolerated', /voyager/.test(layer.url), layer.url);
+  layer.fire('tileerror');
+  check('but a run of them falls back to the standard tiles',
+        /tile\.openstreetmap\.org/.test(layer.url), layer.url);
+  for (let i = 0; i < 20; i++) layer.fire('tileerror');
+  check('and it does not thrash after that',
+        /tile\.openstreetmap\.org/.test(layer.url), layer.url);
+}
+
 /* ---------- Day and night ---------- */
 async function testTheSunIsWhereItShouldBe() {
   const api = boot();
@@ -334,26 +366,22 @@ async function testAMissingPluginIsJustANorthUpMap() {
 }
 
 /* ---------- Centring on yourself ---------- */
-async function testCentreOnMeKeepsEveryoneInFrame() {
+async function testTheAllButtonShowsEveryCar() {
   const api = boot();
   api.join('Akshay', 'goa-trip');
   api.fix(-37.90, 145.05);
   await sleep(20);
   api.recv(pos('p1', 'Priya', -37.95, 145.10));      // about 6 km away
-  await sleep(20);
+  await sleep(760);
+  api.mapFire('dragstart');                          // you took the map yourself
+  check('the view stops chasing once you take it', api.window.Convoy.state.autoFit === false);
 
-  const before = api.calls.setView.length;
+  api.calls.fitBounds.length = 0;
   api.document.getElementById('btnCentre').click();
   await sleep(20);
-
-  const last = api.calls.setView[api.calls.setView.length - 1];
-  check('the map is put on your own car', api.calls.setView.length > before &&
-        last && last[0][0] === -37.90 && last[0][1] === 145.05,
-        JSON.stringify(last && last[0]));
-  check('at a zoom that still holds the others', typeof last[1] === 'number' &&
-        last[1] > 8 && last[1] <= 18, String(last && last[1]));
-  check('and it stops chasing everyone afterwards',
-        api.window.Convoy.state.autoFit === false);
+  check('the All button frames everyone in one go', api.calls.fitBounds.length === 1,
+        String(api.calls.fitBounds.length));
+  check('and starts following again', api.window.Convoy.state.autoFit === true);
 }
 
 async function testCentreOnMeWithNoPositionJustAsksForOne() {
@@ -429,13 +457,15 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testTheTilesLookLikeAPhoneMap();
+    await testTheTilesFallBackRatherThanGoBlank();
     await testTheSunIsWhereItShouldBe();
     await testTheMapGoesDarkAfterSunset();
     await testTheBadgeSaysWhichWayYouAreGoing();
     await testTheMapTurnsSoYourHeadingIsUp();
     await testTheMapIsLeftAloneOnceYouTakeIt();
     await testAMissingPluginIsJustANorthUpMap();
-    await testCentreOnMeKeepsEveryoneInFrame();
+    await testTheAllButtonShowsEveryCar();
     await testCentreOnMeWithNoPositionJustAsksForOne();
     await testOnlySomeCarsCarryAName();
     await testTappingACarNamesIt();

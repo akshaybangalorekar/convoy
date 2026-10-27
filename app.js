@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v43',             // must match VERSION in sw.js; a test holds them together
+    build: 'v44',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -438,6 +438,22 @@
   /* ---------------------------------------------------------------- *
    * Map
    * ---------------------------------------------------------------- */
+  /* A light, clean style by day and a real dark basemap at night — the two things a phone
+     map is expected to look like. Both are keyless; the standard OSM tiles are the fallback
+     if this host cannot be reached at all. */
+  const TILES = {
+    day: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    night: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
+    fallback: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  };
+  let tiles = null;
+  let tileErrors = 0;
+  let tilesFellBack = false;
+  let tilesNight = null;
+
+  const tileTemplate = (night) =>
+    (tilesFellBack ? TILES.fallback : (night ? TILES.night : TILES.day));
+
   function initMap() {
     map = L.map('map', {
       zoomControl: false,
@@ -449,10 +465,20 @@
       touchRotate: false,
       doubleClickZoom: false,   // we do our own double tap, below
     }).setView([CFG.fallbackCenter.lat, CFG.fallbackCenter.lng], CFG.fallbackZoom);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    tiles = L.tileLayer(tileTemplate(false), {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
+      detectRetina: true,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    });
+    // A style host can be unreachable where the plain tiles are not. Rather than leave a
+    // blank map, fall back to the standard tiles after a few failures — once.
+    tiles.on('tileerror', () => {
+      if (tilesFellBack) return;
+      if (++tileErrors < 6) return;
+      tilesFellBack = true;
+      tiles.setUrl(TILES.fallback);
+    });
+    tiles.addTo(map);
     // Dragging or zooming by hand hands the view back to you.
     map.on('dragstart zoomstart', () => {
       if (Date.now() - lastAutoView > 700) { state.autoFit = false; }
@@ -877,6 +903,12 @@
     const ids = msg.ids.map(String).slice(0, 200);
     setRemoved(ids);
     ids.forEach((id) => { if (state.peers.has(id)) removePeer(id); });
+    // If it was me, my own phone has to know. Otherwise it keeps the allowed list it had
+    // and goes on showing the four buttons as if nothing happened.
+    if (state.me && ids.indexOf(state.me.id) >= 0 && state.allowed.has(state.me.id)) {
+      state.allowed.delete(state.me.id);
+      saveRoom({ allowed: Array.from(state.allowed) });
+    }
     renderPeople();
   }
 
@@ -1297,8 +1329,10 @@
     const at = me && me.lat != null ? me : CFG.fallbackCenter;
     const up = sunElevation(Date.now(), at.lat, at.lng);
     const night = up < -0.833;
-    if (el.classList.contains('night-tiles') !== night) {
-      el.classList.toggle('night-tiles', night);
+    el.classList.toggle('night-tiles', night);
+    if (tiles && tilesNight !== night) {
+      tilesNight = night;
+      tiles.setUrl(tileTemplate(night));      // day style, night style
     }
     state.sunUp = up;
     state.night = night;
@@ -1540,24 +1574,15 @@
       state.paused ? 'You are hidden — tap to share again' : 'Hide my location');
   }
 
-  /* Put yourself in the middle without losing sight of anyone: the zoom comes from how far
-     the furthest car is, so the others stay on screen as far as they can. */
-  function centreOnMe() {
-    const me = state.me;
-    if (!me) return;
-    if (me.lat == null) { startWatching(); return; }      // nothing to centre on yet
-    state.autoFit = false;
-    const at = [me.lat, me.lng];
-    const others = allPeople().filter((p) => p !== me);
-    if (!others.length) { map.setView(at, 16, { animate: true }); return; }
-
-    const far = Math.max(50, others.reduce((m, p) => Math.max(m, haversine(me, p)), 0));
-    const dLat = far / 111320;
-    const dLng = dLat / Math.max(0.2, Math.cos((me.lat * Math.PI) / 180));
-    const bounds = L.latLngBounds([me.lat - dLat, me.lng - dLng],
-                                  [me.lat + dLat, me.lng + dLng]);
-    const zoom = map.getBoundsZoom ? map.getBoundsZoom(bounds) : 15;
-    map.setView(at, Math.min(zoom, 18), { animate: true });
+  /* Every car on screen at once, yours included — and the view starts following again, so
+     it keeps them there. Zooming in on one car is a pinch away, which is the better way to
+     ask for it than a button that guesses which car you meant. */
+  function showEveryone() {
+    if (!state.me) return;
+    if (state.me.lat == null) startWatching();      // nothing to frame yet
+    state.autoFit = true;
+    lastFitAt = 0;
+    fitAll();
   }
 
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
@@ -2028,7 +2053,7 @@
         if (connHold) { clearTimeout(connHold); connHold = null; }
       });
     });
-    $('btnCentre').addEventListener('click', centreOnMe);
+    $('btnCentre').addEventListener('click', showEveryone);
     $('btnHeading').addEventListener('click', () => {
       state.headingUp = !state.headingUp;
       applyHeading();
@@ -2157,7 +2182,8 @@
                   setPaused, checkArrivals, resetArrivals,
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
-                  centreOnMe, applyHeading, canRotate, applySun, sunElevation,
+                  showEveryone, applyHeading, canRotate, applySun, sunElevation,
+                  TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,

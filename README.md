@@ -32,6 +32,11 @@ keyboard opens, but a fixed overlay stays put in the layout viewport — so a bo
 sheet ends up behind the keyboard with the field you are typing into invisible. The sheet is
 lifted by exactly the height the keyboard takes, measured from `visualViewport`.
 
+**The map is a phone map**: the light CARTO Voyager style by day, the same family's dark
+basemap at night — not one style inverted. Both are keyless. If that host cannot be reached
+at all, the app falls back to the standard OpenStreetMap tiles after a few failed tiles rather
+than leaving a blank map, and it does that once so it cannot thrash. Help names both sources.
+
 **The map goes dark after sunset.** Not on a clock and not on a phone setting: the sun's
 elevation is worked out for where you are, and the tiles are darkened when it drops below
 -0.833°, which is the standard definition of sunset. Only the tile pane is filtered, so the
@@ -138,10 +143,11 @@ sheet's header, beside the count. The top of the screen holds only the destinati
   doing nearly the same thing was one more thing on the map.
 - **There is no separate recenter button** — Location does that job, and a second circle
   doing nearly the same thing was one more thing on the map.
-- **Location** puts the map back on your own car, at a zoom worked out from how far the
-  furthest car is, so the others stay on screen. With no fix yet it asks for one instead of
-  jumping to nowhere. Your name is edited by tapping it in the list — your row is the only
-  editable one, and it carries a dashed underline.
+- **All** frames every car at once, yours included, and starts following again so they stay
+  in frame. Zooming in on one car is a pinch away, which beats a button guessing which car
+  you meant. With no fix yet it asks for one instead of jumping to nowhere. Your name is
+  edited by tapping it in the list — your row is the only editable one, and it carries a
+  dashed underline.
 
 **There is no code and nothing to set up.** Open the app and you are in the same room as
 everyone else who has it open: no invite code, no room name, no sign-in. Your name is the one
@@ -415,7 +421,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 691 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 705 checks:
 
 ```bash
 npm install

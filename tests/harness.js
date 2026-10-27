@@ -92,7 +92,15 @@ function boot(opts = {}) {
 
   window.L = {
     map: () => mapObj,
-    tileLayer: () => ({ addTo: () => ({}) }),
+    tileLayer: (url, opts) => {
+      const t = { url, opts: opts || {}, handlers: {}, added: 0,
+        on(ev, fn) { (t.handlers[ev] = t.handlers[ev] || []).push(fn); return t; },
+        setUrl(u) { t.url = u; return t; },
+        addTo() { t.added++; return t; },
+        fire(ev) { (t.handlers[ev] || []).forEach((fn) => fn()); } };
+      tileLayers.push(t);
+      return t;
+    },
     polyline: layer,
     latLngBounds: (pts) => { const b = layer(); b._pts = (pts || []).slice(); return b; },
     control: { zoom: () => ({ addTo: () => {} }) },
@@ -133,6 +141,7 @@ function boot(opts = {}) {
     }, 1);
   };
 
+  const tileLayers = [];
   const netCalls = [];
   window.fetch = async (url, o) => {
     netCalls.push({ url, method: (o && o.method) || 'GET' });
@@ -239,6 +248,7 @@ function boot(opts = {}) {
     netCalls,
     notes,
     geo,
+    tileLayers,
 
     /** Fire a Leaflet map event, as the user dragging or zooming would. */
     mapFire(ev, arg) { (mapHandlers[ev] || []).forEach((fn) => fn(arg)); },
