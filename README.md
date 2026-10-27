@@ -386,6 +386,17 @@ days without a visit** — Apple's rule for sites not added to the home screen, 
 device id with it. Come back after a week away and you are a new phone, so you will need
 letting in again. Added to the home screen, storage is kept.
 
+## "Out of contact" is said once
+
+It used to fire on any change of state, which meant the same person could be announced again
+and again — including someone who had left days earlier. It is now said only when a phone was
+actually seen going quiet, only while that is recent, and at most **once every half hour per
+person**. A phone that keeps flapping — an old device still running the app somewhere — is the
+case that made this noisy.
+
+The person still appears on the list as **Lost network · a while ago** until the room record
+expires, which is deliberate, as below.
+
 ## Nobody is dropped
 
 There is one room and no server holding it, so the app makes sure it never closes by
@@ -494,7 +505,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 755 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 756 checks:
 
 ```bash
 npm install

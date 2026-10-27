@@ -267,6 +267,85 @@ async function testAWaitingPhoneLooksForTheGroupOnOtherRelays() {
         api.clients.length > before, relayBefore + ' -> ' + api.window.Convoy.state.relay);
 }
 
+async function testOutOfContactIsSaidOnceAndOnlyWhileItIsNews() {
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -33.88, 151.22));
+  await sleep(20);
+  const lost = () => api.notes.filter((n) => /out of contact/.test(n.title)).length;
+  check('nobody is announced out of contact while they are here', lost() === 0, String(lost()));
+
+  const realNow = api.window.Date.now;
+  const later = (ms) => { api.window.Date.now = () => realNow() + ms; };
+
+  later(95000);                                     // just past staleMs
+  api.window.Convoy._internals.sweepPresence();
+  await sleep(20);
+  check('going quiet is said once', lost() === 1, String(lost()));
+
+  for (let i = 0; i < 5; i++) api.window.Convoy._internals.sweepPresence();
+  await sleep(20);
+  check('and not again on every sweep after that', lost() === 1, String(lost()));
+
+  api.window.Date.now = realNow;
+}
+
+async function testALongGonePhoneIsNotAnnouncedAgain() {
+  // Someone who left days ago was being announced "out of contact" again and again, which
+  // is noise: it stopped being news long before.
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const realNow = api.window.Date.now;
+  api.window.Date.now = () => realNow() + 6 * 3600000;    // six hours later
+
+  // A roster entry, as if the app had just been opened with them still remembered.
+  api.window.Convoy.state.peers.set('gone', {
+    id: 'gone', name: 'Rahul', color: '#ff3b30', lat: -33.9, lng: 151.2,
+    spd: null, hdg: null, acc: 8, ts: realNow() - 5 * 3600000,
+    eta: null, isMe: false, demo: false, away: false, awayAt: 0,
+    presence: 'lost', restored: true,
+  });
+  const before = api.notes.length;
+  api.window.Convoy._internals.sweepPresence();
+  await sleep(20);
+  check('a phone that has been gone for hours is not announced again',
+        api.notes.length === before, String(api.notes.length - before));
+
+  // Even a fresh transition is only worth saying while it is fresh.
+  api.window.Convoy.state.peers.get('gone').presence = 'live';
+  api.window.Convoy.state.peers.get('gone').ts = realNow() - 5 * 3600000;
+  api.window.Convoy._internals.sweepPresence();
+  await sleep(20);
+  check('and a transition that is hours old is not news either',
+        api.notes.length === before, String(api.notes.length - before));
+  api.window.Date.now = realNow;
+}
+
+async function testAFlappingPhoneIsNotAnnouncedEveryTime() {
+  // An old device still running the app somewhere goes quiet and comes back every few
+  // minutes. That is not news every time.
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  await sleep(20);
+  const realNow = api.window.Date.now;
+  let clock = realNow();
+  api.window.Date.now = () => clock;
+  const lost = () => api.notes.filter((n) => /out of contact/.test(n.title)).length;
+
+  for (let round = 0; round < 4; round++) {
+    api.recv(pos('p1', 'Priya', -33.88, 151.22));
+    await sleep(10);
+    clock += 95000;                                  // goes quiet
+    api.window.Convoy._internals.sweepPresence();
+    await sleep(10);
+    clock += 60000;                                  // comes back a minute later
+  }
+  check('four flaps are not four announcements', lost() === 1, String(lost()));
+  api.window.Date.now = realNow;
+}
+
 async function testAComingBackPhoneIsAnsweredAtOnce() {
   // After a refresh a phone knows nobody. Waiting for everyone else's next tick would leave
   // it looking at an empty map for up to half a minute.
@@ -541,6 +620,9 @@ async function testNewestDestinationWins() {
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
     await testAWaitingPhoneLooksForTheGroupOnOtherRelays();
+    await testOutOfContactIsSaidOnceAndOnlyWhileItIsNews();
+    await testALongGonePhoneIsNotAnnouncedAgain();
+    await testAFlappingPhoneIsNotAnnouncedEveryTime();
     await testAComingBackPhoneIsAnsweredAtOnce();
     await testTheClientIdIsUniquePerAttempt();
     await testAFlappingRelayIsAbandoned();

@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v54',             // must match VERSION in sw.js; a test holds them together
+    build: 'v55',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -58,6 +58,7 @@
     behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,
     askFreshMs: 1800000,     // a retained request older than half an hour is stale
+    lostNoticeMs: 1800000,   // say "out of contact" about a person at most this often
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
     // One tap zooms out, two zoom in. The wait is how long a single tap is held back to
@@ -1852,8 +1853,21 @@
       p.presence = kind;
       changed = true;
       if (kind === 'lost') {
-        notify(p.name + ' — out of contact',
-               'No signal, or their app was closed. They reappear when they can.');
+        /* Only when we watched them go, and only while it is still news. A roster entry
+           restored when the app opens was never live to begin with, and a phone that left
+           days ago is not worth a notification — that was how the same person got
+           announced as "out of contact" over and over. */
+        const silentFor = Date.now() - (p.ts || 0);
+        const watched = was === 'live' || was === 'away' || was === 'noloc';
+        // And at most once every half hour per person. A phone that keeps flapping — an old
+        // device still running the app somewhere — would otherwise announce itself every
+        // few minutes, which is the noise this became.
+        const quietSince = Date.now() - (p.lostNotifiedAt || 0);
+        if (watched && silentFor < CFG.awayMs * 2 && quietSince > CFG.lostNoticeMs) {
+          p.lostNotifiedAt = Date.now();
+          notify(p.name + ' — out of contact',
+                 'No signal, or their app was closed. They reappear when they can.');
+        }
       } else if (kind === 'live' && was === 'lost') {
         notify(p.name + ' is back', '');
       }
