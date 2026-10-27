@@ -3,7 +3,10 @@
    lifetime to manage. */
 'use strict';
 
-const { boot, check, sleep, pos, finish, crash } = require('./harness');
+const fs = require('fs');
+const path = require('path');
+const { boot, check, sleep, pos, finish, crash, DIR } = require('./harness');
+const io_read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 
 const DAY = 86400000;
 const record = () =>
@@ -119,22 +122,22 @@ async function testClosingIsNotLeaving() {
         r && Object.keys(r.members).length === 2, JSON.stringify(r && Object.keys(r.members)));
 }
 
-async function testLeavingDoesRemoveYou() {
+async function testNothingCanLeave() {
+  // There is no Leave button and no goodbye message: closing the app is the only way out,
+  // and it looks like a phone that went quiet. Only the week, or the pin phone, removes
+  // anyone from the roster.
+  const app = io_read('app.js');
+  check('nothing sends a goodbye', !/t: 'bye'/.test(app));
+  check('and nothing handles one either', !/onBye/.test(app));
+
   const api = boot();
   api.join('Akshay');
   api.fix(-33.86, 151.2);
   await sleep(20);
   api.recv(pos('p1', 'Priya', -33.87, 151.21));
   await sleep(30);
-  check('the roster has both of you',
-        Object.keys(rec(api).members).length === 2);
-
-  api.recv({ t: 'bye', id: 'p1', name: 'Priya' });
-  await sleep(20);
-  check('pressing Leave is announced', /Priya left/.test(titles(api)), titles(api));
-  const r = rec(api);
-  check('and takes them off the roster',
-        r && !r.members.p1, JSON.stringify(r && Object.keys(r.members)));
+  check('the roster has both of you', Object.keys(rec(api).members).length === 2);
+  check('and nobody is announced as having left', !/left/.test(titles(api)), titles(api));
 }
 
 async function testRosterComesBack() {
@@ -225,7 +228,7 @@ async function testAForceResetStillLands() {
     await testTheDropHappensOnItsOwn();
     await testNobodyIsDropped();
     await testClosingIsNotLeaving();
-    await testLeavingDoesRemoveYou();
+    await testNothingCanLeave();
     await testRosterComesBack();
     await testOneIdentityPerDevice();
     await testAForceResetStillLands();

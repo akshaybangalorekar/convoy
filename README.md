@@ -329,6 +329,24 @@ slightly different shapes.
 Reconnects back off to a fifteen-second ceiling instead of retrying a blocked port every 1.2
 seconds for as long as the app is open, and the delay resets on any successful connect.
 
+Three more of the same kind:
+
+- **`publishLists()`** — who is in and who is out is one fact, so it is written down and
+  announced in one place. It was written out at both call sites that change it, which is how
+  they came to disagree.
+- **`applyDest()`** — everything that follows from a new destination being decided, whether
+  it was decided here or on someone else's phone. The two paths had drifted apart: one reset
+  the arrival times and the other did not.
+- **Dead code from removed features is gone.** `onBye` and the `bye` message went with the
+  Leave button — nothing has sent one for many versions. The 859 bytes of CSS that went with
+  the old top bar, the control row and the join screen are gone too. `onSharing` stays: it is
+  the other half of the Hide switch, and removing it would have left anyone who unhid their
+  location marked as hidden for ever.
+
+And one real bug the audit turned up: **the retained join request was published without its
+type**, so the pin phone could not tell a fresh request from one left on the broker days ago,
+and the half-hour freshness rule never ran. It is published as `t: 'ask'` now.
+
 ## Why the beat stays at thirty seconds while you are on the app
 
 The publish is a ~200-byte MQTT message on a socket that is already open — about 24 KB an
@@ -624,7 +642,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 960 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 962 checks:
 
 ```bash
 npm install

@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v69',             // must match VERSION in sw.js; a test holds them together
+    build: 'v70',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -288,17 +288,19 @@
     renderPeople();
   }
 
-  function onPaused(msg) {
-    const p = state.peers.get(msg.id);
-    if (!p) return;
-    p.paused = true;
-    renderPeople();
-  }
-
+  /* The other half of the switch: back on the map. Without this, someone who hid their
+     location and then unhid it stayed marked as hidden for ever. */
   function onSharing(msg) {
     const p = state.peers.get(msg.id);
     if (!p) return;
     p.paused = false;
+    renderPeople();
+  }
+
+  function onPaused(msg) {
+    const p = state.peers.get(msg.id);
+    if (!p) return;
+    p.paused = true;
     renderPeople();
   }
 
@@ -733,7 +735,7 @@
     if (!client || !client.connected || !state.me) return;
     try {
       client.publish(askTopic(state.me.id),
-        JSON.stringify({ id: state.me.id, name: state.me.name, ts: Date.now() }),
+        JSON.stringify({ t: 'ask', id: state.me.id, name: state.me.name, ts: Date.now() }),
         { retain: true, qos: 0 });
     } catch (e) { /* ignore */ }
   }
@@ -869,7 +871,7 @@
       announceAllowed();
       // Only the master is shown the request; everyone else sees nothing at all, which is
       // the whole point.
-      if (state.master && msg.t !== 'bye') askedToJoin(msg);
+      if (state.master) askedToJoin(msg);
       return;
     }
 
@@ -877,11 +879,10 @@
     // anyone new, it is what puts them on the list. Leaving is the one exception: we do
     // not want to add someone just to remove them.
     const knownBefore = state.peers.has(msg.id) || state.seen.has(msg.id);
-    if (msg.t !== 'bye') ensurePeer(msg);
+    ensurePeer(msg);
 
     switch (msg.t) {
       case 'hello':      onHello(msg, knownBefore); return;
-      case 'bye':        onBye(msg); return;
       case 'dest':       onDest(msg); return;
       case 'dest-clear': onDestClear(msg); return;
       case 'eta':        onEta(msg); return;
@@ -950,6 +951,14 @@
     renderPeople();
   }
 
+  /* Who is in and who is out is one fact, stored and announced together. It was written
+     out at both call sites that change it, which is how they came to disagree. */
+  function publishLists() {
+    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+    send({ t: 'allowed', ids: Array.from(state.allowed) });
+    send({ t: 'removed', ids: Array.from(state.removed) });
+  }
+
   function letIn(id) {
     if (!state.master || !id) return;
     id = String(id);
@@ -962,9 +971,7 @@
        the four buttons. */
     state.removed.delete(id);
     state.pending.delete(id);
-    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
-    send({ t: 'allowed', ids: Array.from(state.allowed) });
-    send({ t: 'removed', ids: Array.from(state.removed) });
+    publishLists();
     renderPeople();
   }
 
@@ -973,8 +980,7 @@
     const req = state.pending.get(String(id));
     state.pending.delete(String(id));
     state.removed.add(String(id));
-    saveRecord({ removed: Array.from(state.removed) });
-    send({ t: 'removed', ids: Array.from(state.removed) });
+    publishLists();
     renderPeople();
   }
 
@@ -1062,17 +1068,6 @@
     renderPeople();
   }
 
-  function onBye(msg) {
-    if (!state.peers.has(msg.id) && !state.seen.has(msg.id)) return;
-    const p = state.peers.get(msg.id);
-    const name = (p && p.name) || msg.name || 'Someone';
-    removePeer(msg.id);
-    state.seen.delete(msg.id);
-    forgetMember(msg.id);      // pressing Leave is the one way off the roster
-    renderPeople();
-    notify(name + ' left', '');
-  }
-
   function onPos(msg) {
     if (typeof msg.lat !== 'number' || typeof msg.lng !== 'number') return;
     const p = state.peers.get(msg.id) || ensurePeer(msg);
@@ -1115,13 +1110,7 @@
                    by: msg.by || msg.name, byId: msg.byId || '' };
     if (sameDest(state.dest, next)) { state.destTs = ts; return; }   // already have it
     state.destTs = ts;
-    state.dest = next;
-    state.myEta = null;
-    resetArrivals();                 // a new destination: nobody is there yet
-    renderDest();
-    drawDest();
-    refreshRoute();
-    saveDest();
+    applyDest(next);
     notify((msg.by || msg.name || 'Someone') + ' set the destination', next.label);
   }
 
@@ -1818,6 +1807,19 @@
     return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + a + ')';
   };
 
+  /* Everything that follows from a new destination being decided, whoever decided it. The
+     local path and the one from someone else's phone had drifted apart. */
+  function applyDest(next) {
+    state.dest = next;
+    state.myEta = null;
+    resetArrivals();                 // a new destination: nobody is there yet
+    renderDest();
+    // Drawing and routing are best effort: a map or network hiccup must never leave a
+    // caller stuck half way through setting a destination.
+    try { drawDest(); refreshRoute(); } catch (e) { /* ignore */ }
+    saveDest();
+  }
+
   function renderDest() {
     const el = $('destText');
     if (state.dest) {
@@ -1935,9 +1937,7 @@
     state.pending.delete(id);
     removePeer(id);            // the row and the car on the map
     forgetMember(id);          // and the roster, so a reopened app does not bring them back
-    saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
-    send({ t: 'allowed', ids: Array.from(state.allowed) });
-    send({ t: 'removed', ids: Array.from(state.removed) });
+    publishLists();
     renderPeople();
   }
 
@@ -1966,20 +1966,14 @@
     if (!isFinite(la) || !isFinite(ln)) return;
     lat = la; lng = ln;
     state.destTs = Date.now();
-    state.dest = {
+    applyDest({
       lat, lng, label: label || 'Destination',
       by: state.me ? state.me.name : '',
       byId: state.me ? state.me.id : '',     // whose colour the dot wears
-    };
-    state.myEta = null;
-    resetArrivals();                 // a new destination: nobody is there yet
-    renderDest();
-    // From here on it is drawing and telling the group. None of that may be allowed to
-    // stop the caller: a map or network hiccup must never leave a screen stuck.
+    });
+    // Telling the group, and framing everyone. None of that may be allowed to stop the
+    // caller: a network hiccup must never leave a screen stuck.
     try {
-      drawDest();
-      refreshRoute();
-      saveDest();
       send({ t: 'dest', lat, lng, label: state.dest.label, by: state.dest.by,
              byId: state.dest.byId, ts: state.destTs });
       state.autoFit = true;
@@ -2491,7 +2485,7 @@
     // Closing the app is NOT leaving the convoy. It sends the same "away" note as
     // backgrounding does, so the group sees a phone that has gone quiet rather than
     // someone who walked out — and nobody comes off the roster for it.
-    // (pagehide above handles that. Only the Leave button sends a real "bye".)
+    // (pagehide above handles that, and nothing sends a goodbye: there is no Leave.)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { goAway(); return; }
       if (!state.joined) return;

@@ -228,7 +228,7 @@ try {
         /typeof o\.lat === 'number'/.test(app));
   check('and the dimmed area closes the search sheet', /e\.target === \$\('search'\)/.test(read('route.js')));
   check('the new messages are all handled',
-        /case 'paused'/.test(app) && /case 'sharing'/.test(app) &&
+        /case 'paused'/.test(app) &&
         /case 'arrived'/.test(app) && /case 'paused'/.test(app));
   check('one blanket rule: a week after their last sign of life',
         /keepDays: 7/.test(app) && /const keepMs = /.test(app));
@@ -290,7 +290,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v69/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v70/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

@@ -227,7 +227,8 @@ async function testAPausedPhoneIsNotJustQuiet() {
   api.recv({ t: 'sharing', id: 'p1' });
   await sleep(20);
   check('and it clears when they share again',
-        I(api).presenceOf(api.window.Convoy.state.peers.get('p1')) === 'live');
+        I(api).presenceOf(api.window.Convoy.state.peers.get('p1')) === 'live',
+        I(api).presenceOf(api.window.Convoy.state.peers.get('p1')));
 }
 
 /* ---------- How often we share ---------- */
@@ -448,9 +449,8 @@ async function testEveryGroupEventNotifies() {
   await sleep(30);
   check('arriving notifies', /arrived/i.test(titles(api)), titles(api));
 
-  api.recv({ t: 'bye', id: 'p1', name: 'Priya' });
-  await sleep(20);
-  check('a person leaving notifies', /Priya left/.test(titles(api)), titles(api));
+  // No Leave button, so no goodbye to notify about: closing the app looks like silence.
+  check('nothing claims a person left', !/left/.test(titles(api)), titles(api));
 }
 
 async function testAJoinRequestNotifiesEveryPhoneWithThePin() {
@@ -736,6 +736,10 @@ async function testARequestOutlivesTheSender() {
         JSON.stringify(client().publishes.map((p) => p.topic)));
   check('naming who is asking', ask.length > 0 && /Priya|Phone/.test(ask[0].msg),
         ask[0] && ask[0].msg);
+  // It has to say what it is, or the pin phone cannot tell a fresh request from one left
+  // on the broker days ago.
+  check('and saying that it is a request',
+        ask.length > 0 && JSON.parse(ask[0].msg).t === 'ask', ask[0] && ask[0].msg);
   check('and it is held by the broker, not just shouted once',
         ask.every((p) => p.opts.retain === true));
 

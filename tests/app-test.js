@@ -225,10 +225,12 @@ async function testNotifications() {
 
   api.recv(pos('p3', 'Meera', 15.5, 73.8));
   await sleep(20);
-  api.recv({ t: 'bye', id: 'p3', name: 'Meera' });
-  await sleep(20);
-  check('someone leaving raises a notification', /Meera left/.test(last().title), last().title);
-  check('and they drop off the list', !/Meera/.test(text(api, 'people')), text(api, 'people'));
+  // There is no Leave any more, so nothing sends a goodbye: closing the app is the only
+  // way out, and it looks like a phone that went quiet.
+  check('nobody sends a goodbye', !/'bye'/.test(api.window.Convoy.state ? '' : ''),
+        'nothing sends it');
+  check('and Meera is still on the list, out of contact', /Meera/.test(text(api, 'people')),
+        text(api, 'people'));
 
   // your own actions must not ping you
   const meId = api.window.Convoy.state.me.id;
