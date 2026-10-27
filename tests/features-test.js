@@ -494,9 +494,36 @@ async function testAPhoneOutsideTheRoomWaits() {
   const api = boot({ outside: true });
   await sleep(20);
   const d = api.document;
-  check('a phone that has not been let in is told to wait',
-        /Waiting for someone to let you in/.test(d.getElementById('people').textContent),
+  check('a phone that has not been let in is told why the map is empty',
+        /Nobody outside can see the map/.test(d.getElementById('people').textContent),
         d.getElementById('people').textContent);
+  check('and the waiting line says what is happening right now',
+        /Connecting|Connected|No connection|Retrying/.test(text(api, 'waitLine')),
+        text(api, 'waitLine'));
+  const bar = () => !api.document.getElementById('waitBar').classList.contains('hidden');
+  const line = () => text(api, 'waitLine');
+  const I2 = api.window.Convoy._internals;
+
+  api.window.Convoy.state.conn = 'waiting';
+  I2.renderWaiting();
+  check('a bar sweeps while it is still connecting', bar() && /Connecting/.test(line()),
+        line());
+
+  api.window.Convoy.state.conn = 'down';
+  I2.renderWaiting();
+  check('and it says so plainly when there is no link',
+        bar() && /No connection/.test(line()), line());
+
+  api.window.Convoy.state.conn = 'live';
+  I2.renderWaiting();
+  check('once connected and not yet asked, nothing is in progress',
+        !bar() && /Press Join/.test(line()), line());
+
+  api.window.Convoy.state.joinAsked = true;
+  I2.renderWaiting();
+  check('and after asking, the bar comes back with what it is waiting for',
+        bar() && /Request sent/.test(line()), line());
+  api.window.Convoy.state.joinAsked = false;
   check('and the count says so too',
         /waiting/.test(text(api, 'peopleCount')), text(api, 'peopleCount'));
   check('and nobody else is on its list',

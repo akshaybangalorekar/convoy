@@ -42,6 +42,7 @@
 
 <!-- Everyone, and when they arrive -->
 <section id="sheet" class="card">
+  <div id="waitBar" class="wait-bar hidden" aria-hidden="true"><i></i></div>
   <div class="sheet-head-row">
     <button id="sheetHead" class="sheet-head">
       <span id="peopleCount">0 people</span>
@@ -49,6 +50,7 @@
     </button>
     <button id="connState" class="conn" aria-label="Connection status">connecting</button>
   </div>
+  <p id="waitLine" class="wait-line hidden"></p>
   <ul id="people"></ul>
 
   <div class="sheet-controls">

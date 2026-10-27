@@ -168,6 +168,14 @@ Nobody is in the room until the phone with the pin lets them in.
 
 - **Opening the app puts you in the waiting room**, not the room: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
+- **While you are outside the room, the connection state stops being a quiet word.** It
+  becomes a dark pill with a coloured dot — amber and pulsing while connecting, red when
+  there is no link, green once live — and a sweeping bar sits across the top of the sheet
+  whenever something is genuinely in progress. Under it, one plain line says what is
+  happening: "Connecting to the relay…", "Request sent. Waiting for the phone with the pin…",
+  or "No connection. Your request is kept and will go out when the link is back." The bar
+  stops the moment nothing is being waited for, so it never means nothing. Inside the room it
+  all goes back to the small quiet word, because by then you can see the map.
 - **Outside the room there is one button, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
@@ -486,7 +494,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 747 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 755 checks:
 
 ```bash
 npm install

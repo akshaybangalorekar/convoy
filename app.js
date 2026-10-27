@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v53',             // must match VERSION in sw.js; a test holds them together
+    build: 'v54',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1218,8 +1218,44 @@
 
   function setConn(kind, text) {
     const el = $('connState');
-    el.className = 'conn' + (kind === 'live' ? ' live' : '');
+    el.className = 'conn' + (kind === 'live' ? ' live'
+      : kind === 'down' ? ' down'
+      : kind === 'waiting' ? ' waiting' : '');
     el.textContent = text;
+    state.conn = kind || 'waiting';
+    renderWaiting();
+  }
+
+  /* Outside the room, say what is actually happening in plain words and keep a bar moving,
+     so a wait never looks like a dead app. Inside the room none of this is needed. */
+  function renderWaiting() {
+    const sheet = $('sheet');
+    const me = state.me;
+    const inRoom = !!(me && state.allowed.has(me.id));
+    if (sheet) sheet.classList.toggle('outside', !inRoom);
+
+    const bar = $('waitBar');
+    const line = $('waitLine');
+    if (!bar || !line) return;
+
+    const conn = state.conn || 'waiting';
+    const waiting = !inRoom && (conn !== 'live' || state.joinAsked);
+    bar.classList.toggle('hidden', !waiting);
+
+    if (inRoom) { line.classList.add('hidden'); return; }
+    line.classList.remove('hidden');
+
+    if (conn === 'down') {
+      line.textContent = state.joinAsked
+        ? 'No connection. Your request is kept and will go out when the link is back.'
+        : 'No connection. Retrying…';
+    } else if (conn !== 'live') {
+      line.textContent = 'Connecting to the relay…';
+    } else if (state.joinAsked) {
+      line.textContent = 'Request sent. Waiting for the phone with the pin…';
+    } else {
+      line.textContent = 'Connected. Press Join the convoy to ask to be let in.';
+    }
   }
 
   /* GitHub Pages serves its files with a ten-minute cache, so a phone can sit on old code
@@ -1257,7 +1293,7 @@
   function connect() {
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
     state.relay = b.name;
-    setConn('', connLabel('connecting'));
+    setConn('waiting', connLabel('connecting'));
     let settled = false;
     let counted = false;
     const fail = () => { if (counted) return; counted = true; noteRelayFailure(); };
@@ -1267,7 +1303,7 @@
     // blocked network. Say so instead.
     if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
       fail();
-      setConn('', 'no library');
+      setConn('down', 'no library');
       return;
     }
 
@@ -1307,7 +1343,7 @@
     client.on('message', onMessage);
     client.on('error', () => { if (!settled) { fail(); retry(); } });
     client.on('close', () => {
-      setConn('', 'offline');
+      setConn('down', 'offline');
       if (!settled) { fail(); retry(); return; }
       // A connection that lasted a while ended normally; one that dies straight after
       // connecting is a flap, and two of those in a row mean this relay is not the one.
@@ -1325,7 +1361,7 @@
 
   function retry() {
     brokerIdx++;
-    setConn('', connLabel('trying…'));
+    setConn('waiting', connLabel('trying…'));
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => { if (state.joined) connect(); }, CFG.retryMs);
   }
@@ -1495,9 +1531,9 @@
     const editing = !!(el && el.classList && el.classList.contains('myname'));
     if (!editing) {
       if (!inRoom) {
-        ul.innerHTML = '<li class="empty">' + (state.me && state.removed.has(state.me.id)
-          ? 'Press Join to ask to be let back in.'
-          : 'Waiting for someone to let you in…') + '</li>';
+        ul.innerHTML = '<li class="empty">' +
+          (state.joinAsked ? 'The phone with the pin has been asked.'
+            : 'Nobody outside can see the map until they let you in.') + '</li>';
       } else {
         ul.innerHTML = rows.length ? rows.join('')
           : '<li class="empty">Waiting for others to join…</li>';
@@ -1642,6 +1678,7 @@
   // The one switch in the sheet. Internally this is still "paused"; on screen it says what
   // it actually does, which is take you off the map.
   function renderControls() {
+    renderWaiting();
     // Not in the room yet: one Join button and nothing else to press.
     const inRoom = !!(state.me && state.allowed.has(state.me.id));
     const join = $('btnJoin');
@@ -2307,6 +2344,7 @@
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
+                  renderWaiting,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,

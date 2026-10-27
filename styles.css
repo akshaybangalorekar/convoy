@@ -89,6 +89,54 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 }
 .conn.live { color: var(--accent); }
 
+/* While you are outside the room the connection state is the most important thing on
+   screen, so it stops being a quiet word and becomes a pill with a coloured dot. */
+.conn { display: inline-flex; align-items: center; gap: 6px; }
+.conn::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; flex: 0 0 auto;
+}
+.conn.waiting::before { background: var(--orange); animation: pulse 1.1s ease-in-out infinite; }
+.conn.down::before { background: var(--danger); }
+.conn.live::before { background: #30d158; }
+
+#sheet.outside .conn {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 6px 11px 6px 9px; border-radius: 980px;
+  background: var(--btn-bg); color: var(--orange); max-width: none;
+}
+#sheet.outside .conn.live { color: #30d158; }
+#sheet.outside .conn.down { color: var(--danger); }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+.wait-line {
+  margin: 2px 14px 10px; font-size: 13px; line-height: 1.45; color: var(--muted);
+}
+
+/* A bar that sweeps while something is genuinely in progress — no spinner, and it stops
+   the moment there is nothing left to wait for. */
+.wait-bar {
+  height: 3px; border-radius: 2px; overflow: hidden;
+  background: rgba(120, 120, 128, 0.22);
+  margin: 2px 12px 4px; flex: 0 0 auto;
+}
+.wait-bar i {
+  display: block; height: 100%; width: 45%;
+  background: var(--orange); border-radius: 2px;
+  animation: sweep 1.4s ease-in-out infinite alternate;
+}
+/* It bounces inside the track rather than running off the end, so there is always
+   something moving to look at. */
+@keyframes sweep {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(122%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wait-bar i { animation: none; width: 100%; opacity: 0.6; }
+  .conn.waiting::before { animation: none; }
+}
+
 /* The relay check */
 .conn-list { list-style: none; margin: 0 0 4px; padding: 0; }
 .conn-list li {
