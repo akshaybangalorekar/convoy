@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v50',             // must match VERSION in sw.js; a test holds them together
+    build: 'v51',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -94,6 +94,7 @@
     headingUp: true,      // turn the map so the way you are going is up
     relay: '',            // which relay we are on, shown in Help
     joinAsked: false,     // has this phone asked to be let in, and not withdrawn it
+                          // (kept in localStorage too, so a reload does not lose it)
     lastHeard: 0,         // when anything last arrived from anyone
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
@@ -712,6 +713,17 @@
      ask is withdrawn, or retired once it has been answered. */
   const askTopic = (id) => state.topic + '/ask/' + id;
 
+  const JOIN_KEY = 'convoy.joinAsked';
+  function saveJoinAsked(on) {
+    try {
+      if (on) localStorage.setItem(JOIN_KEY, '1');
+      else localStorage.removeItem(JOIN_KEY);
+    } catch (e) { /* ignore */ }
+  }
+  function loadJoinAsked() {
+    try { return localStorage.getItem(JOIN_KEY) === '1'; } catch (e) { return false; }
+  }
+
   function publishAsk() {
     if (!client || !client.connected || !state.me) return;
     try {
@@ -745,6 +757,7 @@
   function publishNow(force) {
     const me = state.me;
     if (!me) return;
+    if (state.joinAsked && !state.allowed.has(me.id)) publishAsk();
     if (state.paused) return;          // deliberately not sharing
     if (me.lat == null) {
       // Nothing to place on the map — but a phone whose location is switched off is still
@@ -882,6 +895,7 @@
     if (state.me && state.allowed.has(state.me.id)) {
       if (state.joinAsked) clearAsk();          // answered, so stop advertising it
       state.joinAsked = false;
+      saveJoinAsked(false);
     }
     renderPeople();
   }
@@ -939,6 +953,7 @@
     if (state.me && ids.indexOf(state.me.id) >= 0 && state.allowed.has(state.me.id)) {
       state.allowed.delete(state.me.id);
       state.joinAsked = false;
+      saveJoinAsked(false);
       clearAsk();
       saveRoom({ allowed: Array.from(state.allowed) });
     }
@@ -1879,6 +1894,8 @@
     // The phone holding the pin is in the room by definition; everyone else waits to be
     // let in by it.
     if (state.master) state.allowed.add(state.me.id);
+    // An ask that was still standing when the app was last closed is still standing.
+    state.joinAsked = loadJoinAsked() && !state.allowed.has(state.me.id);
     // A name the room was given last time, and nobody has arrived yet.
     state.arrived = false;
     if (rec && rec.members) {
@@ -2104,7 +2121,8 @@
 
     $('btnJoin').addEventListener('click', () => {
       state.joinAsked = !state.joinAsked;
-      if (state.joinAsked) { publishAsk(); sendState(); }   // retained, and on the bus
+      saveJoinAsked(state.joinAsked);
+      if (state.joinAsked) sendState();             // retained, and on the bus
       else { clearAsk(); send({ t: 'hello' }); }            // withdrawn
       renderControls();
     });
@@ -2263,7 +2281,7 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
-                  huntForTheGroup, publishAsk, clearAsk, askTopic,
+                  huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,

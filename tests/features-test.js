@@ -649,9 +649,12 @@ async function testARequestOutlivesTheSender() {
   d.getElementById('btnJoin').click();
   await sleep(20);
   const ask = client().publishes.filter((p) => /\/ask\//.test(p.topic) && p.opts.retain);
-  check('asking publishes a retained message on its own topic', ask.length === 1,
+  check('asking publishes a retained message on its own topic', ask.length >= 1,
         JSON.stringify(client().publishes.map((p) => p.topic)));
-  check('naming who is asking', ask.length && /Priya|Phone/.test(ask[0].msg), ask[0] && ask[0].msg);
+  check('naming who is asking', ask.length > 0 && /Priya|Phone/.test(ask[0].msg),
+        ask[0] && ask[0].msg);
+  check('and it is held by the broker, not just shouted once',
+        ask.every((p) => p.opts.retain === true));
 
   d.getElementById('btnJoin').click();
   await sleep(20);
@@ -659,6 +662,35 @@ async function testARequestOutlivesTheSender() {
     (p) => /\/ask\//.test(p.topic) && p.opts.retain && p.msg === '');
   check('cancelling clears it from the broker, so it cannot come back later',
         cleared.length === 1, String(cleared.length));
+}
+
+async function testAnAskMadeWhileTheLinkIsDownIsNotLost() {
+  // Tapping Join before the relay is up must not drop the request: the ask is a piece of
+  // state on the phone, re-published on every tick and every connect until it is answered.
+  const api = boot({ outside: true });
+  await sleep(20);
+  const d = api.document;
+  const I = api.window.Convoy._internals;
+  const client = () => api.clients[api.clients.length - 1];
+
+  client().connected = false;                     // the link is not up yet
+  d.getElementById('btnJoin').click();
+  await sleep(20);
+  check('the phone remembers that it asked', api.window.Convoy.state.joinAsked === true);
+  check('and that is written down, so a reload does not lose it',
+        api.window.localStorage.getItem('convoy.joinAsked') === '1');
+  check('nothing was published while the link was down',
+        client().publishes.filter((p) => /\/ask\//.test(p.topic)).length === 0);
+
+  const before = client().publishes.filter((p) => /\/ask\//.test(p.topic)).length;
+  client().connected = true;
+  I.publishNow();                                 // what the next tick does
+  await sleep(20);
+  const after = client().publishes.filter((p) => /\/ask\//.test(p.topic));
+  check('and it goes out as soon as the link is live', after.length > before,
+        before + ' -> ' + after.length);
+  check('still retained, so it is held for the pin phone',
+        after.every((p) => p.opts.retain === true));
 }
 
 async function testAPinPhoneIsToldOfARequestLeftWhileItWasAway() {
@@ -930,6 +962,7 @@ async function testBehindAndAhead() {
     await testAStrangerIsInvisibleWithoutThePin();
     await testTheAskGoesOutEvenWithAStaleAllowedList();
     await testARequestOutlivesTheSender();
+    await testAnAskMadeWhileTheLinkIsDownIsNotLost();
     await testAPinPhoneIsToldOfARequestLeftWhileItWasAway();
     await testAMessageWithoutTheFlagStillCountsAsAsking();
     await testTheMasterIsAskedByName();

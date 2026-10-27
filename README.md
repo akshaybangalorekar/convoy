@@ -226,6 +226,12 @@ pin phone that opens an hour later still sees it, as long as it is under half an
 Withdrawing, being let in, or being removed publishes an empty retained message to clear it,
 so nothing accumulates on the broker.
 
+**An ask made while the link is down is not lost either.** The ask is a piece of state on the
+phone, not a single shout: it is written to storage, re-published on every tick and on every
+reconnect until it is answered or withdrawn. So pressing Join while the relay is still
+connecting, or closing the app and opening it again, both still result in the request going
+out — the only thing that ends it is being let in or cancelling.
+
 **A phone waiting to be let in hunts for the group.** If it is asking, connected, and hears
 nothing from anybody for twenty seconds, it moves to the next relay and asks again — the group
 can only be on one of them, and sitting on the wrong one is invisible. There are only a few
@@ -459,7 +465,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 731 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 737 checks:
 
 ```bash
 npm install
