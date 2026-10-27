@@ -250,6 +250,23 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 }
 
 /* ---------- A connection that keeps dropping ---------- */
+async function testAWaitingPhoneLooksForTheGroupOnOtherRelays() {
+  // Waiting to be let in and hearing nothing usually means the group is on another relay,
+  // and there is no way to tell from the app. Walk the list rather than sit there.
+  const api = boot({ outside: true });
+  await sleep(20);
+  const I = api.window.Convoy._internals;
+  const before = api.clients.length;
+  const relayBefore = api.window.Convoy.state.relay;
+
+  api.window.Convoy.state.joinAsked = true;
+  api.window.Convoy.state.lastHeard = Date.now() - 60000;   // a minute of silence
+  I.huntForTheGroup();
+  await sleep(30);
+  check('it moves to another relay', api.window.Convoy.state.relay !== relayBefore ||
+        api.clients.length > before, relayBefore + ' -> ' + api.window.Convoy.state.relay);
+}
+
 async function testTheClientIdIsUniquePerAttempt() {
   const api = boot();
   api.window.Convoy.CFG.retryMs = 10;
@@ -500,6 +517,7 @@ async function testNewestDestinationWins() {
     await testAMissingLibraryIsNotABlockedNetwork();
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
+    await testAWaitingPhoneLooksForTheGroupOnOtherRelays();
     await testTheClientIdIsUniquePerAttempt();
     await testAFlappingRelayIsAbandoned();
     await testARelayThatHeldIsKept();

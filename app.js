@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v48',             // must match VERSION in sw.js; a test holds them together
+    build: 'v49',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -93,6 +93,7 @@
     headingUp: true,      // turn the map so the way you are going is up
     relay: '',            // which relay we are on, shown in Help
     joinAsked: false,     // has this phone asked to be let in, and not withdrawn it
+    lastHeard: 0,         // when anything last arrived from anyone
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
     allowed: new Set(),   // ids the master has let in; nobody else is in the room
@@ -709,9 +710,11 @@
   function send(obj) {
     if (!client || !client.connected || !state.topic) return;
     const body = Object.assign({ id: state.me.id, name: state.me.name, ts: Date.now() }, obj);
-    // Outside the room, every message says whether we are asking to be let in. That is
-    // what makes "cancel request" mean something: stop saying yes.
-    if (state.me && !state.allowed.has(state.me.id)) body.ask = !!state.joinAsked;
+    // Every message says whether we are asking to be let in. This deliberately does not
+    // consult the allowed list: a phone whose list still contained its own id — after being
+    // removed, say — used to send no ask at all, and the pin phone never knew there was a
+    // request to show.
+    body.ask = !!state.joinAsked;
     try { client.publish(state.topic, JSON.stringify(body)); } catch (e) { /* ignore */ }
     state.lastPublish = Date.now();
   }
@@ -789,6 +792,7 @@
     let msg;
     try { msg = JSON.parse(payload.toString()); } catch (e) { return; }
     if (!msg || !msg.id || (state.me && msg.id === state.me.id)) return;
+    state.lastHeard = Date.now();
 
     // Who is in the room is decided by the phone with the pin, so the two messages that
     // carry that decision are honoured from anyone — they are how a newcomer learns it has
@@ -854,7 +858,7 @@
   // Someone is asking. Only a master ever gets this far.
   function askedToJoin(msg) {
     if (!state.me) return;
-    if (!msg.ask) {
+    if (msg.ask === false) {
       // They withdrew. Stop showing them as a request rather than leaving a stale row.
       if (state.pending.delete(msg.id)) renderPeople();
       return;
@@ -1715,6 +1719,22 @@
   // Watch for people slipping out of contact, and for them coming back. This is the
   // backstop for a force-kill: the app is gone, so nothing was sent, and all the group
   // can honestly say is that the messages stopped.
+  /* Waiting to be let in, connected, and nothing heard from anybody: most likely the group
+     is on a different relay. Walk the list rather than sit there — there are only a few. */
+  let lastHop = 0;
+  function huntForTheGroup() {
+    if (!state.me || state.allowed.has(state.me.id)) return;
+    if (!state.joinAsked) return;                 // not asking, so nothing to wait for
+    if (!client || !client.connected) return;
+    const quiet = Date.now() - (state.lastHeard || 0);
+    if (quiet < 20000 || Date.now() - lastHop < 20000) return;
+    lastHop = Date.now();
+    brokerIdx++;                                  // the next relay in the list
+    try { client.end(true); } catch (e) { /* ignore */ }
+    client = null;
+    connect();
+  }
+
   function sweepPresence() {
     let changed = false;
     state.peers.forEach((p) => {
@@ -1752,6 +1772,7 @@
       state.peers.forEach((p, id) => {
         if (Date.now() - p.ts > roomLifeMs()) { removePeer(id); state.seen.delete(id); }
       });
+      huntForTheGroup();
       sweepPresence();
       checkArrivals();
       renderPeople();
@@ -2055,6 +2076,14 @@
     let connHold = null;
     const openHelp = () => {
       $('settingsVersion').textContent = 'Version ' + CFG.build;
+      const note = $('notifyNote');
+      if (note) {
+        const perm = (typeof Notification === 'function') ? Notification.permission : 'unsupported';
+        note.textContent = perm === 'granted' ? 'Notifications on'
+          : perm === 'denied' ? 'Notifications blocked in this browser'
+          : perm === 'default' ? 'Notifications not allowed yet'
+          : 'Notifications not available here';
+      }
       $('inPin').value = '';
       $('pinNote').classList.add('hidden');
       $('settingsCard').classList.remove('hidden');
@@ -2198,6 +2227,7 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf, extractRoomCode,
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
+                  huntForTheGroup,
                   TILES, tileLayer: () => tiles,
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,

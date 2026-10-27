@@ -619,6 +619,35 @@ async function testAStrangerIsInvisibleWithoutThePin() {
         String(api.window.Convoy.state.pending.size));
 }
 
+async function testTheAskGoesOutEvenWithAStaleAllowedList() {
+  // The phone was removed but its own list still had it. It used to send no ask at all, so
+  // the pin phone never knew there was a request to show.
+  const api = boot();
+  await sleep(20);
+  const me = api.window.Convoy.state.me.id;
+  api.window.Convoy.state.allowed.add(me);        // stale: it still thinks it is in
+  api.window.Convoy.state.joinAsked = true;       // and it is asking
+  api.window.Convoy._internals.sendState();
+  await sleep(20);
+  const hello = api.sent('hello') || {};
+  check('the ask is still on the message', hello.ask === true, JSON.stringify(hello.ask));
+}
+
+async function testAMessageWithoutTheFlagStillCountsAsAsking() {
+  // Older builds send no ask field. Treating silence as "not asking" would mean their
+  // requests never appeared.
+  const api = boot();
+  const d = api.document;
+  await sleep(20);
+  await unlock(api);
+  api.recv({ t: 'hello', id: 'old', name: 'Priya' }, { asStranger: true });
+  await sleep(20);
+  check('a request with no ask field is still a request',
+        api.window.Convoy.state.pending.has('old'), text(api, 'people'));
+  check('with a button to let them in',
+        /data-yes="old"/.test(d.getElementById('people').innerHTML));
+}
+
 async function testTheMasterIsAskedByName() {
   const api = boot();
   const d = api.document;
@@ -855,6 +884,8 @@ async function testBehindAndAhead() {
     await testBeingRemovedReachesThatPhone();
     await testTheRemovalIsAnnouncedAgainAfterAReconnect();
     await testAStrangerIsInvisibleWithoutThePin();
+    await testTheAskGoesOutEvenWithAStaleAllowedList();
+    await testAMessageWithoutTheFlagStillCountsAsAsking();
     await testTheMasterIsAskedByName();
     await testTurningSomeoneAway();
     await testTheListIsAnnouncedAgainWhenSomeoneArrives();

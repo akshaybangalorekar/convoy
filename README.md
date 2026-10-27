@@ -218,7 +218,12 @@ Everyone already in the room can still be removed by the master:
   was briefly offline when they removed someone had nothing to send it with, and the push on
   reconnecting never carried it, so the removed phone never heard. That is why a removal
   could look like it had not happened.
-  **Help shows which relay you are on.** Two phones on different relays can never see each
+  **A phone waiting to be let in hunts for the group.** If it is asking, connected, and hears
+nothing from anybody for twenty seconds, it moves to the next relay and asks again — the group
+can only be on one of them, and sitting on the wrong one is invisible. There are only a few
+relays, so it walks the list.
+
+**Help shows which relay you are on, and whether notifications are allowed.** Two phones on different relays can never see each
   other, and there is no way to tell from the map — so if someone is "lost network" while
   you are plainly online, compare that line on both phones.
   There is no other difference between a master phone and any other.
@@ -446,7 +451,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 719 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 723 checks:
 
 ```bash
 npm install
