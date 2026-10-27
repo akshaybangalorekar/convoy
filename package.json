@@ -1,6 +1,6 @@
 {
   "name": "convoy",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "private": true,
   "description": "Everyone on one map: invite by link, anyone can set the destination, and each person's arrival time is shown. A notification when the destination changes, or someone joins, leaves or drops out of contact. Rooms stay open for a week and nobody is ever dropped from one. Arrival alerts, a pause-sharing switch, battery saver, room names and a long press to set the destination. No backend, no account.",
   "scripts": {

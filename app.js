@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v66',             // must match VERSION in sw.js; a test holds them together
+    build: 'v67',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -61,6 +61,7 @@
     bgMs: 300000,
     bgForMs: 14400000,
     bgStaleMs: 390000,       // a backgrounded phone may be this quiet before it counts as lost
+    liveFlashMs: 2000,       // the green bar shows this long once connected, then goes
     fallbackCenter: { lat: -33.8688, lng: 151.2093 },  // Sydney, until GPS arrives
     fallbackZoom: 11,
     // One tap zooms out, two zoom in. The wait is how long a single tap is held back to
@@ -99,6 +100,8 @@
                           // (kept in localStorage too, so a reload does not lose it)
     lastHeard: 0,         // when anything last arrived from anyone
     lastActive: 0,        // when you were last actually on the app
+    liveAt: 0,            // when the connection last came up, for the green flash
+    connWas: '',          // so a transition can be noticed
     bgUntil: 0,           // keep reporting in the background until this moment
     master: false,        // this phone has the pin, so it can add and remove people
     removed: new Set(),   // ids the master has taken off the group
@@ -1299,6 +1302,8 @@
   /* The same line and the same bar whether you are in or not: a lost connection matters just
      as much once you are in, and it should not be something you have to work out. There is
      nothing here that treats the phone with the pin differently from any other. */
+  let renderWaitTimer = null;
+
   function renderWaiting() {
     const bar = $('waitBar');
     const line = $('waitLine');
@@ -1324,11 +1329,28 @@
       text = 'Press Join the convoy to ask to be let in.';
     }
 
-    // The bar moves only while something is actually being waited for.
-    const busy = conn !== 'live' || asking;
-    bar.classList.toggle('hidden', !busy);
+    /* The strip across the top: amber and moving while it is connecting, red and still
+       when the link is gone, green and still for two seconds when it comes up — then out
+       of the way, because a working connection is not news. */
+    if (conn !== state.connWas) {
+      if (conn === 'live') state.liveAt = Date.now();
+      state.connWas = conn;
+    }
+    const justUp = conn === 'live' && Date.now() - (state.liveAt || 0) < CFG.liveFlashMs;
+    const showBar = conn === 'down' || conn !== 'live' || justUp || asking;
+    bar.classList.toggle('hidden', !showBar);
+    bar.classList.toggle('up', conn === 'live');
+    bar.classList.toggle('down', conn === 'down');
+
     line.textContent = text;
     line.classList.toggle('hidden', !text);
+
+    // Come back in two seconds to put the green away, rather than waiting for a tick.
+    if (justUp) {
+      if (renderWaitTimer) clearTimeout(renderWaitTimer);
+      renderWaitTimer = setTimeout(() => { renderWaitTimer = null; renderWaiting(); },
+        CFG.liveFlashMs);
+    }
   }
 
   /* GitHub Pages serves its files with a ten-minute cache, so a phone can sit on old code

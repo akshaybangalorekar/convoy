@@ -519,6 +519,8 @@ async function testAPhoneOutsideTheRoomWaits() {
         bar() && /No connection/.test(line()), line());
 
   api.window.Convoy.state.conn = 'live';
+  api.window.Convoy.state.liveAt = Date.now() - 5000;
+  api.window.Convoy.state.connWas = 'live';
   I2.renderWaiting();
   check('once connected and not yet asked, nothing is in progress',
         !bar() && /Press Join/.test(line()), line());
@@ -542,21 +544,32 @@ async function testTheSameLineShowsAfterYouAreIn() {
   await sleep(20);
   const d = api.document;
   const I = api.window.Convoy._internals;
-  const bar = () => !d.getElementById('waitBar').classList.contains('hidden');
+  const barEl = d.getElementById('waitBar');
+  const bar = () => !barEl.classList.contains('hidden');
   const line = () => text(api, 'waitLine');
   const shown = () => !d.getElementById('waitLine').classList.contains('hidden');
+  // Once the link is up the strip shows green for two seconds and then goes; skip past it.
+  const pastFlash = () => {
+    api.window.Convoy.state.liveAt = Date.now() - 5000;
+    api.window.Convoy.state.connWas = 'live';
+  };
 
   check('this phone is in', api.window.Convoy.state.allowed.has(
     api.window.Convoy.state.me.id));
 
   api.window.Convoy.state.conn = 'live';
   I.renderWaiting();
-  check('in and connected, there is nothing to say', !bar() && !shown(), line());
+  check('coming up, the strip turns green', bar() && barEl.classList.contains('up'),
+        barEl.className);
+  pastFlash();
+  I.renderWaiting();
+  check('and then it goes away, because a working connection is not news',
+        !bar() && !shown(), barEl.className);
 
   api.window.Convoy.state.conn = 'down';
   I.renderWaiting();
   check('losing the connection while in says so', shown() && /No connection/.test(line()), line());
-  check('and the bar sweeps again', bar());
+  check('and the strip goes red', bar() && barEl.classList.contains('down'), barEl.className);
   check('and it is about sharing, not about being let in',
         /Nobody can see where you are/.test(line()), line());
 
@@ -566,7 +579,11 @@ async function testTheSameLineShowsAfterYouAreIn() {
 
   api.window.Convoy.state.conn = 'live';
   I.renderWaiting();
-  check('and it all goes away once the link is back', !bar() && !shown(), line());
+  check('the strip turns green when the link is back',
+        bar() && barEl.classList.contains('up'), barEl.className);
+  pastFlash();
+  I.renderWaiting();
+  check('and then it all goes away', !bar() && !shown(), line());
 }
 
 async function testOneButtonUntilYouAreIn() {

@@ -111,24 +111,31 @@ button, .chip { -webkit-user-select: none; user-select: none; -webkit-touch-call
 
 /* A bar that sweeps while something is genuinely in progress — no spinner, and it stops
    the moment there is nothing left to wait for. */
+/* A thin strip right across the top of the sheet, not a block: it is a status light, not
+   something to read. Amber and moving while it is connecting, green and still when it is
+   up, red and still when it is not. */
 .wait-bar {
-  height: 3px; border-radius: 2px; overflow: hidden;
-  background: rgba(120, 120, 128, 0.22);
-  margin: 2px 12px 4px; flex: 0 0 auto;
+  height: 2px; overflow: hidden; flex: 0 0 auto;
+  background: rgba(120, 120, 128, 0.18);
+  margin: 0;
 }
 .wait-bar i {
-  display: block; height: 100%; width: 45%;
-  background: var(--orange); border-radius: 2px;
-  animation: sweep 1.4s ease-in-out infinite alternate;
+  display: block; height: 100%; width: 55%;
+  background: var(--orange);
+  animation: sweep 1s ease-in-out infinite alternate;
 }
+/* Up: green all the way across, and then it goes away. */
+.wait-bar.up i { background: #30d158; width: 100%; animation: none; }
+/* Down: red all the way across, and it stays while it is down. */
+.wait-bar.down i { background: var(--danger); width: 100%; animation: none; }
 /* It bounces inside the track rather than running off the end, so there is always
    something moving to look at. */
 @keyframes sweep {
   0% { transform: translateX(0); }
-  100% { transform: translateX(122%); }
+  100% { transform: translateX(82%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .wait-bar i { animation: none; width: 100%; opacity: 0.6; }
+  .wait-bar i { animation: none; width: 100%; opacity: 0.7; }
   .conn.waiting::before { animation: none; }
 }
 

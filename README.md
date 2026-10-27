@@ -200,6 +200,11 @@ Nobody is in until the phone with the pin lets them in.
   being waited for, so it never means nothing. **This is the same after you are in as before**,
   and the same on the phone with the pin as on any other: losing the connection matters just
   as much once you are in, and it should not be something anyone has to work out.
+- **The strip across the top of the sheet is a status light, not something to read.** Two
+  pixels high and the full width: amber and moving while it is connecting, **green and still
+  for two seconds when the link comes up, then gone**, and **red and still while the link is
+  down**. It was a 3px block with side margins and a slow sweep, which on a phone read as a
+  line that was not doing anything.
 - **While you are not in there is one button, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
@@ -587,7 +592,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 948 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 950 checks:
 
 ```bash
 npm install
