@@ -149,6 +149,63 @@ async function testTheForegroundDoesNotUseTheSlowBeat() {
   check('7d and coming back stops it', I.bgRunning() === false);
 }
 
+/* ---------- 7b. the cheap location, scenario by scenario ---------- */
+async function testWhatTheCheapLocationDoes() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(30);
+  const st = api.window.Convoy.state;
+  const I = api.window.Convoy._internals;
+  const CFG = api.window.Convoy.CFG;
+  const lastWatch = () => api.geo.watches[api.geo.watches.length - 1];
+
+  api.window.Convoy.setDest(-33.89, 151.27, 'Bondi Beach');
+  await sleep(30);
+
+  // --- on screen: precise, and a wild fix is refused ---
+  api.fix(-33.8601, 151.2001, { accuracy: 1200 });
+  await sleep(30);
+  check('on screen, a fix 1.2 km out is refused', st.me.lat === -33.86, String(st.me.lat));
+  check('so the last good position stands', Math.abs(st.me.acc - 8) < 1, String(st.me.acc));
+
+  // --- put away: cheap location ---
+  I.goAway();
+  await sleep(30);
+  check('in the background it asks for the cheap kind',
+        lastWatch().opts.enableHighAccuracy === false, JSON.stringify(lastWatch().opts));
+  check('and accepts a fix up to thirty seconds old, so the radio stays idle',
+        lastWatch().opts.maximumAge >= 30000, String(lastWatch().opts.maximumAge));
+
+  // --- a coarse fix is taken rather than thrown away ---
+  api.fix(-33.8650, 151.2100, { accuracy: 1200 });
+  await sleep(30);
+  check('a fix 1.2 km out is accepted in the background', st.me.lat === -33.8650,
+        String(st.me.lat));
+  check('so the car is not frozen at the last precise position',
+        Math.abs(st.me.acc - 1200) < 1, String(st.me.acc));
+
+  // --- but not an absurd one ---
+  api.fix(-33.90, 151.30, { accuracy: 9000 });
+  await sleep(30);
+  check('a fix 9 km out is still refused', st.me.lat === -33.8650, String(st.me.lat));
+  check('the limits differ by mode', CFG.accLimit < CFG.accLimitBg,
+        CFG.accLimit + ' / ' + CFG.accLimitBg);
+
+  // --- back on screen: precise again, and coarse fixes refused once more ---
+  // The real way back: the page becoming visible again, not a direct call.
+  api.document.dispatchEvent(new api.window.Event('visibilitychange'));
+  await sleep(40);
+  check('back on screen it asks for high accuracy again',
+        lastWatch().opts.enableHighAccuracy === true, JSON.stringify(lastWatch().opts));
+  api.fix(-33.8602, 151.2002, { accuracy: 1200 });
+  await sleep(30);
+  check('and refuses a coarse fix again', st.me.lat === -33.8650, String(st.me.lat));
+  api.fix(-33.8602, 151.2002, { accuracy: 8 });
+  await sleep(30);
+  check('while taking a good one', st.me.lat === -33.8602, String(st.me.lat));
+}
+
 /* ---------- 8. what the others see ---------- */
 async function testWhatTheOthersSee() {
   const api = boot();
@@ -222,6 +279,7 @@ async function testABackgroundReportFromSomeoneRemoved() {
     await testChangingTheDestinationKeepsItOn();
     await testSomeoneElseSettingItResumesTheHeartbeat();
     await testTheForegroundDoesNotUseTheSlowBeat();
+    await testWhatTheCheapLocationDoes();
     await testWhatTheOthersSee();
     await testABackgroundReportFromSomeoneRemoved();
   } catch (e) { crash(e); }

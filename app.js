@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v70',             // must match VERSION in sw.js; a test holds them together
+    build: 'v71',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -54,6 +54,11 @@
     arrivedM: 50,             // within this much of the destination counts as arrived
     behindM: 200,             // this much further from it counts as "behind you"
     minMoveM: 12,
+    // How coarse a fix is still worth taking. On screen a wild fix is worse than none;
+    // in the background the cheap kind is routinely hundreds of metres out, and refusing
+    // it would freeze the position at the last precise one.
+    accLimit: 200,
+    accLimitBg: 3000,
     askFreshMs: 1800000,     // a retained request older than half an hour is stale
     lostNoticeMs: 1800000,   // say "out of contact" about a person at most this often
     // In the background a phone keeps reporting, so the group still knows roughly where
@@ -1540,7 +1545,8 @@
     const me = state.me;
     if (!me) return;
     const c = pos.coords;
-    if (me.lat != null && c.accuracy > 200) return;    // ignore a wild fix
+    const limit = wantPrecise ? CFG.accLimit : CFG.accLimitBg;
+    if (me.lat != null && c.accuracy > limit) return;   // a wild fix is worse than none
     me.lat = c.latitude; me.lng = c.longitude;
     me.acc = c.accuracy;
     me.spd = c.speed == null ? null : c.speed;

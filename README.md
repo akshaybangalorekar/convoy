@@ -364,6 +364,27 @@ go above it at the same time, or everyone looks out of contact half the time.
 `enableHighAccuracy: false` and a 30-second maximum age once the app is put away, back to high
 accuracy when it returns. A five-minute beat does not need metre precision.
 
+What that means in practice, because it is not free:
+
+- **Moving in a car, phone put away.** Fixes come from the cell towers and Wi-Fi around you
+  rather than the GPS chip. They arrive every minute or so and can be several hundred metres
+  out, so on a five-minute beat the car appears to step between coarse points. Right for
+  "roughly where everyone is"; not right for turn-by-turn.
+- **Parked.** The 30-second maximum age means an existing fix is reused and the radio stays
+  mostly idle, which is where the saving comes from.
+- **In a tunnel or indoors.** Cell positioning can fail entirely. No new fix arrives, the
+  heartbeat keeps sending the last one, and the row says **"no new position"** rather than
+  pretending it is current.
+- **Back on screen.** High accuracy again, and a fresh fix within seconds; the map sharpens.
+- **Suspended by the OS**, which is what iOS does. Nothing is sent at all and the phone falls
+  to "Shut down app". The heartbeat is best effort.
+
+And a fix that had to change with it: **a fix coarser than 200 m used to be thrown away
+outright.** With the cheap kind that is most fixes, so the position would have frozen at the
+last precise one and the heartbeat would have broadcast a stale spot for four hours. The limit
+is now 200 m on screen and 3 km in the background — coarse enough to be useful, tight enough
+to refuse nonsense.
+
 ## In the background it keeps reporting, on a slower beat
 
 Put the app away and it stops the 30-second position update and sends one every **five
@@ -642,7 +663,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 962 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 973 checks:
 
 ```bash
 npm install

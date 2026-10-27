@@ -114,10 +114,12 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
   background: rgba(120, 120, 128, 0.18);
   margin: 0;
 }
+/* A short segment travelling the whole width, so the movement is unmistakable on a
+   phone. A long segment moving a little reads as a line that is not doing anything. */
 .wait-bar i {
-  display: block; height: 100%; width: 55%;
+  display: block; height: 100%; width: 30%;
   background: var(--orange);
-  animation: sweep 1s ease-in-out infinite alternate;
+  animation: sweep 1.2s ease-in-out infinite alternate;
 }
 /* Up: green all the way across, and then it goes away. */
 .wait-bar.up i { background: #30d158; width: 100%; animation: none; }
@@ -127,11 +129,14 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
    something moving to look at. */
 @keyframes sweep {
   0% { transform: translateX(0); }
-  100% { transform: translateX(82%); }
+  100% { transform: translateX(233%); }   /* 30% wide, so this is flush left to flush right */
 }
+/* With reduce-motion on, a full-width static bar was what this used to become — which is
+   exactly a line that looks broken. A fade is not motion, and still says "working". */
 @media (prefers-reduced-motion: reduce) {
-  .wait-bar i { animation: none; width: 100%; opacity: 0.7; }
+  .wait-bar i { width: 100%; animation: breathe 1.6s ease-in-out infinite; }
   .conn.waiting::before { animation: none; }
+  @keyframes breathe { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 }
 
 /* The relay check */
