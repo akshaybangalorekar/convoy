@@ -538,7 +538,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 780 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 840 checks:
 
 ```bash
 npm install
@@ -554,6 +554,11 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
+- `tests/scenario-test.js` — two and three phones on one broker, going through the sequences
+  that actually happen: join, let in, remove, ask again, let back in; turned away then asking
+  again; asking, cancelling, asking again; two people at once; two pin phones; removed on one
+  pin phone and seen from the other; asking while the pin phone is offline; and being removed
+  while away. 61 checks.
 - `tests/roster-test.js` — the roster and the one rule: that it is kept on the phone, that a
   week after their last sign of life someone is dropped from both the list and the roster,
   that a phone quiet for an hour is still on it, that closing the app is not leaving, and that

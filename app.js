@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v61',             // must match VERSION in sw.js; a test holds them together
+    build: 'v62',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -962,9 +962,22 @@
        broadcasting itself as removed, and the pin phone — which is sent both lists — put it
        straight back, undoing a let-in before it could take effect. */
     setRemoved(all.filter((id) => id !== mine));
-    all.forEach((id) => { if (state.peers.has(id)) removePeer(id); });
+    /* A removal is authoritative: whoever it happened to comes off the allowed list here
+       too. Without this, a pin phone that did not do the removing kept a stale entry, so
+       when that person asked again it looked like a message from someone already in — the
+       request was swallowed and no notification ever appeared. */
+    let allowedChanged = false;
+    all.forEach((id) => {
+      if (state.allowed.delete(id)) allowedChanged = true;
+      if (state.peers.has(id)) removePeer(id);
+    });
+    if (allowedChanged) saveRecord({ allowed: Array.from(state.allowed) });
 
-    if (mine && all.indexOf(mine) >= 0 && state.allowed.has(mine)) {
+    /* Being turned away has to reach the phone it happened to, whether or not it was in.
+       It used to be handled only when it had been in the group, so a phone that was merely
+       asking kept its "Cancel request" button: the next press cancelled instead of asking
+       again, and the request never arrived. */
+    if (mine && all.indexOf(mine) >= 0) {
       state.allowed.delete(mine);
       state.joinAsked = false;
       saveJoinAsked(false);
