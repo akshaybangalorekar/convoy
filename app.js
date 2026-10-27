@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v60',             // must match VERSION in sw.js; a test holds them together
+    build: 'v61',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1279,16 +1279,16 @@
     let text = '';
     if (conn === 'down') {
       text = asking
-        ? 'No connection. Your request is kept and will go out when the link is back.'
+        ? 'No connection. Your request is kept.'
         : inConvoy
-          ? 'No connection. Nobody can see where you are until it is back.'
+          ? 'No connection. Nobody can see where you are.'
           : 'No connection. Retrying…';
     } else if (conn !== 'live') {
       text = 'Connecting to the relay…';
     } else if (asking) {
-      text = 'Request sent. Waiting for the phone with the pin…';
+      text = 'Request sent. Waiting for the pin phone…';
     } else if (!inConvoy) {
-      text = 'Connected. Press Join the convoy to ask to be let in.';
+      text = 'Press Join the convoy to ask to be let in.';
     }
 
     // The bar moves only while something is actually being waited for.

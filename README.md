@@ -180,6 +180,9 @@ Nobody is in until the phone with the pin lets them in.
 
 - **Opening the app puts you outside**, not in: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
+- **The status line under it is one small row, never two.** It is 11.5px, does not wrap, and
+  each message is short enough to fit on one line at that size — measured, not guessed. It was
+  a full-width two-line block, which ate the space the list needs on a phone.
 - **The connection state is a pill, in or out, and it behaves the same either way.** It
   becomes a dark pill with a coloured dot — amber and pulsing while connecting, red when
   there is no link, green once live — and a sweeping bar sits across the top of the sheet

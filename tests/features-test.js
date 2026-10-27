@@ -502,7 +502,7 @@ async function testAPhoneOutsideTheRoomWaits() {
         /Nobody outside can see the map/.test(d.getElementById('people').textContent),
         d.getElementById('people').textContent);
   check('and the waiting line says what is happening right now',
-        /Connecting|Connected|No connection|Retrying/.test(text(api, 'waitLine')),
+        /Connecting|No connection|Retrying|Press Join/.test(text(api, 'waitLine')),
         text(api, 'waitLine'));
   const bar = () => !api.document.getElementById('waitBar').classList.contains('hidden');
   const line = () => text(api, 'waitLine');
