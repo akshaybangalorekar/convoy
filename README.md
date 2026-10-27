@@ -357,6 +357,25 @@ says why, in the words people actually use:
 Someone brought back from the roster shows as **Lost network** until they send something.
 The app does not pretend they are live just because they were here yesterday.
 
+## A refresh, and closing the browser
+
+A force refresh keeps everything that matters, because it is all on the phone rather than in
+the page: the device id (so you are still you, still in the room), your name, whether this
+phone has the pin, who is in and who is out, the destination, your recent searches, and any
+join request still waiting. GPS and the relay come back on their own. The people list is
+emptied by the reload and refilled within a second — anyone not already known is answered at
+once when you say hello, rather than leaving you looking at an empty map until their next tick.
+
+Closing the browser window is simply the app being gone. No position, no messages, no
+notifications; everyone else sees **Lost network · a few minutes** after ninety seconds. The
+destination is untouched, because it lives on every phone, not on a server. Open the page again
+and you are back in the room under the same id, with your name and the pin still set.
+
+The one thing that does not survive is **iOS Safari deleting a website's storage after seven
+days without a visit** — Apple's rule for sites not added to the home screen, and it takes the
+device id with it. Come back after a week away and you are a new phone, so you will need
+letting in again. Added to the home screen, storage is kept.
+
 ## Nobody is dropped
 
 There is one room and no server holding it, so the app makes sure it never closes by
@@ -465,7 +484,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 737 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 740 checks:
 
 ```bash
 npm install

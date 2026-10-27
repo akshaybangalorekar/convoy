@@ -267,6 +267,29 @@ async function testAWaitingPhoneLooksForTheGroupOnOtherRelays() {
         api.clients.length > before, relayBefore + ' -> ' + api.window.Convoy.state.relay);
 }
 
+async function testAComingBackPhoneIsAnsweredAtOnce() {
+  // After a refresh a phone knows nobody. Waiting for everyone else's next tick would leave
+  // it looking at an empty map for up to half a minute.
+  const api = boot();
+  api.join('Akshay', 'goa-trip');
+  api.fix(-33.87, 151.21);
+  await sleep(20);
+  const before = api.sentAll('pos').length;
+
+  // It was let in before the refresh, so it is allowed — it is just someone we have not
+  // heard from since.
+  api.recv({ t: 'hello', id: 'returning', name: 'Priya' });
+  await sleep(20);
+  check('a phone that says hello is answered with where we are',
+        api.sentAll('pos').length > before, before + ' -> ' + api.sentAll('pos').length);
+
+  const after = api.sentAll('pos').length;
+  api.recv({ t: 'hello', id: 'returning', name: 'Priya' });
+  await sleep(20);
+  check('but not on every hello, or two phones would set each other off',
+        api.sentAll('pos').length === after, String(api.sentAll('pos').length - after));
+}
+
 async function testTheClientIdIsUniquePerAttempt() {
   const api = boot();
   api.window.Convoy.CFG.retryMs = 10;
@@ -518,6 +541,7 @@ async function testNewestDestinationWins() {
     await testSomeoneWithNoLocationStillAppears();
     await testAPhoneWithNoLocationStillSaysHello();
     await testAWaitingPhoneLooksForTheGroupOnOtherRelays();
+    await testAComingBackPhoneIsAnsweredAtOnce();
     await testTheClientIdIsUniquePerAttempt();
     await testAFlappingRelayIsAbandoned();
     await testARelayThatHeldIsKept();

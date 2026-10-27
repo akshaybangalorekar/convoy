@@ -46,7 +46,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v51',             // must match VERSION in sw.js; a test holds them together
+    build: 'v52',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -855,10 +855,11 @@
     // Any word at all from someone is proof they were still there just now — and for
     // anyone new, it is what puts them on the list. Leaving is the one exception: we do
     // not want to add someone just to remove them.
+    const knownBefore = state.peers.has(msg.id) || state.seen.has(msg.id);
     if (msg.t !== 'bye') ensurePeer(msg);
 
     switch (msg.t) {
-      case 'hello':      onHello(msg); return;
+      case 'hello':      onHello(msg, knownBefore); return;
       case 'bye':        onBye(msg); return;
       case 'dest':       onDest(msg); return;
       case 'dest-clear': onDestClear(msg); return;
@@ -975,9 +976,20 @@
     if (state.removed.size) send({ t: 'removed', ids: Array.from(state.removed) });
   }
 
-  function onHello(msg) {
+  /* Someone has just said hello: a phone opening, or one coming back from a refresh. If we
+     did not know them, answer at once — otherwise they sit looking at an empty map until
+     everybody else's next tick, which is up to half a minute. Once per person per twenty
+     seconds, so two phones meeting cannot set each other off. */
+  const helloReplied = new Map();
+
+  function onHello(msg, known) {
     announceJoin(msg.id, msg.name || 'Someone');
     announceAllowed();
+    if (known) return;
+    const last = helloReplied.get(msg.id) || 0;
+    if (Date.now() - last < 20000) return;
+    helloReplied.set(msg.id, Date.now());
+    publishNow(true);          // our position, or our hello if we have none
   }
 
   // "My app is going to the background." Sent on the way out, so the group can tell a
