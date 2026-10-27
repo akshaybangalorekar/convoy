@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v62',             // must match VERSION in sw.js; a test holds them together
+    build: 'v63',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1804,7 +1804,7 @@
   // Tapping a person brings the map to them. It also stops the view chasing everybody.
   function focusPeer(id) {
     const p = state.peers.get(id);
-    if (!p || p.lat == null) return;
+    if (!hasFix(p)) return;              // restored from the roster, no position yet
     state.autoFit = false;
     map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15), { animate: true });
   }
@@ -2196,9 +2196,14 @@
       state.peers.forEach((p, i) => {
         p.lat += 0.00003 * (i + 1); p.lng += 0.00005 * (i + 1);
         p.ts = t;
-        // a plausible arrival time, so the list shows the real thing
-        const d = haversine(p, state.dest) * 1.25;
-        p.eta = { dur: d / p._spd, dist: d, ts: t };
+        // A plausible arrival time, so the list shows the real thing — and none at all
+        // when there is no destination, which is what crashed this when one was cleared.
+        if (hasFix(state.dest) && hasFix(p)) {
+          const d = haversine(p, state.dest) * 1.25;
+          p.eta = { dur: d / p._spd, dist: d, ts: t };
+        } else {
+          p.eta = null;
+        }
         updateMarker(p);
       });
       renderPeople();
@@ -2265,6 +2270,15 @@
         state.allowed.add(state.me.id);
         saveRecord({ allowed: Array.from(state.allowed) });
         send({ t: 'allowed', ids: Array.from(state.allowed) });
+      }
+      /* Taking the pin on a phone that did not have it means it was not listening for
+         requests before now: the retained ones were handed over and dropped. Subscribe
+         again so the broker sends what it is still holding. */
+      if (client && client.connected) {
+        try {
+          if (typeof client.unsubscribe === 'function') client.unsubscribe(askTopic('+'), () => {});
+          client.subscribe(askTopic('+'), { qos: 0 }, () => {});
+        } catch (e) { /* ignore */ }
       }
       const note = $('pinNote');
       note.textContent = 'This phone can add and remove people.';

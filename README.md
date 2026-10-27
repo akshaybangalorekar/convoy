@@ -273,6 +273,21 @@ nothing from anybody for twenty seconds, it moves to the next relay and asks aga
 can only be on one of them, and sitting on the wrong one is invisible. There are only a few
 relays, so it walks the list.
 
+**What happens when the phone with the pin goes away.** Tested with one, two, seven and all
+ten phones holding it:
+
+- **Existing members carry on.** Everyone still sees everyone, nobody is dropped, the map and
+  the destination are untouched. Losing a pin phone is not losing the convoy.
+- **With two or more pin phones, nothing changes.** The others still get requests and any of
+  them can answer — verified from the second and from the seventh.
+- **With only one, nobody new can be let in** while it is away. A newcomer can ask and will
+  sit there; no Let in button appears anywhere, because nobody holds the pin.
+- **The ask is not lost.** It is retained on the broker, so when that phone comes back it is
+  handed the request and can let them in.
+- **Anyone can take the pin over** by typing it in Help on their own phone — that is the only
+  hand-over there is, and it works: a phone that takes the pin on is shown the requests that
+  were already waiting, which it was not before.
+
 **Help shows which relay you are on, whether notifications are allowed, and whether this
 phone has the pin** — the last of those was otherwise completely invisible, and it is the
 first thing to check when a request does not appear. Two phones on different relays can never see each
@@ -538,7 +553,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 840 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 888 checks:
 
 ```bash
 npm install
@@ -554,6 +569,8 @@ npm test
   seeing the same for someone else, the out-of-contact sweep and its wording, the full
   state push on reconnect, and the destination outliving a restart without overwriting a
   newer decision.
+- `tests/fleet-test.js` — a convoy of eight or ten phones on one broker, with one, two, seven
+  or all of them holding the pin, and what happens when a pin phone goes away. 44 checks.
 - `tests/scenario-test.js` — two and three phones on one broker, going through the sequences
   that actually happen: join, let in, remove, ask again, let back in; turned away then asking
   again; asking, cancelling, asking again; two people at once; two pin phones; removed on one

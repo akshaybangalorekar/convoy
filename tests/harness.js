@@ -100,6 +100,10 @@ function makeBroker() {
   };
   return {
     subs, retained,
+    unsubscribe(client, filter) {
+      const list = (subs.get(client) || []).filter((f) => f !== filter);
+      subs.set(client, list);
+    },
     subscribe(client, filter) {
       const list = subs.get(client) || [];
       if (list.indexOf(filter) < 0) list.push(filter);
@@ -169,6 +173,12 @@ function boot(opts = {}) {
         subscribe(t, o, cb) {
           c.subscribed = t; c.subscriptions.push(t);
           if (broker) broker.subscribe(c, t);
+          if (cb) cb(null);
+          return c;
+        },
+        unsubscribe(t, cb) {
+          c.subscriptions = c.subscriptions.filter((x) => x !== t);
+          if (broker) broker.unsubscribe(c, t);
           if (cb) cb(null);
           return c;
         },

@@ -214,6 +214,38 @@ async function testSheetCollapses() {
 }
 
 /* ---------- Run ---------- */
+/* ---------- Tapping a car ---------- */
+async function testTappingACarCentresOnIt() {
+  const api = boot();
+  api.join('Akshay');
+  api.fix(-33.86, 151.20);
+  await sleep(20);
+  api.recv(pos('p1', 'Priya', -33.90, 151.25));
+  await sleep(20);
+  const p1 = api.window.Convoy.state.peers.get('p1');
+  const before = api.calls.setView.length;
+
+  api.window.Convoy._internals.focusPeer('p1');
+  const last = api.calls.setView[api.calls.setView.length - 1];
+  check('tapping a car brings the map to it', api.calls.setView.length > before &&
+        last && last[0][0] === p1.lat && last[0][1] === p1.lng,
+        JSON.stringify(last && last[0]));
+  check('at a zoom that is at least street level', typeof last[1] === 'number' && last[1] >= 15,
+        String(last && last[1]));
+  check('and it stops chasing everyone', api.window.Convoy.state.autoFit === false);
+
+  // A person restored from the roster has no position, and asking for them must do nothing.
+  api.window.Convoy.state.peers.set('gone', {
+    id: 'gone', name: 'Rahul', color: '#ff3b30', lat: null, lng: null,
+    spd: null, hdg: null, acc: null, ts: Date.now(), eta: null,
+    isMe: false, demo: false, away: false, awayAt: 0, presence: 'lost',
+  });
+  const n = api.calls.setView.length;
+  api.window.Convoy._internals.focusPeer('gone');
+  check('and a car with no position yet is not asked for', api.calls.setView.length === n,
+        String(api.calls.setView.length - n));
+}
+
 /* ---------- The tiles ---------- */
 async function testTheTilesAreKeyless() {
   const api = boot();
@@ -442,6 +474,7 @@ async function testTappingACarNamesIt() {
     await testTakingControl();
     await testTapZoom();
     await testSheetCollapses();
+    await testTappingACarCentresOnIt();
     await testTheTilesAreKeyless();
     await testTheSunIsWhereItShouldBe();
     await testTheMapGoesDarkAfterSunset();
