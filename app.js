@@ -41,7 +41,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v57',             // must match VERSION in sw.js; a test holds them together
+    build: 'v58',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1250,34 +1250,39 @@
     }
   }
 
+  /* The same line and the same bar whether you are in or not: a lost connection matters just
+     as much once you are in, and it should not be something you have to work out. There is
+     nothing here that treats the phone with the pin differently from any other. */
   function renderWaiting() {
-    const sheet = $('sheet');
-    const me = state.me;
-    const inConvoy = !!(me && state.allowed.has(me.id));
-    if (sheet) sheet.classList.toggle('outside', !inConvoy);
-
     const bar = $('waitBar');
     const line = $('waitLine');
     if (!bar || !line) return;
 
+    const me = state.me;
+    const inConvoy = !!(me && state.allowed.has(me.id));
     const conn = state.conn || 'waiting';
-    const waiting = !inConvoy && (conn !== 'live' || state.joinAsked);
-    bar.classList.toggle('hidden', !waiting);
+    const asking = !inConvoy && !!state.joinAsked;
 
-    if (inConvoy) { line.classList.add('hidden'); return; }
-    line.classList.remove('hidden');
-
+    let text = '';
     if (conn === 'down') {
-      line.textContent = state.joinAsked
+      text = asking
         ? 'No connection. Your request is kept and will go out when the link is back.'
-        : 'No connection. Retrying…';
+        : inConvoy
+          ? 'No connection. Nobody can see where you are until it is back.'
+          : 'No connection. Retrying…';
     } else if (conn !== 'live') {
-      line.textContent = 'Connecting to the relay…';
-    } else if (state.joinAsked) {
-      line.textContent = 'Request sent. Waiting for the phone with the pin…';
-    } else {
-      line.textContent = 'Connected. Press Join the convoy to ask to be let in.';
+      text = 'Connecting to the relay…';
+    } else if (asking) {
+      text = 'Request sent. Waiting for the phone with the pin…';
+    } else if (!inConvoy) {
+      text = 'Connected. Press Join the convoy to ask to be let in.';
     }
+
+    // The bar moves only while something is actually being waited for.
+    const busy = conn !== 'live' || asking;
+    bar.classList.toggle('hidden', !busy);
+    line.textContent = text;
+    line.classList.toggle('hidden', !text);
   }
 
   /* GitHub Pages serves its files with a ten-minute cache, so a phone can sit on old code

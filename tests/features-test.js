@@ -528,10 +528,45 @@ async function testAPhoneOutsideTheRoomWaits() {
   check('and after asking, the bar comes back with what it is waiting for',
         bar() && /Request sent/.test(line()), line());
   api.window.Convoy.state.joinAsked = false;
+
   check('and the count says so too',
         /waiting/.test(text(api, 'peopleCount')), text(api, 'peopleCount'));
   check('and nobody else is on its list',
         !/Priya/.test(d.getElementById('people').textContent));
+}
+
+async function testTheSameLineShowsAfterYouAreIn() {
+  // A lost connection matters just as much once you are in, and the pin phone is no
+  // different from any other: same line, same bar.
+  const api = boot();
+  await sleep(20);
+  const d = api.document;
+  const I = api.window.Convoy._internals;
+  const bar = () => !d.getElementById('waitBar').classList.contains('hidden');
+  const line = () => text(api, 'waitLine');
+  const shown = () => !d.getElementById('waitLine').classList.contains('hidden');
+
+  check('this phone is in', api.window.Convoy.state.allowed.has(
+    api.window.Convoy.state.me.id));
+
+  api.window.Convoy.state.conn = 'live';
+  I.renderWaiting();
+  check('in and connected, there is nothing to say', !bar() && !shown(), line());
+
+  api.window.Convoy.state.conn = 'down';
+  I.renderWaiting();
+  check('losing the connection while in says so', shown() && /No connection/.test(line()), line());
+  check('and the bar sweeps again', bar());
+  check('and it is about sharing, not about being let in',
+        /Nobody can see where you are/.test(line()), line());
+
+  api.window.Convoy.state.conn = 'waiting';
+  I.renderWaiting();
+  check('reconnecting says so too', shown() && /Connecting/.test(line()), line());
+
+  api.window.Convoy.state.conn = 'live';
+  I.renderWaiting();
+  check('and it all goes away once the link is back', !bar() && !shown(), line());
 }
 
 async function testOneButtonUntilYouAreIn() {
@@ -1089,6 +1124,7 @@ async function testBehindAndAhead() {
     await testItIsFineWithNoWakeLockApi();
     await testEveryGroupEventNotifies();
     await testAJoinRequestNotifiesEveryPhoneWithThePin();
+    await testTheSameLineShowsAfterYouAreIn();
     await testNotificationsGoThroughTheServiceWorker();
     await testAPhoneOutsideTheRoomWaits();
     await testOneButtonUntilYouAreIn();

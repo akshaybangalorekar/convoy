@@ -168,13 +168,16 @@ Nobody is in until the phone with the pin lets them in.
 
 - **Opening the app puts you outside**, not in: you see "waiting for
   someone to let you in" and nothing else — not the people, not the destination.
-- **The connection state is a pill, in or out.** It
+- **The connection state is a pill, in or out, and it behaves the same either way.** It
   becomes a dark pill with a coloured dot — amber and pulsing while connecting, red when
   there is no link, green once live — and a sweeping bar sits across the top of the sheet
   whenever something is genuinely in progress. Under it, one plain line says what is
   happening: "Connecting to the relay…", "Request sent. Waiting for the phone with the pin…",
-  or "No connection. Your request is kept and will go out when the link is back." The bar
-  stops the moment nothing is being waited for, so it never means nothing.
+  "No connection. Nobody can see where you are until it is back.", or "No connection. Your
+  request is kept and will go out when the link is back." The bar stops the moment nothing is
+  being waited for, so it never means nothing. **This is the same after you are in as before**,
+  and the same on the phone with the pin as on any other: losing the connection matters just
+  as much once you are in, and it should not be something anyone has to work out.
 - **While you are not in there is one button, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
@@ -514,7 +517,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 761 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 768 checks:
 
 ```bash
 npm install
