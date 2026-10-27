@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v74',             // must match VERSION in sw.js; a test holds them together
+    build: 'v75',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -996,7 +996,30 @@
 
   /* Who is in and who is out is one fact, stored and announced together. It was written
      out at both call sites that change it, which is how they came to disagree. */
+  /* Neither list may grow without limit: both are written to storage and broadcast with
+     every state push, and a message only carries five hundred ids. Trimming keeps the most
+     recent, which is the safe direction — dropping someone from the removed list can only
+     make coming back easier, never harder. */
+  function trimLists() {
+    const cap = 400;
+    let guard = 0;
+    while (state.allowed.size > cap && guard++ < 2000) {
+      const first = state.allowed.values().next().value;
+      if (state.me && first === state.me.id) {
+        // Never drop ourselves: move past our own entry and take the next oldest instead.
+        state.allowed.delete(first);
+        state.allowed.add(first);
+        continue;
+      }
+      state.allowed.delete(first);
+    }
+    while (state.removed.size > cap) {
+      state.removed.delete(state.removed.values().next().value);
+    }
+  }
+
   function publishLists() {
+    trimLists();
     saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
     send({ t: 'allowed', ids: Array.from(state.allowed) });
     send({ t: 'removed', ids: Array.from(state.removed) });
@@ -2677,7 +2700,7 @@
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
                   bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
-                  leaveConvoy,
+                  leaveConvoy, publishLists,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),

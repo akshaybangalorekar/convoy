@@ -299,6 +299,24 @@ ten phones holding it:
   puts you straight back in without anyone approving it. Being removed with the cross is the
   other thing entirely, and that does need approval.
 
+- **Coming back has no expiry, at all.** A day, a month, a year — it makes no difference. The
+  only thing that decides is the phone holding the pin, at that moment. `tests/rejoin-test.js`
+  runs each case at several gaps: removed and asking again immediately, a day later, and a
+  year later; leaving and coming back immediately and after months; a request left on the
+  broker days ago (ignored as stale, which is right — it is not news — but asking again is
+  offered at once); and a pin phone closed for two years and reopened, which still remembers
+  the removal and can still undo it. 46 checks.
+
+  Nothing in the app carries a join expiry. The two time limits that do exist are for other
+  things: the roster forgets people a week after their last sign of life, and a retained
+  request is only treated as news for half an hour. Neither blocks anybody — they just stop
+  the list and the notifications going stale.
+
+  Both lists are capped at 400 entries, because they are written to storage and broadcast
+  with every state push, and a message only carries five hundred ids. Trimming keeps the most
+  recent, which is the safe direction: dropping someone from the removed list can only make
+  coming back easier, never harder.
+
 - **A phone that was kicked out can always come back.** It shows Join the convoy (not
   Cancel), the request reaches every pin phone, any of them can let it back in, and being let
   back in clears the removal everywhere — so it lands on every list, with its four buttons.
@@ -691,7 +709,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1059 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1105 checks:
 
 ```bash
 npm install
