@@ -124,6 +124,88 @@ const driveOk = (url) => {
 };
 
 /* ---------- The helpers ---------- */
+/* ---------- A link pasted from a maps app ---------- */
+async function testALinkFromAMapsAppBecomesADestination() {
+  const api = boot({ fetch: photonOk });
+  await sleep(30);
+  const R = api.window.ConvoyRoute;
+  const P = R._internals.parsePasted;
+
+  // Google, from a place: the exact pin is in !3d..!4d..
+  let got = P('https://www.google.com/maps/place/Balnarring+Foreshore+Reserve/@-38.37,145.55,17z/data=!4m2!3d-38.3712!4d145.5501');
+  check('a Google place link gives its exact pin',
+        got && got.kind === 'coords' && Math.abs(got.lat + 38.3712) < 1e-6 &&
+        Math.abs(got.lng - 145.5501) < 1e-6, JSON.stringify(got));
+  check('and the name of the place with it', got && got.name === 'Balnarring Foreshore Reserve',
+        got && got.name);
+
+  // The pin wins over the map centre, which is wherever the map happened to be.
+  check('the pin is preferred to the map centre', got.lat === -38.3712, String(got.lat));
+
+  // A link with only a centre.
+  got = P('https://www.google.com/maps/@-37.8136,144.9631,15z');
+  check('a map link with only a centre still works',
+        got && got.kind === 'coords' && Math.abs(got.lat + 37.8136) < 1e-6, JSON.stringify(got));
+
+  // A query parameter.
+  got = P('https://maps.google.com/?q=-37.8136,144.9631');
+  check('a ?q= link works', got && got.kind === 'coords', JSON.stringify(got));
+
+  // Apple.
+  got = P('https://maps.apple.com/?ll=-37.8136,144.9631&q=Flinders%20Street');
+  check('an Apple Maps link works', got && got.kind === 'coords', JSON.stringify(got));
+
+  // Plain coordinates, copied out of anything at all.
+  got = P('-38.3712, 145.5501');
+  check('plain coordinates work too', got && got.kind === 'coords', JSON.stringify(got));
+
+  // A link with only a name: search for the name.
+  got = P('https://www.google.com/maps/place/Balnarring+Foreshore+Reserve');
+  check('a link with only a name becomes a search', got && got.kind === 'name' &&
+        got.name === 'Balnarring Foreshore Reserve', JSON.stringify(got));
+
+  // A short link cannot be followed, and says so rather than failing silently.
+  got = P('https://maps.app.goo.gl/abc123');
+  check('a short link is recognised as one', got && got.kind === 'short', JSON.stringify(got));
+
+  // Nothing that is not a destination.
+  check('ordinary text is not a link', P('Balnarring') === null);
+  check('and neither is an out-of-range pair', P('200, 400') === null, String(P('200, 400')));
+  check('nor a pair of zeroes', P('0,0') === null);
+}
+
+/* ---------- When the exact name is not in the map ---------- */
+async function testALongerNameFallsBackToAShorterOne() {
+  // "Balnarring Foreshore Reserve" is a real place that OpenStreetMap does not have under
+  // that name. The long query finds nothing; the shorter one finds the suburb.
+  const onlyShort = (url) => {
+    const short = /q=Balnarring%20Foreshore%20Reserve|q=Balnarring\+Foreshore\+Reserve/.test(url);
+    const justSuburb = /q=Balnarring(&|%20|$)/.test(url) || /q=Balnarring$/.test(url);
+    if (url.indexOf('photon.komoot.io') >= 0 || url.indexOf('nominatim') >= 0) {
+      const features = short ? [] : [{ geometry: { coordinates: [145.5, -38.37] },
+        properties: { name: 'Balnarring', city: 'Balnarring', state: 'Victoria', country: 'Australia' } }];
+      if (url.indexOf('photon') >= 0) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ features }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () =>
+        (short ? [] : [{ lat: '-38.37', lon: '145.5', display_name: 'Balnarring, Victoria, Australia', name: 'Balnarring' }]) });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+  };
+  const api = boot({ fetch: onlyShort });
+  await sleep(30);
+  const R = api.window.ConvoyRoute;
+
+  const list = await R.search('Balnarring Foreshore Reserve');
+  check('a name the map does not have still finds the place it is in',
+        list.length > 0, JSON.stringify(list.slice(0, 1)));
+  check('and says the match is a looser one',
+        /Nothing exactly/.test(R._internals.diag.note), R._internals.diag.note);
+  check('naming what it searched for instead',
+        /Balnarring Foreshore|Balnarring/.test(R._internals.diag.note),
+        R._internals.diag.note);
+}
+
 async function testSearch() {
   const api = boot({ fetch: photonOk });
   const R = api.window.ConvoyRoute;
@@ -878,6 +960,8 @@ async function testHistoryIsPerPhone() {
     await testAddressServiceIsNotHammered();
     await testRepeatsAreCached();
     await testSearchBiasedToYou();
+    await testALinkFromAMapsAppBecomesADestination();
+    await testALongerNameFallsBackToAShorterOne();
     await testDrive();
     await testTheSheetRidesAboveTheKeyboard();
     await testSearchSheet();

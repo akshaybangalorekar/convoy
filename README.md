@@ -59,6 +59,22 @@ elevation is worked out for where you are, and the tiles are darkened when it dr
 cars keep their own colours — they are what you are reading the map for. It follows the sun
 as you drive, so a long trip at dusk changes over on its own.
 
+**A link pasted from a maps app becomes the destination.** Paste a Google Maps or Apple Maps
+link into the search box and the coordinates come out of it — no reading numbers off one app to
+type into another. Google puts the exact pin in `!3d..!4d..` and the map centre in `@lat,lng`;
+the pin wins, because the centre can be wherever the map happened to be. `?q=`, `ll=`, `daddr=`,
+`destination=`, `center=` and plain "lat, lng" all work. A link with only a name in it is used as
+a search instead. **Short links (`maps.app.goo.gl/…`) cannot work**: the destination is behind a
+redirect, and a page cannot follow a cross-origin redirect — the app says so and suggests copying
+the long link or long-pressing the map.
+
+**When a name is not in the map, try a shorter one.** People type what the sign says, and
+OpenStreetMap often has the place under a shorter name — or only has the suburb it sits in.
+"Balnarring Foreshore Reserve" is a real place that is not in OSM under that name at all, so the
+exact query finds nothing; the search now retries with the last word dropped, then two, and says
+above the results that the match is a looser one. That is the difference between "we cannot find
+your beach" and "here is the beach, pick the spot".
+
 **The dot on the destination row wears the colour of whoever set it** — as that person
 appears on *your* list, not as they appear on theirs. Colours are assigned per phone (your own
 car is always the first one on your own screen), so the dot is a lookup rather than a hash: if
@@ -709,7 +725,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1105 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1120 checks:
 
 ```bash
 npm install

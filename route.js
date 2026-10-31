@@ -247,6 +247,29 @@
       }
     }
 
+    /* People type what the sign says, and OSM often has the place under a shorter name — or
+       has only the suburb it sits in. "Balnarring Foreshore Reserve" is a real place that is
+       not in the map under that name at all, so rather than a flat "nothing found", try the
+       same words minus the last one, then minus two. It is the difference between "we cannot
+       find your beach" and "here is the beach, pick the spot". */
+    if (!out.length) {
+      const words = String(query).trim().split(/\s+/);
+      for (let drop = 1; drop <= 2 && words.length - drop >= 1; drop++) {
+        const shorter = words.slice(0, words.length - drop).join(' ');
+        if (shorter.length < CFG.minChars) break;
+        let near = await viaPhoton(shorter);
+        if (!near || !near.length) {
+          near = await withDeadline(viaNominatim(shorter), CFG.enrichMs);
+        }
+        if (near && near.length) {
+          out = near;
+          diag.note = 'Nothing exactly for "' + query + '". Showing matches for "' +
+            shorter + '".';
+          break;
+        }
+      }
+    }
+
     if (!out.length) {
       diag.note = answered
         ? 'Nothing found for "' + query + '". Try a different name.'
@@ -421,6 +444,15 @@
     const ul = $('results');
     if (!list.length) { showHint(diag.note || 'Nothing found. Try a different name.'); return; }
 
+    // A looser match says so, above the rows, so nobody thinks these are exact.
+    if (diag.note) {
+      ul.innerHTML = '<li class="head">' + API.esc(diag.note) + '</li>' + list.map((r, i) =>
+        '<li data-i="' + i + '" data-text="' + API.esc(rowText(r)) + '">' +
+        rowHtml(r) + '</li>').join('');
+      shown = list;
+      return;
+    }
+
     // If the same number of rows is already on screen, update them in place. Replacing
     // the list takes the row out from under a finger that is already on it, and iOS then
     // never delivers the tap at all — which is exactly what happened when the fuller
@@ -456,6 +488,74 @@
     shown = list;
   }
 
+  /* ---------------------------------------------------------------- *
+   * A link pasted from a maps app
+   * ---------------------------------------------------------------- */
+
+  /* People find the place in Google Maps or Apple Maps and then have to read coordinates off
+     one app and type them into another, which nobody does. Both put the destination inside the
+     link, so take it out of there.
+
+     Google puts the exact pin in `!3d..!4d..`, and the map centre in `@lat,lng,zoom` — the pin
+     is the one you want when both are there, because the centre can be wherever the map
+     happened to be. */
+  const num = (v) => {
+    const n = parseFloat(v);
+    return isFinite(n) ? n : null;
+  };
+  const place = (lat, lng) => lat != null && lng != null &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+
+  function nameFromLink(text) {
+    const m = /\/maps\/(?:place|search)\/([^/?#@]+)/i.exec(text);
+    if (!m) return '';
+    try {
+      return decodeURIComponent(m[1].replace(/\+/g, ' ')).trim().slice(0, 80);
+    } catch (e) { return ''; }
+  }
+
+  function parsePasted(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return null;
+
+    // A short link hides the destination behind a redirect, and a page cannot follow it
+    // from here: the request is cross-origin and blocked. Say so rather than pretending.
+    if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|maps\.app\.apple\.com\/\?address=)/i.test(text) ||
+        /^https?:\/\/maps\.app\.goo\.gl/i.test(text)) {
+      return { kind: 'short' };
+    }
+
+    // 1. The exact pin.
+    let m = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/.exec(text);
+    if (m && place(num(m[1]), num(m[2]))) {
+      return { kind: 'coords', lat: num(m[1]), lng: num(m[2]), name: nameFromLink(text) };
+    }
+
+    // 2. The map centre.
+    m = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(text);
+    if (m && place(num(m[1]), num(m[2]))) {
+      return { kind: 'coords', lat: num(m[1]), lng: num(m[2]), name: nameFromLink(text) };
+    }
+
+    // 3. A query or a destination in the parameters — Google and Apple both use these.
+    m = /[?&](?:q|ll|daddr|destination|center|sll)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i.exec(text);
+    if (m && place(num(m[1]), num(m[2]))) {
+      return { kind: 'coords', lat: num(m[1]), lng: num(m[2]), name: nameFromLink(text) };
+    }
+
+    // 4. A link with only a name in it: search for that name instead.
+    const named = nameFromLink(text);
+    if (named && /^https?:\/\//i.test(text)) return { kind: 'name', name: named };
+
+    // 5. Plain "lat, lng" copied out of any app at all.
+    m = /^(-?\d{1,3}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(text);
+    if (m && place(num(m[1]), num(m[2]))) {
+      return { kind: 'coords', lat: num(m[1]), lng: num(m[2]), name: '' };
+    }
+
+    return null;
+  }
+
   async function runSearch() {
     const q = $('inSearch').value;
     if (String(q).trim().length < CFG.minChars) {
@@ -487,8 +587,39 @@
     $('search').addEventListener('click', (e) => {
       if (e.target === $('search')) closeSearch();
     });
+    /* A link dropped into the box is taken as a destination, not as something to search for.
+       Returns true when it was one, so the normal search is skipped. */
+    const tookLink = (text) => {
+      const got = parsePasted(text);
+      if (!got) return false;
+      if (got.kind === 'coords') {
+        $('inSearch').value = '';
+        API.setDest(got.lat, got.lng, got.name || 'Pasted place');
+        closeSearch();
+        return true;
+      }
+      if (got.kind === 'name') {
+        $('inSearch').value = got.name;
+        if (debounce) clearTimeout(debounce);
+        runSearch();
+        return true;
+      }
+      // Short link: the destination is behind a redirect we cannot follow.
+      showHint('That short link hides the place behind a redirect, which this app cannot ' +
+        'follow. Open it in Maps, copy the long link from the address bar, or long-press ' +
+        'the map instead.');
+      return true;
+    };
+
+    $('inSearch').addEventListener('paste', (e) => {
+      const cd = e.clipboardData || window.clipboardData;
+      const text = cd && cd.getData ? cd.getData('text') : '';
+      if (text && tookLink(text)) e.preventDefault();
+    });
+
     $('inSearch').addEventListener('input', () => {
       if (debounce) clearTimeout(debounce);
+      if (tookLink($('inSearch').value)) return;    // a whole link, not a search
       // Clearing the box brings the recent places back.
       if (!$('inSearch').value.trim()) { showRecent(); return; }
       debounce = setTimeout(runSearch, CFG.debounceMs);
@@ -504,6 +635,7 @@
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
+                  parsePasted, tookLink: () => undefined,
                   shownList: () => shown, reverse, renderResults, rowHtml, rowText,
                   watchKeyboard },
   };
