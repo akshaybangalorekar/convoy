@@ -229,9 +229,24 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .tb.hiding .ic-on { display: none; }
 .tb.hiding .ic-off { display: block; }
 
+#topbar { position: relative; }
 .dest-row {
-  width: 100%; display: flex; align-items: center; padding: 0; overflow: hidden;
+  width: 100%; display: flex; align-items: center; padding: 0 0 0 14px; overflow: hidden;
 }
+/* The destination and the search box are the same element, so it is styled like the label
+   it replaces: no box, no border, the same size. */
+.dest-input {
+  appearance: none; -webkit-appearance: none;
+  flex: 1 1 auto; min-width: 0; margin: 0; padding: 13px 0;
+  border: 0; background: none; color: var(--text);
+  font: inherit; font-size: 16px; font-weight: 600;
+  text-overflow: ellipsis;
+}
+.dest-input::placeholder { color: var(--muted); font-weight: 500; opacity: 1; }
+.dest-input:focus { outline: none; }
+/* The cross hides while you are searching, but keeps its space: hiding it outright made the
+   field jump wider the moment the list opened. */
+.dest-clear.reserved { visibility: hidden; }
 .dest-main {
   appearance: none; border: 0; background: none; color: inherit; font: inherit;
   flex: 1 1 auto; min-width: 0;
@@ -383,14 +398,21 @@ body.sheet-collapsed #sheet { max-height: 56px; }
 .overlay > .card, .overlay > .join-stack { margin: auto; }
 
 .join-card, .search-card { width: 100%; max-width: 420px; padding: 26px 22px 22px; }
-.search-card { max-height: 82vh; display: flex; flex-direction: column; }
-/* One sheet rises from the bottom; the other should too, rather than floating mid-screen
-   like a dialog. */
-/* The keyboard covers the bottom of a fixed overlay, so the sheet is lifted by exactly
-   the height the keyboard takes. --kb is measured from the visual viewport. */
-#search { padding-bottom: var(--kb, 0px); transition: padding-bottom 0.12s ease; }
-@media (prefers-reduced-motion: reduce) { #search { transition: none; } }
-#search .search-card { margin: auto auto 0; border-radius: 18px 18px 0 0; }
+/* The results drop down from the field rather than rising from the bottom. Nothing here
+   moves when the keyboard opens: the field is at the top, so it can never be covered. */
+.search-scrim { position: fixed; inset: 0; z-index: 54; }
+.search-drop {
+  position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 55;
+  background: var(--card); border: 1px solid var(--sep); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  padding: 4px 12px 8px; max-height: 56vh; overflow-y: auto;
+}
+.search-done {
+  display: block; width: 100%; margin: 6px 0 2px; padding: 11px;
+  border: 0; border-radius: 11px; background: rgba(120, 120, 128, 0.16);
+  color: var(--text); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.search-done:active { opacity: 0.65; }
 
 /* The rules under the code field: one quiet line instead of three lines of fine print. */
 .hint-line {

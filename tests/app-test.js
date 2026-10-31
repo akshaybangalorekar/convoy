@@ -4,6 +4,7 @@
 
 const { boot, check, sleep, pos, finish, crash } = require('./harness');
 
+const destLabel = (api) => api.document.getElementById('inSearch').value;
 const routeFetch = (url) => {
   if (url.indexOf('routing.openstreetmap.de') >= 0) {
     return Promise.resolve({ ok: true, status: 200, json: async () => ({
@@ -135,7 +136,7 @@ async function testArrivalTimes() {
   await sleep(60);
 
   check('the destination is stored', !!api.window.Convoy.state.dest);
-  check('the destination row shows it', text(api, 'destText') === 'Goa', text(api, 'destText'));
+  check('the destination row shows it', destLabel(api) === 'Goa', destLabel(api));
   check('your arrival time is worked out', !!api.window.Convoy.state.myEta);
   check('the drive distance is kept', api.window.Convoy.state.myEta.dist === 12000,
         JSON.stringify(api.window.Convoy.state.myEta));
@@ -175,14 +176,15 @@ async function testDestinationShared() {
   // and a destination someone else set
   api.recv({ t: 'dest', id: 'p1', name: 'Priya', by: 'Priya', lat: 15.7, lng: 74.0, label: 'Panaji' });
   await sleep(20);
-  check('someone else can move the destination', text(api, 'destText') === 'Panaji',
-        text(api, 'destText'));
+  check('someone else can move the destination', destLabel(api) === 'Panaji',
+        destLabel(api));
 
   api.recv({ t: 'dest-clear', id: 'p1', name: 'Priya', by: 'Priya' });
   await sleep(20);
-  check('and clear it', text(api, 'destText') === 'Set a destination', text(api, 'destText'));
+  // Cleared means an empty field showing the prompt as its placeholder.
+  check('and clear it', destLabel(api) === '', destLabel(api) || '(empty)');
   check('the row goes quiet again',
-        api.document.getElementById('destText').classList.contains('empty'));
+        api.document.getElementById('inSearch').value === '');
 }
 
 /* ---------- Notifications ---------- */

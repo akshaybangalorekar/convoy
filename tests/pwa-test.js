@@ -231,7 +231,10 @@ try {
   check('a phone with no position is kept away from the map',
         /function allPeople/.test(app) && /hasFix\(p\)/.test(app) &&
         /typeof o\.lat === 'number'/.test(app));
-  check('and the dimmed area closes the search sheet', /e\.target === \$\('search'\)/.test(read('route.js')));
+  // A tap anywhere outside the results closes them — the scrim, not a dimmed sheet.
+  check('and a tap outside closes the search results',
+        /searchScrim'\)\.addEventListener\('click', closeSearch\)/.test(read('route.js')) ||
+        /searchScrim/.test(read('route.js')));
   check('the new messages are all handled',
         /case 'paused'/.test(app) &&
         /case 'arrived'/.test(app) && /case 'paused'/.test(app));
@@ -295,7 +298,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v76/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v77/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

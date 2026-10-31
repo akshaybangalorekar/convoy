@@ -29,14 +29,20 @@
 
 <!-- Top: who you are with, and where you are all heading -->
 <header id="topbar">
-  <div class="card dest-row">
-    <button id="destRow" class="dest-main" aria-label="Destination">
-      <span class="dest-pin" aria-hidden="true"></span>
-      <span class="dest-text" id="destText">Set a destination</span>
-      <span class="dest-chev" aria-hidden="true">›</span>
-    </button>
+  <!-- One field: where you are going is also where you search for it. It sits at the top of
+       the screen and never moves, so the keyboard cannot get in front of it. -->
+  <div class="card dest-row" id="destRow">
+    <span class="dest-pin" aria-hidden="true"></span>
+    <input id="inSearch" class="dest-input" placeholder="Set a destination"
+           autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+           enterkeyhint="search" aria-label="Where are you going?" />
     <button id="btnClearDest" class="dest-clear" aria-label="Clear the destination"
             title="Clear the destination">&#215;</button>
+  </div>
+  <div id="searchScrim" class="search-scrim hidden"></div>
+  <div id="search" class="search-drop hidden">
+    <ul id="results" class="results"></ul>
+    <button id="btnSearchClose" class="search-done">Done</button>
   </div>
 </header>
 

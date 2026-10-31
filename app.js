@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v76',             // must match VERSION in sw.js; a test holds them together
+    build: 'v77',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -107,6 +107,7 @@
     lastHeard: 0,         // when anything last arrived from anyone
     lastActive: 0,        // when you were last actually on the app
     allDone: false,       // everyone arrived, and we have said so
+    searching: false,     // the destination field is being used as a search box
     liveAt: 0,            // when the connection last came up, for the green flash
     connWas: '',          // so a transition can be noticed
     bgUntil: 0,           // keep reporting in the background until this moment
@@ -1893,13 +1894,14 @@
   }
 
   function renderDest() {
-    const el = $('destText');
-    if (state.dest) {
-      el.textContent = state.dest.label;
-      el.classList.remove('empty');
-    } else {
-      el.textContent = 'Set a destination';
-      el.classList.add('empty');
+    /* The field shows the destination when you are not searching, and is the search box when
+       you are. Same element, same place — so the keyboard can never cover it, and there is no
+       second copy of the text to keep in step. */
+    const el = $('inSearch');
+    const searching = state.searching === true;
+    if (el && !searching) {
+      el.value = state.dest ? state.dest.label : '';
+      el.placeholder = 'Set a destination';
     }
     const clear = $('btnClearDest');
     if (clear) clear.style.display = state.dest ? '' : 'none';
@@ -2606,8 +2608,11 @@
     $('connState').addEventListener('click', showConnection);
     checkForUpdate();
     $('btnConnClose').addEventListener('click', () => $('connCard').classList.add('hidden'));
-    $('destRow').addEventListener('click', () => {
+    // The row is the field now: a tap anywhere on it puts the cursor in the box.
+    $('destRow').addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'btnClearDest') return;
       if (window.ConvoyRoute) window.ConvoyRoute.openSearch();
+      try { $('inSearch').focus(); } catch (err) { /* ignore */ }
     });
     $('sheetHead').addEventListener('click', () => {
       document.body.classList.toggle('sheet-collapsed');
@@ -2659,7 +2664,7 @@
     wire();
     if (window.ConvoyRoute) {
       window.ConvoyRoute.init({
-        state, esc, setDest, clearDest,
+        state, esc, setDest, clearDest, renderDest,
       });
     }
     if (window.ConvoyInstall) window.ConvoyInstall.init();

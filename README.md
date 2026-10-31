@@ -59,6 +59,13 @@ elevation is worked out for where you are, and the tiles are darkened when it dr
 cars keep their own colours — they are what you are reading the map for. It follows the sun
 as you drive, so a long trip at dusk changes over on its own.
 
+**The destination bar and the search box are the same field.** One element, at the top of the
+screen: when you are not searching it shows where you are going, and tapping it turns it into the
+search box with that text selected, so typing replaces it. The results drop down from underneath
+it rather than rising from the bottom of the screen, which means **nothing moves when the keyboard
+opens** — the field is at the top, so the keyboard cannot get in front of it. It used to be a
+bottom sheet lifted by the height of the keyboard, and the field went behind it.
+
 **A link pasted from a maps app becomes the destination.** Paste a Google Maps or Apple Maps
 link into the search box and the coordinates come out of it — no reading numbers off one app to
 type into another. Google puts the exact pin in `!3d..!4d..` and the map centre in `@lat,lng`;
@@ -725,7 +732,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1120 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1131 checks:
 
 ```bash
 npm install

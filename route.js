@@ -383,41 +383,37 @@
   // the swipe-back gesture fires the same event, so both behave alike.
   let pushed = false;
 
-  /* Phones shrink the visible area when the keyboard opens, and a fixed overlay stays put
-     in the layout viewport — so a bottom-anchored sheet ends up behind the keyboard. The
-     visual viewport knows how much is left, so the sheet is lifted by the difference. */
-  function watchKeyboard() {
-    const vv = window.visualViewport;
-    const set = () => {
-      const el = $('search');
-      if (!el) return;
-      const covered = vv
-        ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
-        : 0;
-      el.style.setProperty('--kb', covered + 'px');
-    };
-    set();
-    if (!vv || vv._convoyWatched) return;
-    vv._convoyWatched = true;
-    vv.addEventListener('resize', set);
-    vv.addEventListener('scroll', set);
-  }
-
   function openSearch() {
+    API.state.searching = true;
     $('search').classList.remove('hidden');
-    watchKeyboard();
-    $('inSearch').value = '';
+    $('searchScrim').classList.remove('hidden');
+    const clear = $('btnClearDest');
+    if (clear) clear.classList.add('reserved');   // keeps its space, so nothing shifts
+    // The destination stays in the field, selected — so typing replaces it, and nobody has
+    // to clear a box first.
+    const box = $('inSearch');
+    box.value = API.state.dest ? API.state.dest.label : '';
     showRecent();
     if (!pushed) {
       try { history.pushState({ convoySheet: 'search' }, ''); pushed = true; } catch (e) {}
     }
-    setTimeout(() => { try { $('inSearch').focus(); } catch (e) {} }, 60);
+    setTimeout(() => {
+      try {
+        $('inSearch').focus();
+        $('inSearch').select();
+      } catch (e) { /* ignore */ }
+    }, 60);
   }
 
   function closeSearch() {
     $('search').classList.add('hidden');
-    $('search').style.setProperty('--kb', '0px');
+    $('searchScrim').classList.add('hidden');
+    API.state.searching = false;
     try { $('inSearch').blur(); } catch (e) {}
+    // Back to showing the destination rather than the last thing typed.
+    API.renderDest();
+    const clear = $('btnClearDest');
+    if (clear) clear.classList.remove('reserved');
     if (pushed) {
       pushed = false;
       try { history.back(); } catch (e) {}
@@ -583,10 +579,8 @@
     API = api;
     window.addEventListener('popstate', onPop);
     $('btnSearchClose').addEventListener('click', closeSearch);
-    // A tap on the dimmed area, outside the card, always gets you out.
-    $('search').addEventListener('click', (e) => {
-      if (e.target === $('search')) closeSearch();
-    });
+    // A tap anywhere else gets you out.
+    $('searchScrim').addEventListener('click', closeSearch);
     /* A link dropped into the box is taken as a destination, not as something to search for.
        Returns true when it was one, so the normal search is skipped. */
     const tookLink = (text) => {
@@ -628,6 +622,11 @@
       if (e.key === 'Enter') { if (debounce) clearTimeout(debounce); runSearch(); }
       if (e.key === 'Escape') closeSearch();
     });
+    // Tapping the field when it is not already searching opens the list under it.
+    $('inSearch').addEventListener('focus', () => {
+      if (!$('search').classList.contains('hidden')) return;
+      openSearch();
+    });
   }
 
   window.ConvoyRoute = {
@@ -637,6 +636,6 @@
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
                   parsePasted, tookLink: () => undefined,
                   shownList: () => shown, reverse, renderResults, rowHtml, rowText,
-                  watchKeyboard },
+                  },
   };
 })();

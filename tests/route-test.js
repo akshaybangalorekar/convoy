@@ -647,7 +647,7 @@ async function testTheBackdropGetsYouOut() {
   check('the sheet is open', !d.getElementById('search').classList.contains('hidden'));
 
   // A tap on the dimmed area, not on the card.
-  d.getElementById('search').click();
+  d.getElementById('searchScrim').click();
   await sleep(20);
   check('tapping outside the sheet closes it, whatever else is going on',
         d.getElementById('search').classList.contains('hidden'));
@@ -724,21 +724,33 @@ async function testDrive() {
 }
 
 /* ---------- The search sheet ---------- */
-async function testTheSheetRidesAboveTheKeyboard() {
+async function testTheSearchBoxStaysWhereItIs() {
   const api = boot();
   await sleep(20);
-  const search = api.document.getElementById('search');
+  const d = api.document;
+  const search = d.getElementById('search');
 
   Object.defineProperty(api.window, 'visualViewport', {
     configurable: true, value: { height: 500, offsetTop: 0, addEventListener: () => {} },
   });
   api.window.ConvoyRoute.openSearch();
   await sleep(20);
-  check('opening search measures the keyboard', search.style.getPropertyValue('--kb') === '268px',
-        search.style.getPropertyValue('--kb') || '(none)');
+  /* The field is the destination bar, at the top of the screen, and the results drop down
+     from it. Nothing moves when the keyboard opens, which is the whole point: it used to be
+     a bottom sheet lifted by the keyboard height, and the field went behind it. */
+  check('the search box is the destination field itself',
+        d.getElementById('inSearch').closest('#destRow') !== null,
+        d.getElementById('inSearch').className);
+  check('and the results drop down from it, not up from the bottom',
+        !/position:\s*fixed/.test(api.window.getComputedStyle(search).position || '') ||
+        search.parentElement.id === 'topbar',
+        String(search.parentElement && search.parentElement.id));
+  check('nothing is lifted to make room for the keyboard',
+        !search.style.getPropertyValue('--kb'), search.style.getPropertyValue('--kb') || '(none)');
 
   api.window.ConvoyRoute.closeSearch();
-  check('and closing it puts the sheet back', search.style.getPropertyValue('--kb') === '0px',
+  check('and closing it changes nothing about where the field is',
+        !search.style.getPropertyValue('--kb'),
         search.style.getPropertyValue('--kb') || '(none)');
 }
 
@@ -774,19 +786,20 @@ async function testSearchSheet() {
   check('with the right place', api.window.Convoy.state.dest.label === 'Sydney, New South Wales',
         api.window.Convoy.state.dest.label);
   check('the sheet closes', d.getElementById('search').classList.contains('hidden'));
-  check('the destination row updates',
-        d.getElementById('destText').textContent === 'Sydney, New South Wales',
-        d.getElementById('destText').textContent);
+  check('the field itself now shows the destination',
+        d.getElementById('inSearch').value === 'Sydney, New South Wales',
+        d.getElementById('inSearch').value);
   check('and the room is told', !!api.sent('dest'));
 
-  // clearing
-  d.getElementById('destRow').click();
+  // clearing — with the list closed, since the cross is hidden while searching
+  if (!d.getElementById('search').classList.contains('hidden')) api.window.ConvoyRoute.closeSearch();
   await sleep(20);
   d.getElementById('btnClearDest').click();
   await sleep(20);
   check('the clear button empties the destination', api.window.Convoy.state.dest === null);
-  check('and says so in the row', d.getElementById('destText').textContent === 'Set a destination',
-        d.getElementById('destText').textContent);
+  check('and says so in the field', d.getElementById('inSearch').value === '' &&
+        /Set a destination/.test(d.getElementById('inSearch').placeholder),
+        d.getElementById('inSearch').value + ' / ' + d.getElementById('inSearch').placeholder);
   check('and tells the room', !!api.sent('dest-clear'));
 }
 
@@ -963,7 +976,7 @@ async function testHistoryIsPerPhone() {
     await testALinkFromAMapsAppBecomesADestination();
     await testALongerNameFallsBackToAShorterOne();
     await testDrive();
-    await testTheSheetRidesAboveTheKeyboard();
+    await testTheSearchBoxStaysWhereItIs();
     await testSearchSheet();
     await testTheBackButtonClosesTheSheet();
     await testRecentPlaces();
