@@ -243,7 +243,13 @@ Nobody is in until the phone with the pin lets them in.
   for two seconds when the link comes up, then gone**, and **red and still while the link is
   down**. It was a 3px block with side margins and a slow sweep, which on a phone read as a
   line that was not doing anything.
-- **While you are not in there is one button, and it says Join the convoy.** The four only appear once you
+- **Help is always in the row, in or out.** It is the only way to the pin field, so hiding it
+  outside the convoy locked the door from the outside: a fresh install — or a phone whose
+  storage was cleared, which is what uninstalling does — had one button and no way to become
+  the admin again. Out of the convoy the row is Join and Help, with Join taking the room and
+  Help a compact square beside it. The other three appear once you are in.
+
+- **While you are not in there is one button to join, and it says Join the convoy.** The four only appear once you
   have been let in. Pressing Join sends the ask and **the button becomes Cancel request** —
   it does not offer Join again while a request is outstanding. Pressing that withdraws the
   ask and the row disappears from the pin phone's list too, because the ask is a flag on
@@ -747,7 +753,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1139 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1149 checks:
 
 ```bash
 npm install

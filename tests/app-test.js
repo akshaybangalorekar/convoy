@@ -369,8 +369,9 @@ async function testTheSheetIsJustPeopleAndOneSwitch() {
   const sheet = api.document.getElementById('sheet');
   const order = Array.from(sheet.querySelectorAll('ul, .sheet-controls'))
     .map((el) => el.id || el.className);
-  check('the sheet is the people, then the one switch',
-        order[0] === 'people' && order[1] === 'sheet-controls', JSON.stringify(order));
+  check('the sheet is the people, then the row of buttons',
+        order[0] === 'people' && (order[1] === 'controls' || order[1] === 'sheet-controls'),
+        JSON.stringify(order));
   check('and no field to name anything',
         !api.document.getElementById('inRoomName'));
 }

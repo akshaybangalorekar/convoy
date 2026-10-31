@@ -9,6 +9,49 @@ const I = (api) => api.window.Convoy._internals;
 const text = (api, id) => api.document.getElementById(id).textContent;
 const banner = (api) => api.document.getElementById('banner').textContent;
 
+/* ---------- A phone that has never been used before ---------- */
+async function testAFreshPhoneCanBecomeTheAdmin() {
+  /* The path a new install takes: nothing in storage, one Join button, and Help — which is
+     the only way to the pin field. Hiding Help outside the convoy locked the door from the
+     outside: uninstall the app, or clear the browser data, and there was no way back in as
+     the admin. */
+  const api = boot({ outside: true });
+  await sleep(30);
+  const d = api.document;
+  const st = api.window.Convoy.state;
+  const vis = (id) => !d.getElementById(id).classList.contains('hidden');
+
+  check('a fresh phone is not in, and does not hold the pin',
+        !st.allowed.has(st.me.id) && st.master === false,
+        JSON.stringify({ in: st.allowed.has(st.me.id), master: st.master }));
+  check('it has Join', vis('btnJoin'));
+  check('and Help, so the pin can be reached', vis('btnSettings'));
+
+  // Open Help the way anyone would: the button.
+  d.getElementById('btnSettings').click();
+  await sleep(30);
+  check('Help opens with the field for the pin',
+        !d.getElementById('settingsCard').classList.contains('hidden') &&
+        !!d.getElementById('inPin'));
+
+  const pin = d.getElementById('inPin');
+  pin.value = '1981';
+  pin.dispatchEvent(new api.window.Event('change', { bubbles: true }));
+  await sleep(60);
+
+  check('entering the pin makes this phone the admin', st.master === true);
+  check('and puts it in the convoy', st.allowed.has(st.me.id));
+  check('so the four buttons are there now',
+        vis('btnInvite') && vis('btnPause') && vis('btnCentre') && vis('btnSettings'));
+  check('and Join is gone', !vis('btnJoin'));
+  check('and Help says this phone can let people in',
+        /can let people in/.test(d.getElementById('pinState').textContent),
+        d.getElementById('pinState').textContent);
+  check('and it is remembered for next time',
+        api.window.localStorage.getItem('convoy.master') === '1',
+        api.window.localStorage.getItem('convoy.master'));
+}
+
 async function joinAs(api, name) {
   api.join(name || 'Akshay');
   await sleep(20);
@@ -599,8 +642,13 @@ async function testOneButtonUntilYouAreIn() {
 
   check('outside the room there is one button, and it says Join the convoy',
         vis('btnJoin') && text(out, 'joinLabel') === 'Join the convoy', text(out, 'joinLabel'));
-  check('and none of the four', ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings']
-    .every((id) => !vis(id)));
+  /* Help stays, and it has to: it is the only way to the pin field. Hiding it outside the
+     convoy locked the door from the outside — a fresh install had one button and no way to
+     become the admin again. */
+  check('and Help, which is the way to the pin',
+        !vis('btnInvite') && !vis('btnPause') && !vis('btnCentre') && vis('btnSettings'),
+        ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].map((id) => id + ':' + vis(id))
+          .join(' '));
 
   const before = out.sentAll('hello').length;
   d.getElementById('btnJoin').click();
@@ -632,7 +680,7 @@ async function testHelpStaysReachableWhileOutside() {
   const api = boot({ outside: true });
   await sleep(20);
   const d = api.document;
-  check('Help is not in the row when you are outside', d.getElementById('btnSettings')
+  check('Help is in the row even when you are outside', !d.getElementById('btnSettings')
     .classList.contains('hidden'));
 
   d.getElementById('connState').dispatchEvent(new api.window.Event('pointerdown'));
@@ -1172,6 +1220,7 @@ async function testBehindAndAhead() {
 /* ---------- Run ---------- */
 (async () => {
   try {
+    await testAFreshPhoneCanBecomeTheAdmin();
     await testSomeoneGoneQuietSaysHowLong();
     await testTheRosterRemembersLastSeen();
     await testArrivingIsAnnounced();

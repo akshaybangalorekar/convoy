@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v78',             // must match VERSION in sw.js; a test holds them together
+    build: 'v79',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1942,10 +1942,18 @@
     if (joinLabel) {
       joinLabel.textContent = state.joinAsked ? 'Cancel request' : 'Join the convoy';
     }
-    ['btnInvite', 'btnPause', 'btnCentre', 'btnSettings'].forEach((id) => {
+    /* Help is always there. It is the only way to the pin field, so hiding it while you are
+       not in the convoy locked the door from the outside: a fresh install, or a phone whose
+       storage was cleared, had one button and no way to become the admin again. The other
+       three are things you can only do once you are in. */
+    ['btnInvite', 'btnPause', 'btnCentre'].forEach((id) => {
       const b = $(id);
       if (b) b.classList.toggle('hidden', !here);
     });
+    const help = $('btnSettings');
+    if (help) help.classList.remove('hidden');
+    const row = $('controls');
+    if (row) row.classList.toggle('solo', !here);
     const leaveBtn = $('btnLeave');
     if (leaveBtn && !here) {
       leaveBtn.classList.add('hidden');
@@ -2523,6 +2531,8 @@
       const note = $('pinNote');
       note.textContent = 'This phone can add and remove people.';
       note.classList.remove('hidden');
+      fillHelp();          // the line above the field still said the opposite
+      renderControls();
       renderPeople();
     });
 
