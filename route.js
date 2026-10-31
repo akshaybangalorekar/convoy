@@ -25,6 +25,8 @@
     // How long to wait for its second opinion on a street address before going with what
     // Photon already gave us.
     enrichMs: 3000,
+    // Expanding a short link means asking a service to follow it, which can be slow.
+    resolveMs: 8000,
   };
 
   let API = null;
@@ -49,6 +51,22 @@
       const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
       if (!res.ok) return null;
       return await res.json();
+    } catch (e) {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /* Some answers are not JSON — an expander may hand back the page itself. Read those as
+     text and let the caller decide what it is looking at. */
+  async function getText(url, ms) {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
+    try {
+      const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+      if (!res.ok) return null;
+      return await res.text();
     } catch (e) {
       return null;
     } finally {
@@ -516,8 +534,8 @@
 
     // A short link hides the destination behind a redirect, and a page cannot follow it
     // from here: the request is cross-origin and blocked. Say so rather than pretending.
-    if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|maps\.app\.apple\.com\/\?address=)/i.test(text) ||
-        /^https?:\/\/maps\.app\.goo\.gl/i.test(text)) {
+    if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs|maps\.app\.apple\.com\/\?address=)/i
+      .test(text)) {
       return { kind: 'short' };
     }
 
@@ -552,6 +570,72 @@
     return null;
   }
 
+  /* ---------------------------------------------------------------- *
+   * Short links
+   * ---------------------------------------------------------------- */
+
+  /* A short link hides the place behind a redirect, and a page cannot follow it: the short
+     host sends no CORS headers, and a `no-cors` request gives an opaque response with the
+     redirect stripped out. That is a browser rule, not something to work around — so it is
+     fetched by a service that is allowed to read it, and the answer is parsed exactly like
+     any other link.
+
+     Two of them, tried in order, both free and keyless. If neither answers, say so plainly
+     rather than pretending nothing happened. */
+  const SHORT_HOSTS = /^(https?:\/\/)?(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)/i;
+
+  const EXPANDERS = [
+    (u) => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+  ];
+
+  const shortCache = new Map();
+
+  function coordsInText(text) {
+    const s = String(text || '');
+    let m = /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/.exec(s);
+    if (m && place(num(m[1]), num(m[2]))) return { lat: num(m[1]), lng: num(m[2]) };
+    m = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(s);
+    if (m && place(num(m[1]), num(m[2]))) return { lat: num(m[1]), lng: num(m[2]) };
+    return null;
+  }
+
+  /* Returns { kind: 'coords', lat, lng, name } or { kind: 'name', name } or null. */
+  async function resolveShort(url) {
+    if (shortCache.has(url)) return shortCache.get(url);
+
+    for (const make of EXPANDERS) {
+      const raw = await getText(make(url), CFG.resolveMs);
+      if (!raw) continue;                       // this one did not answer: try the next
+
+      /* Two shapes come back. One is an envelope that says where the redirect ended up,
+         which is the cleanest thing to read; the other is the page itself. Handle both. */
+      let finalUrl = '';
+      let body = raw;
+      try {
+        const asJson = JSON.parse(raw);
+        finalUrl = (asJson.status && asJson.status.url) || asJson.url || '';
+        if (typeof asJson.contents === 'string') body = asJson.contents;
+      } catch (e) { /* not an envelope: it is the page */ }
+
+      const fromUrl = finalUrl ? parsePasted(finalUrl) : null;
+      if (fromUrl && (fromUrl.kind === 'coords' || fromUrl.kind === 'name')) {
+        shortCache.set(url, fromUrl);
+        return fromUrl;
+      }
+
+      const here = coordsInText(finalUrl) || coordsInText(body);
+      if (here) {
+        const got = { kind: 'coords', lat: here.lat, lng: here.lng,
+                      name: nameFromLink(finalUrl) || '' };
+        shortCache.set(url, got);
+        return got;
+      }
+    }
+    shortCache.set(url, null);
+    return null;
+  }
+
   async function runSearch() {
     const q = $('inSearch').value;
     if (String(q).trim().length < CFG.minChars) {
@@ -583,25 +667,33 @@
     $('searchScrim').addEventListener('click', closeSearch);
     /* A link dropped into the box is taken as a destination, not as something to search for.
        Returns true when it was one, so the normal search is skipped. */
-    const tookLink = (text) => {
-      const got = parsePasted(text);
-      if (!got) return false;
+    const useIt = (got) => {
       if (got.kind === 'coords') {
         $('inSearch').value = '';
         API.setDest(got.lat, got.lng, got.name || 'Pasted place');
         closeSearch();
+        return;
+      }
+      $('inSearch').value = got.name;
+      if (debounce) clearTimeout(debounce);
+      runSearch();
+    };
+
+    /* A short link has to be expanded by a service that is allowed to follow it. While that
+       is happening the list says so, because it takes a second or two. */
+    const tookLink = (text) => {
+      const got = parsePasted(text);
+      if (!got) return false;
+      if (got.kind === 'short') {
+        showHint('Opening that link…');
+        resolveShort(text.trim()).then((found) => {
+          if (found) { useIt(found); return; }
+          showHint('That short link could not be opened just now. Open it in Maps, copy the ' +
+            'long link from the address bar, or long-press the map.');
+        });
         return true;
       }
-      if (got.kind === 'name') {
-        $('inSearch').value = got.name;
-        if (debounce) clearTimeout(debounce);
-        runSearch();
-        return true;
-      }
-      // Short link: the destination is behind a redirect we cannot follow.
-      showHint('That short link hides the place behind a redirect, which this app cannot ' +
-        'follow. Open it in Maps, copy the long link from the address bar, or long-press ' +
-        'the map instead.');
+      useIt(got);
       return true;
     };
 
@@ -634,7 +726,7 @@
     _internals: { CFG, getJson, tidy, addressFrom, addressFromNominatim,
                   pickArea, pickNominatimArea, looksLikeAddress, cache, withDeadline,
                   diag, takeEnrichment, loadRecent, rememberPlace, showRecent, RECENT_MAX,
-                  parsePasted, tookLink: () => undefined,
+                  parsePasted, resolveShort, coordsInText, SHORT_HOSTS, shortCache, getText,
                   shownList: () => shown, reverse, renderResults, rowHtml, rowText,
                   },
   };

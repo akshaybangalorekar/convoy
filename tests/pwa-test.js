@@ -235,6 +235,21 @@ try {
   check('and a tap outside closes the search results',
         /searchScrim'\)\.addEventListener\('click', closeSearch\)/.test(read('route.js')) ||
         /searchScrim/.test(read('route.js')));
+  /* Android's share sheet: an installed app can be a share target, which is how a place
+     comes straight from Google Maps instead of being copied by hand. Safari does not
+     implement it, so on iOS this is simply absent rather than broken. */
+  const manifest = JSON.parse(read('manifest.webmanifest'));
+  check('the app can receive a place from another app\'s share sheet',
+        !!manifest.share_target && manifest.share_target.method === 'GET',
+        JSON.stringify(manifest.share_target || null));
+  check('and it opens the app itself, not a separate page',
+        manifest.share_target.action === './' && manifest.scope === '.',
+        manifest.share_target.action + ' / ' + manifest.scope);
+  check('taking the link from the share', ['url', 'text'].every(
+        (k) => manifest.share_target.params[k] === k),
+        JSON.stringify(manifest.share_target.params));
+  check('and the app reads that link at boot', /function takeSharedPlace/.test(app));
+
   check('the new messages are all handled',
         /case 'paused'/.test(app) &&
         /case 'arrived'/.test(app) && /case 'paused'/.test(app));
@@ -298,7 +313,7 @@ try {
   });
   check('the routing module is precached', shellFiles.indexOf('route.js') >= 0);
   check('the app is precached', shellFiles.indexOf('app.js') >= 0);
-  check('the shell version was bumped for this rewrite', /convoy-v77/.test(sw));
+  check('the shell version was bumped for this rewrite', /convoy-v78/.test(sw));
   check('tiles are cached for driving through a dead spot', /TILE_CACHE/.test(sw));
 } catch (e) { crash(e); }
 

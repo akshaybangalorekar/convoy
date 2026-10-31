@@ -71,9 +71,24 @@ link into the search box and the coordinates come out of it — no reading numbe
 type into another. Google puts the exact pin in `!3d..!4d..` and the map centre in `@lat,lng`;
 the pin wins, because the centre can be wherever the map happened to be. `?q=`, `ll=`, `daddr=`,
 `destination=`, `center=` and plain "lat, lng" all work. A link with only a name in it is used as
-a search instead. **Short links (`maps.app.goo.gl/…`) cannot work**: the destination is behind a
-redirect, and a page cannot follow a cross-origin redirect — the app says so and suggests copying
-the long link or long-pressing the map.
+a search instead. **Short links are expanded by a service.** A page genuinely cannot read where `maps.app.goo.gl/…`
+goes: the short host sends no CORS headers, and a `no-cors` request returns an opaque response
+with the redirect stripped out. So the link is fetched by a free, keyless expander instead —
+`api.allorigins.win`, then `corsproxy.io` as a fallback — and the answer is parsed exactly like
+any other link. Both shapes are handled: an envelope that reports the final URL, or the page
+itself with the coordinates inside it. Answers are cached, so asking twice costs one round trip.
+If neither service answers, the app says so plainly and suggests copying the long link or
+long-pressing the map.
+
+Two things to be straight about: the link passes through a third party, which is the price of
+expanding it without a server of our own; and these are public services, so they can be slow or
+down. The app degrades to the honest message rather than failing silently.
+
+**On Android, a place can be shared straight into the app.** The manifest declares a share
+target, so an installed Convoy appears in Google Maps' share sheet — sharing a place opens the app
+with the link, resolves it, and sets the destination. **Safari does not implement Web Share
+Target**, so on iOS there is no share-sheet entry; that is a platform gap, not a bug, and the
+paste route covers it.
 
 **When a name is not in the map, try a shorter one.** People type what the sign says, and
 OpenStreetMap often has the place under a shorter name — or only has the suburb it sits in.
@@ -732,7 +747,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1131 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1139 checks:
 
 ```bash
 npm install

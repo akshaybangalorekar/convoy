@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v77',             // must match VERSION in sw.js; a test holds them together
+    build: 'v78',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -2650,6 +2650,44 @@
   }
 
   /* ---------------------------------------------------------------- *
+   * Shared into from another app
+   * ---------------------------------------------------------------- */
+
+  /* Android lets an installed app appear in another app's share sheet, through the
+     manifest's share_target. Sharing a place from Google Maps then lands here as
+     `?url=…&text=…` instead of making anyone copy a link by hand.
+
+     The browser does not navigate to a separate page — it opens the app with the share in
+     the query string — so this runs at boot, sets the destination, and then tidies the
+     address bar so a reload does not do it twice. */
+  function takeSharedPlace() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (e) { return; }
+    const shared = params.get('url') || params.get('text') || params.get('title') || '';
+    if (!shared) return;
+    if (!/maps\.|goo\.gl|g\.co|apple\.com\/maps|^-?\d/.test(shared)) return;
+
+    try {
+      const url = new URL(location.href);
+      ['url', 'text', 'title'].forEach((k) => url.searchParams.delete(k));
+      history.replaceState(null, '', url.pathname + (url.search || ''));
+    } catch (e) { /* ignore */ }
+
+    const R = window.ConvoyRoute;
+    if (!R) return;
+    const got = R._internals.parsePasted(shared);
+    if (!got) return;
+    if (got.kind === 'coords') { setDest(got.lat, got.lng, got.name || 'Shared place'); return; }
+    if (got.kind === 'name') { R.openSearch(); setTimeout(() => R.search(got.name), 80); return; }
+    // A short link: expand it, then set it.
+    R._internals.resolveShort(shared).then((found) => {
+      if (found && found.kind === 'coords') setDest(found.lat, found.lng, found.name || 'Shared place');
+      else if (found && found.kind === 'name') { R.openSearch(); R.search(found.name); }
+      else notify('Could not open the shared place', 'Long-press the map to set it instead.');
+    });
+  }
+
+  /* ---------------------------------------------------------------- *
    * Boot
    * ---------------------------------------------------------------- */
   function boot() {
@@ -2668,6 +2706,7 @@
       });
     }
     if (window.ConvoyInstall) window.ConvoyInstall.init();
+    takeSharedPlace();
     $('sheet').classList.add('hidden');
     renderDest();
 
@@ -2705,7 +2744,7 @@
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
                   bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
-                  leaveConvoy, publishLists,
+                  leaveConvoy, publishLists, takeSharedPlace,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),

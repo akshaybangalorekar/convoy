@@ -174,6 +174,99 @@ async function testALinkFromAMapsAppBecomesADestination() {
   check('nor a pair of zeroes', P('0,0') === null);
 }
 
+/* ---------- Short links ---------- */
+const SHORT = 'https://maps.app.goo.gl/QcUGWdwQSSdr7vKj7?g_st=ic';
+const RESOLVED = 'https://www.google.com/maps/place/Balnarring+Foreshore+Reserve/' +
+                 '@-38.3712,145.5501,17z/data=!3d-38.3712!4d145.5501';
+
+// allorigins answers with an envelope that says where it ended up.
+const expanderOk = (url) => {
+  if (url.indexOf('allorigins') >= 0) {
+    return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({
+      contents: '', status: { url: RESOLVED, http_code: 200 } }) });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
+// The first one is down; the second answers with the page itself.
+const expanderSecond = (url) => {
+  if (url.indexOf('allorigins') >= 0) return Promise.reject(new Error('down'));
+  if (url.indexOf('corsproxy') >= 0) {
+    return Promise.resolve({ ok: true, status: 200,
+      text: async () => '<html>' + RESOLVED + '</html>' });
+  }
+  return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+};
+
+const expanderDown = () => Promise.reject(new Error('down'));
+
+async function testAShortLinkIsExpanded() {
+  const api = boot({ fetch: expanderOk });
+  await sleep(30);
+  const I = api.window.ConvoyRoute._internals;
+
+  check('a short link is recognised as one', I.parsePasted(SHORT).kind === 'short',
+        JSON.stringify(I.parsePasted(SHORT)));
+  check('and the newer g.co form too',
+        I.parsePasted('https://g.co/kgs/abc123').kind === 'short');
+
+  const got = await I.resolveShort(SHORT);
+  check('it is expanded to the place it hides', got && got.kind === 'coords', JSON.stringify(got));
+  check('with the right coordinates',
+        got && Math.abs(got.lat + 38.3712) < 1e-6 && Math.abs(got.lng - 145.5501) < 1e-6,
+        got && got.lat + ',' + got.lng);
+  check('and the name of the place', got && got.name === 'Balnarring Foreshore Reserve',
+        got && got.name);
+
+  // Asking twice must not cost two round trips.
+  const before = api.netCalls.length;
+  await I.resolveShort(SHORT);
+  check('and asking again does not fetch it again',
+        api.netCalls.length === before, String(api.netCalls.length - before));
+}
+
+async function testAShortLinkFallsBackToTheOtherService() {
+  const api = boot({ fetch: expanderSecond });
+  await sleep(30);
+  const I = api.window.ConvoyRoute._internals;
+  const got = await I.resolveShort(SHORT + '2');
+  check('when one service is down, the other still expands it',
+        got && got.kind === 'coords', JSON.stringify(got));
+  check('and finds the coordinates in the page it gets back',
+        got && Math.abs(got.lat + 38.3712) < 1e-6, got && String(got.lat));
+}
+
+async function testAShortLinkThatCannotBeExpanded() {
+  const api = boot({ fetch: expanderDown });
+  await sleep(30);
+  const I = api.window.ConvoyRoute._internals;
+  const got = await I.resolveShort(SHORT + '3');
+  check('when nothing can expand it, it says so rather than guessing', got === null,
+        JSON.stringify(got));
+  check('and it is remembered as unexpandable, not retried every time',
+        I.shortCache.has(SHORT + '3'));
+}
+
+async function testAPlaceSharedIntoTheAppFromAnotherApp() {
+  // Android share sheet: the app opens with ?url=… rather than a separate page.
+  const api = boot({
+    fetch: expanderOk,
+    setup: (w) => {
+      w.history.replaceState(null, '', '/?url=' + encodeURIComponent(SHORT) +
+                                 '&title=A%20place&text=hello');
+    },
+  });
+  await sleep(400);
+  const st = api.window.Convoy.state;
+  check('a place shared from another app becomes the destination',
+        !!st.dest, JSON.stringify(st.dest));
+  check('with the coordinates from the link',
+        st.dest && Math.abs(st.dest.lat + 38.3712) < 1e-6, st.dest && String(st.dest.lat));
+  check('and the query string is tidied away, so a reload does not do it twice',
+        !/url=|text=|title=/.test(api.window.location.search),
+        api.window.location.search || '(clean)');
+}
+
 /* ---------- When the exact name is not in the map ---------- */
 async function testALongerNameFallsBackToAShorterOne() {
   // "Balnarring Foreshore Reserve" is a real place that OpenStreetMap does not have under
@@ -973,6 +1066,10 @@ async function testHistoryIsPerPhone() {
     await testAddressServiceIsNotHammered();
     await testRepeatsAreCached();
     await testSearchBiasedToYou();
+    await testAShortLinkIsExpanded();
+    await testAShortLinkFallsBackToTheOtherService();
+    await testAShortLinkThatCannotBeExpanded();
+    await testAPlaceSharedIntoTheAppFromAnotherApp();
     await testALinkFromAMapsAppBecomesADestination();
     await testALongerNameFallsBackToAShorterOne();
     await testDrive();
