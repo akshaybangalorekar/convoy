@@ -59,6 +59,12 @@ elevation is worked out for where you are, and the tiles are darkened when it dr
 cars keep their own colours — they are what you are reading the map for. It follows the sun
 as you drive, so a long trip at dusk changes over on its own.
 
+**One tap from the convoy to turn-by-turn.** The destination is decided here, so the row has a
+navigate arrow that hands those exact coordinates to Google Maps in driving mode — no searching
+for the same place a second time. It opens in a new context, so Convoy stays running behind Maps,
+which is precisely when the background reporting matters. The destination stays set here, so the
+convoy keeps it while you drive.
+
 **The destination bar and the search box are the same field.** One element, at the top of the
 screen: when you are not searching it shows where you are going, and tapping it turns it into the
 search box with that text selected, so typing replaces it. The results drop down from underneath
@@ -89,6 +95,12 @@ target, so an installed Convoy appears in Google Maps' share sheet — sharing a
 with the link, resolves it, and sets the destination. **Safari does not implement Web Share
 Target**, so on iOS there is no share-sheet entry; that is a platform gap, not a bug, and the
 paste route covers it.
+
+**Both services are biased towards where you are.** Photon always was; Nominatim — the one that
+answers addresses — was not, so the two disagreed about what "the nearest one" meant and an
+address a street away could lose to a namesake in another state. It now gets a soft viewbox
+around the phone: about 150 km, enough to cover a day's drive, and a place further away is still
+findable.
 
 **When a name is not in the map, try a shorter one.** People type what the sign says, and
 OpenStreetMap often has the place under a shorter name — or only has the suburb it sits in.
@@ -753,7 +765,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1149 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1155 checks:
 
 ```bash
 npm install

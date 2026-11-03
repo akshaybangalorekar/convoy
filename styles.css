@@ -270,6 +270,20 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .leave-btn:active { opacity: 0.7; }
 .leave-btn.armed { background: var(--danger); color: #fff; }
 
+/* One tap from the convoy to turn-by-turn. The destination is already decided here; this
+   hands it to the app that does the driving, and Convoy stays open behind it. */
+.dest-go {
+  appearance: none; border: 0; background: none;
+  flex: 0 0 auto; padding: 10px 4px 10px 10px; cursor: pointer;
+  color: var(--orange);
+}
+.dest-go svg {
+  width: 19px; height: 19px; display: block;
+  stroke: currentColor; fill: none; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.dest-go:active { opacity: 0.6; }
+
 .dest-clear {
   appearance: none; border: 0; background: none; color: var(--muted);
   flex: 0 0 auto; padding: 10px 14px 10px 10px;

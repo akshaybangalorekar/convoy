@@ -10,6 +10,35 @@ const text = (api, id) => api.document.getElementById(id).textContent;
 const banner = (api) => api.document.getElementById('banner').textContent;
 
 /* ---------- A phone that has never been used before ---------- */
+/* ---------- One tap from the convoy to turn-by-turn ---------- */
+async function testTheDestinationCanBeHandedToAMapsApp() {
+  const api = boot();
+  await sleep(30);
+  const d = api.document;
+  const go = d.getElementById('btnNavigate');
+  const opened = [];
+  api.window.open = (url) => { opened.push(url); return null; };
+
+  check('with no destination there is nothing to navigate to', go.classList.contains('hidden'));
+
+  api.window.Convoy.setDest(-38.3712, 145.5501, 'Balnarring Foreshore Reserve');
+  await sleep(40);
+  check('setting one offers the handoff', !go.classList.contains('hidden'));
+
+  go.click();
+  await sleep(30);
+  check('and it opens turn-by-turn for those exact coordinates',
+        opened.length === 1 && /destination=-38\.3712%2C145\.5501/.test(opened[0]),
+        opened[0] || '(nothing opened)');
+  check('in the driving mode', /travelmode=driving/.test(opened[0] || ''), opened[0]);
+  check('and the destination is still set here, so the convoy keeps it',
+        !!api.window.Convoy.state.dest);
+
+  api.window.Convoy.clearDest();
+  await sleep(30);
+  check('clearing it puts the handoff away', go.classList.contains('hidden'));
+}
+
 async function testAFreshPhoneCanBecomeTheAdmin() {
   /* The path a new install takes: nothing in storage, one Join button, and Help — which is
      the only way to the pin field. Hiding Help outside the convoy locked the door from the
@@ -1220,6 +1249,7 @@ async function testBehindAndAhead() {
 /* ---------- Run ---------- */
 (async () => {
   try {
+    await testTheDestinationCanBeHandedToAMapsApp();
     await testAFreshPhoneCanBecomeTheAdmin();
     await testSomeoneGoneQuietSaysHowLong();
     await testTheRosterRemembersLastSeen();

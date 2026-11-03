@@ -180,6 +180,17 @@
               '&addressdetails=1&accept-language=en';
     if (CFG.country && !plain) url += '&countrycodes=' + CFG.country;
 
+    /* Bias towards where the phone is, the same way Photon is biased. Without it the two
+       services disagree about what "the nearest one" means, and an address a street away
+       loses to a namesake in another state — which is the difference people notice between
+       this and Google. Soft, not bounded: a place far from you is still findable. */
+    const me = !plain && API && API.state && API.state.me;
+    if (me && me.lat != null && me.lng != null) {
+      const d = 1.5;                       // about 150 km, enough to cover a day's drive
+      url += '&viewbox=' + (me.lng - d) + ',' + (me.lat + d) + ',' +
+             (me.lng + d) + ',' + (me.lat - d);
+    }
+
     const j = await getJson(url, CFG.timeoutMs);
     if (!Array.isArray(j)) return null;
     return j

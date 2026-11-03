@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v79',             // must match VERSION in sw.js; a test holds them together
+    build: 'v80',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -1905,6 +1905,8 @@
     }
     const clear = $('btnClearDest');
     if (clear) clear.style.display = state.dest ? '' : 'none';
+    const go = $('btnNavigate');
+    if (go) go.classList.toggle('hidden', !state.dest);
 
     const pin = document.querySelector('.dest-pin');
     if (pin) {
@@ -2618,6 +2620,23 @@
     $('connState').addEventListener('click', showConnection);
     checkForUpdate();
     $('btnConnClose').addEventListener('click', () => $('connCard').classList.add('hidden'));
+    /* Turn-by-turn lives in the app that does it well, and this is the one tap between
+       them: the destination is already decided here, so hand it over with its coordinates
+       instead of making anyone search for the same place twice. Opened in a new context so
+       Convoy stays running behind Maps — which is exactly when the background reporting
+       matters. */
+    const go = $('btnNavigate');
+    if (go) {
+      go.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!state.dest) return;
+        const d = state.dest;
+        const url = 'https://www.google.com/maps/dir/?api=1&destination=' +
+          encodeURIComponent(d.lat + ',' + d.lng) + '&travelmode=driving';
+        try { window.open(url, '_blank', 'noopener'); } catch (err) { location.href = url; }
+      });
+    }
+
     // The row is the field now: a tap anywhere on it puts the cursor in the box.
     $('destRow').addEventListener('click', (e) => {
       if (e.target && e.target.id === 'btnClearDest') return;
