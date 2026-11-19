@@ -297,6 +297,8 @@ function boot(opts = {}) {
     });
   };
 
+  window.eval(fs.readFileSync(path.join(DIR, 'config.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(DIR, 'net.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(DIR, 'route.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(DIR, 'install.js'), 'utf8'));
   if (opts.setup) opts.setup(window);

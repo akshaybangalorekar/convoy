@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v80',             // must match VERSION in sw.js; a test holds them together
+    build: 'v81',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -278,6 +278,7 @@
       p.arrived = true;
       changed = true;
       notify(p.name + ' has arrived', state.dest.label);
+      pushEvent('arrived', p.name + ' has arrived at ' + state.dest.label, p.id);
     });
     // Redraw here rather than leaving it to the caller, so the arrival time on screen is
     // replaced by "arrived" the moment it happens.
@@ -989,6 +990,7 @@
     if (!had) {
       const who = msg.name || 'Someone';
       banner(who + ' wants to join');
+      pushEvent('join', who + ' wants to join the convoy', msg.id);
       // Every phone holding the pin gets this, and any of them can let them in.
       notify(who + ' wants to join', 'Open Convoy to let them in');
     }
@@ -1038,6 +1040,7 @@
        the four buttons. */
     state.removed.delete(id);
     state.pending.delete(id);
+    dbLetIn(id);
     publishLists();
     renderPeople();
   }
@@ -1182,6 +1185,7 @@
     state.destTs = ts;
     applyDest(next);
     notify((msg.by || msg.name || 'Someone') + ' set the destination', next.label);
+    pushEvent('dest', (msg.by || msg.name || 'Someone') + ' set the destination: ' + next.label);
   }
 
   function onDestClear(msg) {
@@ -1354,6 +1358,14 @@
         ? 'This phone can let people in'
         : 'This phone cannot let anyone in';
     }
+    const netBtn = $('btnNet');
+    if (netBtn) {
+      const kind = netConfig().kind;
+      const ready = kind !== 'supabase' || (window.ConvoyNetConfig || {}).supabaseUrl;
+      netBtn.textContent = 'Transport: ' +
+        (kind === 'supabase' ? (ready ? 'Supabase' : 'Supabase (not set up)') : 'public relays') +
+        ' · tap to switch';
+    }
     const note = $('notifyNote');
     if (note) {
       const perm = (typeof Notification === 'function') ? Notification.permission : 'unsupported';
@@ -1480,75 +1492,269 @@
     state.lastErrorRelay = state.relay || '';
   }
 
+  /* ---------------------------------------------------------------- *
+   * The durable half (Supabase only)
+   * ---------------------------------------------------------------- */
+
+  /* When Supabase is the transport, membership and the destination are rows as well as
+     messages. That is what makes a wiped phone or a week-old reinstall come back to the
+     same group instead of a blank slate, and what lets an admin approve somebody while
+     their own phone is closed. Everything here is best effort: the bus works without it. */
+  const db = () => (client && client.kind === 'supabase' && client.client)
+    ? client.client() : null;
+
+  function applyMembership(rows) {
+    let changed = false;
+    (rows || []).forEach((r) => {
+      if (!r || !r.id) return;
+      if (r.allowed && !state.allowed.has(r.id)) { state.allowed.add(r.id); changed = true; }
+      if (!r.allowed && state.allowed.has(r.id)) { state.allowed.delete(r.id); changed = true; }
+      if (r.removed) state.removed.add(r.id); else state.removed.delete(r.id);
+      const p = state.peers.get(r.id);
+      if (p && r.name && p.name !== r.name) { p.name = r.name; changed = true; }
+      if (r.admin && r.id === (state.me && state.me.id)) state.master = true;
+    });
+    if (changed) {
+      saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
+      renderPeople();
+      renderControls();
+    }
+  }
+
+  function applyDbDest(c) {
+    if (!c) return;
+    const ts = Number(c.dest_ts) || 0;
+    if (ts <= state.destTs) return;                 // an older answer than the one we have
+    state.destTs = ts;
+    if (c.dest_lat == null || c.dest_lng == null) {
+      if (state.dest) { state.dest = null; renderDest(); drawDest(); drawMyLine(null); saveDest(); }
+      return;
+    }
+    applyDest({ lat: c.dest_lat, lng: c.dest_lng, label: c.dest_label || 'Destination',
+                by: c.dest_by || '', byId: c.dest_by_id || '' });
+    renderPeople();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Push, for a phone with the app closed
+   * ---------------------------------------------------------------- */
+
+  const urlB64ToUint8Array = (base64) => {
+    const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+    const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  };
+
+  /* Web Push is the only thing that reaches a phone that has the app closed — which is the
+     whole reason the durable state moved to a server. Registered only on the Supabase
+     transport, because that is where the subscription is kept and where the sender lives.
+     Everything about it is optional: no key, no permission, or an old browser, and the app
+     carries on without it. */
+  async function wirePush() {
+    const sb = db();
+    const cfg = window.ConvoyNetConfig || {};
+    if (!sb || !state.me || !cfg.vapidPublicKey) return;
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    if (typeof window.PushManager === 'undefined') return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg || !reg.pushManager) return;
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(cfg.vapidPublicKey),
+        });
+      }
+      const json = sub.toJSON ? sub.toJSON() : {};
+      if (!json.endpoint || !json.keys) return;
+      await sb.from('push_subs').upsert({
+        endpoint: json.endpoint,
+        member_id: state.me.id,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        at: new Date().toISOString(),
+      }, { onConflict: 'endpoint' });
+    } catch (e) { /* push is a bonus, never a requirement */ }
+  }
+
+  /* Something happened that is worth waking a closed phone for. The Edge Function picks
+     these up and sends them; nothing here waits for it. */
+  function pushEvent(kind, body, about) {
+    const sb = db();
+    if (!sb) return;
+    sb.from('events').insert({
+      kind, body: String(body || '').slice(0, 160), about: about || null,
+      at: new Date().toISOString(),
+    }).then(() => {}, () => {});
+  }
+
+  async function bootstrapFromDb() {
+    const sb = db();
+    if (!sb || !state.me) return;
+    try {
+      const uid = client.uid && client.uid();
+      // Say who we are before reading, so a phone that has never spoken still exists.
+      if (uid) {
+        await sb.from('members').upsert({
+          id: state.me.id, user_id: uid, name: state.me.name,
+          lat: state.me.lat, lng: state.me.lng,
+          seen_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      }
+      const [rows, convoy] = await Promise.all([
+        sb.from('members').select('id, name, allowed, removed, admin'),
+        sb.from('convoy').select('*').eq('id', 'main').maybeSingle(),
+      ]);
+      if (rows && rows.data) applyMembership(rows.data);
+      if (convoy && convoy.data) applyDbDest(convoy.data);
+      wirePush();                 // once, on the first connect
+    } catch (e) { /* the bus still works without it */ }
+  }
+
+  /* A row changed underneath us: membership or the destination. This is the piece that makes
+     a closed phone catch up when it reopens. */
+  function onDbChange(table, row) {
+    if (!row) return;
+    const next = row.new || row.record || null;
+    if (table === 'members') {
+      if (next) applyMembership([next]);
+      else if (row.old && row.old.id) applyMembership([{ id: row.old.id, allowed: false, removed: true }]);
+      return;
+    }
+    if (table === 'convoy' && next) applyDbDest(next);
+  }
+
+  /* Writing through, so the row is the record and not just a copy of the last broadcast. */
+  function dbLetIn(id) {
+    const sb = db();
+    if (sb) sb.rpc('let_in', { who: id }).then(() => {}, () => {});
+  }
+  function dbKeepOut(id) {
+    const sb = db();
+    if (sb) sb.rpc('keep_out', { who: id }).then(() => {}, () => {});
+  }
+  function dbSaveDest() {
+    const sb = db();
+    if (!sb) return;
+    const d = state.dest;
+    sb.from('convoy').upsert({
+      id: 'main',
+      dest_lat: d ? d.lat : null, dest_lng: d ? d.lng : null,
+      dest_label: d ? d.label : null, dest_by: d ? d.by : null,
+      dest_by_id: d ? d.byId : null, dest_ts: state.destTs,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' }).then(() => {}, () => {});
+  }
+
+  /* Which transport to use. Kept in storage rather than hard-coded, so the two can be
+     compared on a real trip without rebuilding anything. */
+  function netConfig() {
+    const c = window.ConvoyNetConfig || {};
+    let kind = c.kind === 'supabase' ? 'supabase' : 'mqtt';
+    try {
+      const saved = localStorage.getItem('convoy.net');
+      if (saved === 'supabase' || saved === 'mqtt') kind = saved;
+    } catch (e) { /* ignore */ }
+    return { kind, url: c.supabaseUrl || '', key: c.supabaseKey || '' };
+  }
+
+  function setNetKind(kind) {
+    try { localStorage.setItem('convoy.net', kind === 'supabase' ? 'supabase' : 'mqtt'); }
+    catch (e) { /* ignore */ }
+    if (client) { try { client.end(); } catch (e) { /* ignore */ } client = null; }
+    brokerIdx = 0;
+    connect();
+    fillHelp();
+  }
+
   function connect() {
+    const net = netConfig();
     const b = CFG.brokers[brokerIdx % CFG.brokers.length];
-    state.relay = b.name;
+    state.relay = net.kind === 'supabase' ? 'supabase' : b.name;
     setConn('waiting', connLabel('connecting'));
     let settled = false;
     let counted = false;
     const fail = () => { if (counted) return; counted = true; noteRelayFailure(); };
 
+    if (net.kind === 'supabase' && (!net.url || !net.key)) {
+      fail();
+      setConn('down', 'no project');
+      state.lastError = 'Supabase project not set up yet';
+      return;
+    }
+
     // The library comes from a CDN. Without it every attempt throws before it reaches the
     // network — which used to cycle through the relays for ever, looking exactly like a
     // blocked network. Say so instead.
-    if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
+    if (net.kind === 'mqtt' && (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect)) {
       fail();
       setConn('down', 'no library');
       return;
     }
 
+    let liveAt = 0;
     try {
-      client = mqtt.connect(b.url, {
-        // A unique id per attempt. Two copies of the app on one phone share the same
-        // device id, and a broker kicks the older session when a second client arrives
-        // with the same one — which looks like a connection that keeps dropping.
+      client = window.ConvoyNet.create({
+        kind: net.kind,
+        // A unique id per attempt. Two copies of the app on one phone share the same device
+        // id, and a broker kicks the older session when a second client arrives with the
+        // same one — which looks like a connection that keeps dropping.
+        url: b.url,
+        key: net.key,
         clientId: state.me.id + '-' + rand(4),
-        clean: true,
-        reconnectPeriod: 0,
         // Mobile networks drop idle sockets long before MQTT's default minute is up.
         keepalive: CFG.keepalive,
+        askPrefix: askTopic(''),
+        askFreshMs: CFG.askFreshMs,
+
+        onOpen: () => {
+          settled = true;
+          liveAt = Date.now();
+          connFailures = 0;
+          toldAboutRelay = false;
+          setConn('live', 'live');
+          client.subscribe(state.topic);
+          // Retained requests: each phone asks on its own topic, so the ask outlives the
+          // phone that sent it. Without this a request sent while nobody with the pin was
+          // connected was simply lost.
+          client.subscribe(askTopic('+'));
+          if (state.joinAsked) publishAsk();
+          sendState();        // push everything we know, so nobody has to hold it for us
+          refreshRoute();
+          bootstrapFromDb();
+        },
+        onMessage: (t, p) => onMessage(t, p),
+        onError: (err) => { noteError(err); if (!settled) { fail(); retry(); } },
+        onChange: (table, row) => onDbChange(table, row),
+        onDisconnect: (pkt) => noteError(null, pkt),
+        onClose: () => {
+          if (!state.lastError) noteError(new Error('socket closed'));
+          setConn('down', 'offline');
+          if (!settled) { fail(); retry(); return; }
+          // A connection that lasted a while ended normally; one that dies straight after
+          // connecting is a flap, and two of those in a row mean this relay is not the one.
+          if (Date.now() - liveAt >= CFG.stableMs) flapping = 0;
+          else flapping++;
+          if (flapping >= 2) {
+            flapping = 0;
+            brokerIdx++;
+            retry();
+            return;
+          }
+          scheduleReconnect();
+        },
       });
+      client.start();
     } catch (e) {
       fail();
       retry();
       return;
     }
-
-    let liveAt = 0;
-    client.on('connect', () => {
-      settled = true;
-      liveAt = Date.now();
-      connFailures = 0;
-      toldAboutRelay = false;
-      setConn('live', 'live');
-      client.subscribe(state.topic, { qos: 0 }, () => {});
-      // Retained requests: each phone asks on its own topic, so the broker keeps the ask
-      // and hands it to a pin phone that connects later. Without this a request sent while
-      // nobody with the pin was connected was simply lost.
-      client.subscribe(askTopic('+'), { qos: 0 }, () => {});
-      if (state.joinAsked) publishAsk();
-      sendState();          // push everything we know, so nobody has to hold it for us
-      refreshRoute();
-    });
-    client.on('message', onMessage);
-    client.on('error', (err) => { noteError(err); if (!settled) { fail(); retry(); } });
-    client.on('disconnect', (pkt) => { noteError(null, pkt); });
-    client.on('close', () => {
-      if (!state.lastError) noteError(new Error('socket closed'));
-      setConn('down', 'offline');
-      if (!settled) { fail(); retry(); return; }
-      // A connection that lasted a while ended normally; one that dies straight after
-      // connecting is a flap, and two of those in a row mean this relay is not the one.
-      if (Date.now() - liveAt >= CFG.stableMs) flapping = 0;
-      else flapping++;
-      if (flapping >= 2) {
-        flapping = 0;
-        brokerIdx++;
-        retry();
-        return;
-      }
-      scheduleReconnect();
-    });
   }
 
   /* Backing off matters on a phone: a blocked port refuses instantly, and a fixed one-second
@@ -1891,6 +2097,7 @@
     // caller stuck half way through setting a destination.
     try { drawDest(); refreshRoute(); } catch (e) { /* ignore */ }
     saveDest();
+    dbSaveDest();
   }
 
   function renderDest() {
@@ -2029,6 +2236,7 @@
     state.pending.delete(id);
     removePeer(id);            // the row and the car on the map
     forgetMember(id);          // and the roster, so a reopened app does not bring them back
+    dbKeepOut(id);
     publishLists();
     renderPeople();
   }
@@ -2507,6 +2715,18 @@
       }
       $('settingsCard').classList.remove('hidden');
     });
+    $('btnNet').addEventListener('click', () => {
+      const next = netConfig().kind === 'supabase' ? 'mqtt' : 'supabase';
+      const cfg = window.ConvoyNetConfig || {};
+      if (next === 'supabase' && !cfg.supabaseUrl) {
+        // Nothing to switch to yet: say what is missing rather than dropping the connection.
+        const note = $('pinNote');
+        note.textContent = 'No Supabase project set. Put the URL and anon key in config.js.';
+        note.classList.remove('hidden');
+        return;
+      }
+      setNetKind(next);
+    });
     $('btnSettingsClose').addEventListener('click',
       () => $('settingsCard').classList.add('hidden'));
     $('inPin').addEventListener('change', () => {
@@ -2773,7 +2993,8 @@
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
                   huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
                   bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
-                  leaveConvoy, publishLists, takeSharedPlace,
+                  leaveConvoy, publishLists, takeSharedPlace, onDbChange, applyMembership,
+                  bootstrapFromDb, netConfig, setNetKind,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),

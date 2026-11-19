@@ -13,7 +13,7 @@
  */
 'use strict';
 
-const VERSION = 'convoy-v80';
+const VERSION = 'convoy-v81';
 const TILE_CACHE = 'convoy-tiles-v1';
 const MAX_TILES = 400;          // ~6 MB, roughly one afternoon of driving
 
@@ -21,6 +21,8 @@ const SHELL = [
   './',
   './index.html',
   './app.js',
+  './config.js',
+  './net.js',
   './route.js',
   './install.js',
   './styles.css',
@@ -67,6 +69,34 @@ async function trimTiles(cache) {
   if (keys.length <= MAX_TILES) return;
   for (let i = 0; i < keys.length - MAX_TILES; i++) await cache.delete(keys[i]);
 }
+
+/* Web Push. This is the one thing that reaches the phone when the app is not open — which
+   is the whole point of moving the durable state to a server. It works on Android Chrome
+   and, from 16.4, on an installed iOS app; Safari will not deliver it to a browser tab. */
+self.addEventListener('push', (event) => {
+  let data = { title: 'Convoy', body: '' };
+  try { data = event.data ? event.data.json() : data; } catch (e) { /* plain text */ }
+  const title = data.title || 'Convoy';
+  const body = data.body || '';
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag: data.tag || 'convoy',
+    renotify: !!data.tag,
+    data: { url: data.url || './' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) {
+      if ('focus' in c) { try { await c.focus(); return; } catch (e) { /* ignore */ } }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
+});
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;

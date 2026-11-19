@@ -164,6 +164,7 @@
          rel="noopener">OpenStreetMap</a> contributors.</p>
     <p class="build-line" id="settingsVersion">Version</p>
     <p class="build-line" id="pinState"></p>
+    <p class="build-line"><button id="btnNet" class="net-line">Transport</button></p>
     <p class="build-line" id="notifyNote"></p>
     <p id="pinNote" class="hint-line hidden"></p>
     <button id="btnLeave" class="leave-btn hidden">Leave the convoy</button>
@@ -213,8 +214,22 @@
     document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>');
   }
 </script>
+<script src="config.js"></script>
+<script src="net.js"></script>
 <script src="route.js"></script>
 <script src="install.js"></script>
+<script>
+  // The Supabase library is ~120 KB. Only fetch it when a phone is actually pointed at a
+  // project, so the relay path stays as light as it was.
+  (function () {
+    try {
+      var cfg = window.ConvoyNetConfig || {};
+      var kind = localStorage.getItem('convoy.net') || cfg.kind || 'mqtt';
+      if (kind !== 'supabase' || !cfg.supabaseUrl) return;
+      document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/script>');
+    } catch (e) { /* ignore */ }
+  })();
+</script>
 <script src="app.js"></script>
 </body>
 </html>

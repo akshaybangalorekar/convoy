@@ -444,6 +444,21 @@ And one real bug the audit turned up: **the retained join request was published 
 type**, so the pin phone could not tell a fresh request from one left on the broker days ago,
 and the half-hour freshness rule never ran. It is published as `t: 'ask'` now.
 
+## Running on Supabase instead of the public relays
+
+The app still works with no server at all — but it can now run on Supabase, and **the
+transport is switchable per phone** from Help, so the two can be compared on a real trip.
+`docs/supabase.md` has the setup steps, the free-tier numbers, and an honest list of what is
+and is not tested.
+
+What the move buys: membership and the destination become rows, so an admin can approve
+someone while their own phone is shut and a wiped phone comes back to the same group; the pin
+stops being a hash in the client and becomes a database check; and Web Push reaches a phone
+with the app closed — which is the only real answer to a backgrounded app going quiet.
+
+What it costs: a signup, and free projects **pause after about a week of low activity**. A
+daily GitHub Action in this repo keeps it awake, and a paused project is restorable for a year.
+
 ## Why the beat stays at thirty seconds while you are on the app
 
 The publish is a ~200-byte MQTT message on a socket that is already open — about 24 KB an
@@ -765,7 +780,7 @@ proper night map.
 ## Testing
 
 Eight headless jsdom suites run the real `app.js`, `route.js` and `install.js` against
-stubbed Leaflet, MQTT, geolocation, notifications and network — 1155 checks:
+stubbed Leaflet, MQTT, geolocation, notifications and network — 1184 checks:
 
 ```bash
 npm install

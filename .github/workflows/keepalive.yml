@@ -1,0 +1,25 @@
+# Free projects pause after about a week of low activity, and a convoy app is used on
+# weekends — which is exactly the pattern that gets paused. One cheap query a day counts as
+# activity, so the first launch of a trip is not the one that finds the project asleep.
+name: keep the project awake
+
+on:
+  schedule:
+    - cron: '17 3 * * *'      # once a day, a quiet hour
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: One query
+        run: |
+          if [ -z "${{ secrets.SUPABASE_URL }}" ] || [ -z "${{ secrets.SUPABASE_ANON_KEY }}" ]; then
+            echo "No project configured — nothing to keep awake."
+            exit 0
+          fi
+          curl -sS --fail --max-time 20 \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/convoy?select=id&limit=1" \
+            > /dev/null && echo "awake"
