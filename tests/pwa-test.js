@@ -17,7 +17,11 @@ try {
 
   /* ---------- What the app is ---------- */
   check('the page loads the map library', /unpkg\.com\/leaflet@/.test(html));
-  check('the page loads the relay library', /unpkg\.com\/mqtt@/.test(html));
+  /* The public relays are gone: one Supabase project, and the library for it is only
+     fetched once a project is configured. */
+  check('the page no longer loads a relay library', !/mqtt/i.test(html), 'mqtt in index.html');
+  check('and loads the Supabase library only when a project is set',
+        /supabase-js/.test(html) && /if \(!cfg\.supabaseUrl\) return/.test(html));
   check('the page loads the routing module', /<script src="route\.js">/.test(html));
   check('the page loads the app', /<script src="app\.js">/.test(html));
 
@@ -170,7 +174,9 @@ try {
   // all used in a hurry, and a mis-tap on one of them must never take you out.
   check('and leaving is in Help, behind a second tap',
         /id="btnLeave"/.test(html) && /Tap again to leave/.test(app) &&
-        html.indexOf('id="btnLeave"') > html.indexOf('id="settingsCard"'));
+        html.indexOf('id="btnLeave"') > html.indexOf('id="settingsCard"'),
+        'btnLeave at ' + html.indexOf('id="btnLeave"') + ', settingsCard at ' +
+        html.indexOf('id="settingsCard"'));
   check('a long press on the map sets the destination',
         /on\('contextmenu'/.test(app) && /function onMapLongPress/.test(app));
   check('and looks up what is there', /function reverse/.test(read('route.js')) &&
@@ -199,27 +205,29 @@ try {
   check('and nothing is played before the page is touched', /once: true, passive: true/.test(app));
   check('there is no code box to paste into', !/inRoom/.test(html) && !/extractRoomCode/.test(app));
   check('tapping a person brings the map to them', /function focusPeer/.test(app));
-  check('a relay on 443 is offered, since mobile networks block the usual ports',
-        /mqtt\.eclipseprojects\.io:443/.test(app));
-  check('the relay library has a second source, since a CDN can fail on a phone',
-        /cdn\.jsdelivr\.net\/npm\/mqtt/.test(html));
-  check('a missing relay library is named instead of looking like a blocked network',
-        /no library/.test(app));
+  check('there is no relay list left in the app', !/broker|eclipseprojects|hivemq/i.test(app),
+        'relay references left in app.js');
+  check('and no MQTT reason codes either', !/MQTT_CODES/.test(app));
+  check('an unconfigured project is named rather than looking like a dead network',
+        /not set up yet/.test(app));
   check('the shell fetch bypasses the HTTP cache, or updates never land',
         /fetch\(req, \{ cache: 'no-store' \}\)/.test(sw));
   check('the app asks for a new service worker on open and on return',
         /function checkForUpdate/.test(app) && /checkForUpdate\(\);/.test(app));
   check('and the build it is running is shown, so a stale copy is visible',
-        /id="connBuild"/.test(html) && /build: 'v/.test(app));
+        /id="settingsVersion"/.test(html) && /build: 'v/.test(app));
   check('the build number in the app matches the shell version', (() => {
     const a = /build: '(v\d+)'/.exec(app);
     const b = /convoy-(v\d+)'/.exec(sw);
     return !!a && !!b && a[1] === b[1];
   })(), 'app ' + (/build: '(v\d+)'/.exec(app) || [])[1] + ' / sw ' + (/convoy-(v\d+)'/.exec(sw) || [])[1]);
-  check('and the connection state can be tapped to check the relays',
-        /id="connCard"/.test(html) && /function probeRelay/.test(app));
-  check('and a relay that cannot be reached says so instead of pretending',
-        /no relay/.test(app));
+  /* The pill used to open a relay checker. With one project there is nothing to check, so
+     it is a plain status light and the app says what went wrong in words. */
+  check('and there is no relay checker left',
+        !/id="connCard"/.test(html) && !/function probeRelay/.test(app) &&
+        !/showConnection/.test(app));
+  check('a failure is described in words instead of a relay name',
+        /not connecting/.test(app) && /not set up yet/.test(app));
   check('with no banner anywhere except the join request',
         (app.match(/banner\(/g) || []).length === 2,        // the definition, plus one call
         String((app.match(/banner\(/g) || []).length));

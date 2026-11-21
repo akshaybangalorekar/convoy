@@ -134,10 +134,8 @@ function makeBroker() {
 /* Which transport the suites run on. `CONVOY_NET=supabase node tests/…` runs the whole
    scenario set against the Supabase driver instead of the public relays, which is the only
    way to know the migration actually works rather than merely compiling. */
-const NET = (optsNet) => {
-  const want = optsNet || process.env.CONVOY_NET || 'mqtt';
-  return want === 'supabase' ? 'supabase' : 'mqtt';
-};
+const NET = () => 'supabase';
+let ACCOUNT_SEQ = 0;
 
 function boot(opts = {}) {
   const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
@@ -330,17 +328,24 @@ function boot(opts = {}) {
     /* Every connect() builds a new client, exactly as the MQTT path builds a new mqtt
        client. Register each one, so `sent()` and `recv()` always look at the live one
        rather than the first. */
+    /* One account for this phone, shared by every client it makes. A reconnect is the same
+       person — if each client minted a new id, the phone would keep arriving as a stranger
+       and its own membership would stop matching. */
+    const account = 'uid-' + (++ACCOUNT_SEQ);
     const make = supa.createClient.bind(supa);
-    supa.createClient = () => {
-      const c = make();
-      clients.push(c);
-      window.__supaClient = c;
-      return c;
+    /* The wrapper lives on this boot's window, not on the shared backend: wrapping the
+       backend meant the second phone wrapped the first phone's wrapper and inherited its
+       account, so two phones were one person. */
+    window.supabase = {
+      createClient: () => {
+        const c = make(account);
+        clients.push(c);
+        window.__supaClient = c;
+        return c;
+      },
     };
-    const client = supa.createClient();
-    window.supabase = { createClient: supa.createClient };
+    const client = window.supabase.createClient();
     window.ConvoyNetConfig = {
-      kind: 'supabase',
       supabaseUrl: 'https://harness.supabase.co',
       supabaseKey: 'anon-key',
       vapidPublicKey: '',
@@ -354,8 +359,11 @@ function boot(opts = {}) {
   // The app joins on load now, so the connection it opened is live without a click. A test
   // that wants to watch the waiting state starts it outside the room.
   const booted = window.Convoy && window.Convoy.state;
+  /* The account is the identity now, so "this phone is in the convoy" has to be written
+     against the account id, not the device id it was generated with. */
+  const accountId = () => (window.__supaClient ? window.__supaClient.uid : (booted.me || {}).id);
   if (booted && booted.me && !(opts.outside)) {
-    booted.allowed.add(booted.me.id);
+    booted.allowed.add(accountId());
     window.Convoy._internals.renderPeople();
   }
   /* On Supabase, membership is a row, and a phone cannot grant it to itself. A test that
@@ -364,8 +372,10 @@ function boot(opts = {}) {
      again. */
   if (supa && booted && booted.me) {
     const mine = !!(opts.outside === false || opts.outside === undefined);
-    supa.db.members.set(booted.me.id, {
-      id: booted.me.id,
+    /* The account is the identity, so the row is keyed by it — that is what makes a
+       reinstall land back in the same convoy. */
+    supa.db.members.set(window.__supaClient.uid, {
+      id: window.__supaClient.uid,
       user_id: window.__supaClient.uid,
       name: booted.me.name,
       allowed: mine,
@@ -374,6 +384,7 @@ function boot(opts = {}) {
       lat: null, lng: null,
       seen_at: new Date().toISOString(),
     });
+    if (mine) booted.allowed.add(window.__supaClient.uid);
   }
   /* An MQTT boot is waiting to be told the socket opened. A Supabase boot is already live
      — the driver subscribes as it starts — so there is nothing to tell it. */
@@ -430,7 +441,7 @@ function boot(opts = {}) {
       // You are in the room you just joined, and the list has to be told.
       const me = window.Convoy.state.me;
       if (me) {
-        window.Convoy.state.allowed.add(me.id);
+        window.Convoy.state.allowed.add(accountId());
         window.Convoy._internals.renderPeople();
       }
       const c = clients[clients.length - 1];

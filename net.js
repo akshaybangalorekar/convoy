@@ -1,88 +1,30 @@
-/* The transport, behind one interface, with two drivers: the public MQTT relays the app
-   has always used, and Supabase. The app above this line does not know which one is
-   running — it publishes a topic and gets messages back, exactly as before — which is what
-   makes the two switchable from inside the app and testable against the same suites.
-
-   The ask topics are the one thing that is not a plain broadcast: they are retained, so a
-   request outlives the phone that sent it. On MQTT the broker holds it. On Supabase it goes
-   in a table, which is stronger — it survives a broker restart, and a pin phone can be
-   closed for a week and still find it. */
+/* The transport. Supabase, and nothing else.
+ *
+ * The public MQTT relays are gone. They were four strangers' servers, they flapped, they
+ * could not hold anything, and they could not tell one phone from another — which is why
+ * there is now an account instead of a device id and a retained topic.
+ *
+ * The app above this line still publishes a topic and gets messages back, so the rest of
+ * the code did not have to change when the relay went.
+ */
 (function () {
   'use strict';
 
   const ASK = /\/ask\/([^/]+)$/;
 
-  /* ---------------------------------------------------------------- MQTT */
-
-  function mqttDriver(cfg) {
-    let client = null;
-    let live = false;
-    return {
-      kind: 'mqtt',
-      get connected() { return !!(client && client.connected) && live; },
-      start() {
-        if (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect) {
-          cfg.onError(new Error('no mqtt library'));
-          return;
-        }
-        client = mqtt.connect(cfg.url, {
-          clientId: cfg.clientId,
-          clean: true,
-          reconnectPeriod: 0,
-          keepalive: cfg.keepalive,
-        });
-        client.on('connect', () => { live = true; cfg.onOpen(); });
-        client.on('message', (t, p) => cfg.onMessage(t, p));
-        client.on('error', (e) => cfg.onError(e));
-        // The disconnect packet carries the reason code — 135 is "not authorized", and
-        // without it a refused connection looks exactly like a blocked port.
-        client.on('disconnect', (pkt) => { if (cfg.onDisconnect) cfg.onDisconnect(pkt); });
-        client.on('close', () => { live = false; cfg.onClose(); });
-      },
-      publish(topic, body, opts) {
-        if (!client) return;
-        try { client.publish(topic, body, opts || {}); } catch (e) { /* ignore */ }
-      },
-      subscribe(topic) {
-        if (client) { try { client.subscribe(topic, { qos: 0 }, () => {}); } catch (e) {} }
-      },
-      unsubscribe(topic) {
-        if (client) { try { client.unsubscribe(topic, () => {}); } catch (e) {} }
-      },
-      // Nothing to reload: re-subscribing makes the broker re-send what it holds.
-      refreshAsks() {},
-      end() {
-        live = false;
-        if (client) { try { client.end(true); } catch (e) { /* ignore */ } client = null; }
-      },
-      // MQTT has no anonymous identity: the app already has one, and it is the same on both.
-      uid() { return null; },
-    };
-  }
-
-  /* ---------------------------------------------------------------- Supabase */
-
   function supabaseDriver(cfg) {
     let sb = null;
     let channel = null;
     let uid = null;
+    let userEmail = '';
+    let live = false;
     let stopped = false;
 
     const bodyOf = (b) => (typeof b === 'string' ? b : (b == null ? '' : String(b)));
 
-    async function signIn() {
-      /* Anonymous sign-in gives a real auth.uid() with no sign-up screen, which is what
-         lets row-level security decide who may do what. It is remembered in localStorage by
-         supabase-js, so a reload is the same person. */
-      const { data } = await sb.auth.getSession();
-      if (data && data.session && data.session.user) return data.session.user.id;
-      const { data: made, error } = await sb.auth.signInAnonymously();
-      if (error) throw error;
-      return made.user.id;
-    }
-
     async function loadAsks() {
-      // Retained requests, handed over on connect — the same thing the broker did.
+      // Requests waiting to be answered. They are rows, not a retained message, so they
+      // outlive whoever sent them and are found by an admin whenever they open the app.
       try {
         const { data } = await sb.from('asks').select('id, body, at')
           .gte('at', new Date(Date.now() - cfg.askFreshMs).toISOString());
@@ -92,20 +34,33 @@
       } catch (e) { /* the bus still works without them */ }
     }
 
-    let live = false;
     return {
       kind: 'supabase',
       get connected() { return live; },
+      client() { return sb; },
+      uid() { return uid; },
+      session() { return { id: uid, email: (userEmail || '') }; },
+
       async start() {
         if (typeof supabase === 'undefined' || !supabase.createClient) {
-          cfg.onError(new Error('no supabase library'));
+          cfg.onError(new Error('could not load the Supabase library'));
           return;
         }
         try {
           sb = supabase.createClient(cfg.url, cfg.key, {
             auth: { persistSession: true, autoRefreshToken: true },
           });
-          uid = await signIn();
+          const { data } = await sb.auth.getSession();
+          const session = data && data.session;
+          if (!session || !session.user) {
+            /* No account on this phone yet. There is nothing to connect to until there is:
+               membership is a row keyed by the account, so an anonymous connection would
+               have no identity to be a member with. */
+            cfg.onNeedsAuth();
+            return;
+          }
+          uid = session.user.id;
+          userEmail = session.user.email || '';
         } catch (e) {
           cfg.onError(e);
           return;
@@ -128,6 +83,17 @@
           });
         });
 
+        /* A request arriving while this phone is open has to be seen straight away. On the
+           relays the broker pushed the retained topic; here the row appears, and without
+           this only a phone that connected afterwards would ever notice it. */
+        channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'asks' },
+          (row) => {
+            const next = row && row.new;
+            if (!next || !next.id) return;
+            cfg.onMessage(cfg.askPrefix + next.id,
+              { toString: () => next.body || '' });
+          });
+
         channel.subscribe((status) => {
           if (stopped) return;
           if (status === 'SUBSCRIBED') {
@@ -145,14 +111,12 @@
       publish(topic, body, opts) {
         if (!sb) return;
         const text = bodyOf(body);
-        /* Keep a record of what was sent, the way the MQTT client does: "what has this app
-           asked for" is worth being able to answer, and the ask topics are rows here rather
-           than messages, so they would otherwise leave no trace at all. */
         sb.publishes = sb.publishes || [];
         sb.publishes.push({ topic, msg: text, opts: opts || {} });
+
         const ask = ASK.exec(topic);
         if (ask) {
-          // Retained: an empty body is a withdrawal, exactly as on MQTT.
+          // Retained: an empty body is a withdrawal.
           if (!text) {
             sb.from('asks').delete().eq('id', ask[1]).then(() => {}, () => {});
             return;
@@ -168,19 +132,17 @@
 
       subscribe(topic) {
         /* Broadcast arrives for everything on the channel, so there is nothing to send the
-           server. The topics are still recorded, because "what is this app listening to" is
-           worth being able to answer — in Help, and in the tests. */
+           server. The topics are recorded because "what is this app listening to" is worth
+           being able to answer. */
         if (topic && sb && Array.isArray(sb.subscriptions) && sb.subscriptions.indexOf(topic) < 0) {
           sb.subscriptions.push(topic);
         }
       },
 
-      unsubscribe() { /* nothing to do: one channel carries everything */ },
+      unsubscribe() { /* one channel carries everything */ },
 
-      /* A phone that takes the pin on while it is already connected has never been shown
-         the requests sitting in the table, because they are read when the channel opens.
-         Without this it becomes an admin with nobody to admit — the same bug the relay path
-         had, in a different place. */
+      /* A phone that signs in as an admin while it is already connected has never been shown
+         the requests sitting in the table, because they are read when the channel opens. */
       refreshAsks() { loadAsks(); },
 
       end() {
@@ -189,20 +151,13 @@
         try { if (sb) sb.removeChannel(channel); } catch (e) { /* ignore */ }
         channel = null;
       },
-
-      uid() { return uid; },
-      client() { return sb; },
     };
   }
 
-  /* ---------------------------------------------------------------- the seam */
-
   window.ConvoyNet = {
-    /* cfg: { kind, url, key, clientId, keepalive, askPrefix, askFreshMs,
-             onOpen, onClose, onError, onMessage, onChange } */
-    create(cfg) {
-      return cfg.kind === 'supabase' ? supabaseDriver(cfg) : mqttDriver(cfg);
-    },
+    /* cfg: { url, key, clientId, askPrefix, askFreshMs,
+             onOpen, onClose, onError, onMessage, onChange, onNeedsAuth } */
+    create(cfg) { return supabaseDriver(cfg); },
     askIdIn(topic) {
       const m = ASK.exec(String(topic || ''));
       return m ? m[1] : null;

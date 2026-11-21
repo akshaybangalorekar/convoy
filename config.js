@@ -4,11 +4,9 @@
  * the database is what actually protects the data. What must never be here is the
  * service_role key, which bypasses all of it.
  *
- * Leave these empty to keep using the public MQTT relays. The switch in Help overrides
- * `kind` per phone, so the two can be compared on a real trip without rebuilding.
+ * Leave these empty and the app will say the project is not set up rather than pretend.
  */
 window.ConvoyNetConfig = {
-  kind: 'mqtt',                    // 'mqtt' or 'supabase'
   supabaseUrl: '',                 // https://YOUR-PROJECT.supabase.co
   supabaseKey: '',                 // the anon / publishable key
   // Web Push, for waking a phone with the app closed. Generate a pair with

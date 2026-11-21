@@ -28,12 +28,15 @@ function makeSupabase() {
     return false;
   };
 
+  /* Several watchers per channel, each with its own table filter — a channel can watch
+     members, convoy and asks at once, and one handler must not displace another. */
   const notify = (table, next, old) => {
     channels.forEach((c) => {
-      if (c.onChange) {
-        try { c.onChange({ eventType: old ? 'UPDATE' : 'INSERT', new: next, old }); }
+      (c.onChanges || []).forEach((h) => {
+        if (h.table && h.table !== table) return;
+        try { h.cb({ eventType: old ? 'UPDATE' : 'INSERT', new: next, old }); }
         catch (e) { /* ignore */ }
-      }
+      });
     });
   };
 
@@ -54,19 +57,23 @@ function makeSupabase() {
     return { data: next, error: null };
   }
 
-  function createClient() {
-    const uid = 'uid-' + (++uidSeq);
+  /* One account, however many clients it makes: a reconnect is the same person, and the
+     identity must not drift every time the channel is rebuilt. */
+  function createClient(accountId) {
+    const uid = accountId || ('uid-' + (++uidSeq));
     let myChannel = null;
     const app = { published: [], connected: true, subscriptions: [], ended: false, uid };
 
     const channel = () => {
-      const c = { uid, onBroadcast: null, onChange: null, statusCb: null, subscribed: false };
+      const c = { uid, onBroadcast: null, onChanges: [], statusCb: null, subscribed: false };
       channels.push(c);
       myChannel = c;
       const api = {
         on(kind, filter, cb) {
           if (kind === 'broadcast') c.onBroadcast = cb;
-          if (kind === 'postgres_changes') c.onChange = cb;
+          if (kind === 'postgres_changes') {
+            c.onChanges.push({ table: (filter && filter.table) || null, event: (filter && filter.event) || '*', cb });
+          }
           return api;
         },
         subscribe(cb) {
@@ -128,7 +135,10 @@ function makeSupabase() {
             return Promise.resolve({ data: db.convoy, error: null });
           }
           if (table === 'asks') {
-            db.asks.set(row.id, Object.assign({ at: new Date().toISOString() }, row));
+            const fresh = Object.assign({ at: new Date().toISOString() }, row);
+            db.asks.set(row.id, fresh);
+            // A request that arrives while a phone is open is news: tell the watchers.
+            notify('asks', fresh, null);
             return Promise.resolve({ data: row, error: null });
           }
           if (table === 'push_subs') {
@@ -193,6 +203,8 @@ function makeSupabase() {
 
     /* The surface the MQTT fake client has, so recv/goLive/sent and the drop tests work
        unchanged against this transport. */
+    let session = { user: { id: uid, email: uid + '@example.test' } };
+
     app._emit = (event, ...args) => {
       if (event === 'message') {
         const [topic, payload] = args;
@@ -219,8 +231,23 @@ function makeSupabase() {
 
     Object.assign(app, {
       auth: {
-        getSession: async () => ({ data: { session: { user: { id: uid } } } }),
-        signInAnonymously: async () => ({ data: { user: { id: uid } }, error: null }),
+        getSession: async () => ({ data: { session } }),
+        signInWithPassword: async ({ email, password }) => {
+          if (!email || !password) return { data: null, error: { message: 'email and password' } };
+          if (password === 'wrong') return { data: null, error: { message: 'Invalid login' } };
+          session = { user: { id: uid, email } };
+          return { data: { user: session.user, session }, error: null };
+        },
+        signUp: async ({ email, password }) => {
+          if (!email || !password) return { data: null, error: { message: 'email and password' } };
+          if (email.indexOf('confirm') >= 0) {
+            // A project that asks for confirmation returns no session: a step, not a failure.
+            return { data: { user: { id: uid, email }, session: null }, error: null };
+          }
+          session = { user: { id: uid, email } };
+          return { data: { user: session.user, session }, error: null };
+        },
+        signOut: async () => { session = null; return { error: null }; },
       },
       channel,
       from,
@@ -241,6 +268,7 @@ function makeSupabase() {
     // What a test needs to look at afterwards.
     rows: (table) => (table === 'convoy' ? [db.convoy] : Array.from(db[table].values())),
     adminCount: () => Array.from(db.members.values()).filter((m) => m.admin).length,
+    __debug: () => channels.map((c) => ({ uid: c.uid, changes: (c.onChanges || []).map((h) => h.table) })),
   };
 }
 

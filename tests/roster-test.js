@@ -201,10 +201,14 @@ async function testRosterComesBack() {
 
 async function testOneIdentityPerDevice() {
   const api = boot();
+  await sleep(40);
   api.join('Akshay');
+  await sleep(40);
+  /* The identity is the account now, so a reopen is the same person signing in again —
+     which is what makes a reinstall land back in the same convoy. */
   const first = api.window.Convoy.state.me.id;
   api.join('Akshay');        // reopening the app, since there is no Leave
-  await sleep(20);
+  await sleep(60);
   check('reopening keeps the same identity', api.window.Convoy.state.me.id === first,
         first + ' vs ' + api.window.Convoy.state.me.id);
   check('so you do not appear twice on the roster',
@@ -233,7 +237,7 @@ async function testAForceResetStillLands() {
         String(api.window.Convoy.state.topic));
   const me = api.window.Convoy.state.me;
   check('with the same identity, so the others see the same person',
-        !!me && me.id === 'c-abc123', me && me.id);
+        !!me && me.id === api.window.__supaClient.uid, me && me.id);
   check('and there is no join screen to come back to', !api.document.getElementById('join'));
 }
 

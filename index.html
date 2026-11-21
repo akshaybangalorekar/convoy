@@ -148,6 +148,25 @@
   </div>
 </div>
 
+<!-- Sign in. Membership is a row keyed by the account, so there is nothing to connect to
+     until there is an account — which is also what makes a reinstall land back in the same
+     convoy instead of as a stranger. -->
+<div id="authCard" class="overlay hidden">
+  <div class="card join-card">
+    <h1>Convoy</h1>
+    <p class="sub">Sign in to see everyone on one map.</p>
+    <label for="authEmail">Email</label>
+    <input id="authEmail" type="email" autocomplete="email" autocapitalize="none"
+           autocorrect="off" spellcheck="false" placeholder="you@example.com" />
+    <label for="authPass">Password</label>
+    <input id="authPass" type="password" autocomplete="current-password"
+           placeholder="at least 6 characters" />
+    <p id="authNote" class="hint-line hidden"></p>
+    <button id="btnSignIn" class="primary">Sign in</button>
+    <button id="btnSignUp" class="ghost">Create an account</button>
+  </div>
+</div>
+
 <!-- The gear: a version, and a field that says nothing about what it is for. -->
 <div id="settingsCard" class="overlay hidden">
   <div class="card join-card">
@@ -174,17 +193,6 @@
   </div>
 </div>
 
-<!-- What the relays are actually doing. Opened by tapping the connection state. -->
-<div id="connCard" class="overlay hidden">
-  <div class="card join-card">
-    <h1>Connection</h1>
-    <p class="sub">Checking whether this phone can reach each relay at all.</p>
-    <ul id="connList" class="conn-list"></ul>
-    <p id="connBuild" class="build-line"></p>
-    <p id="connError" class="build-line"></p>
-    <button id="btnConnClose" class="primary">Done</button>
-  </div>
-</div>
 
 <!-- Fallback for inviting, when the share sheet and the clipboard are both unavailable -->
 <div id="shareCard" class="overlay hidden">
@@ -205,27 +213,17 @@
 <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"
         integrity="sha384-MtIdllebpZyms2pw9K3YJl8BEqrKNQCdSFAySjeglab6z2PkeFdF4Lb9cDsnxQuG"
         crossorigin="anonymous"></script>
-<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
-<script>
-  /* A CDN can fail on a phone even when the app itself loaded, and then every relay
-     attempt throws before it reaches the network. Try a second source before app.js
-     runs and expects it. */
-  if (!window.mqtt) {
-    document.write('<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"><\/script>');
-  }
-</script>
 <script src="config.js"></script>
 <script src="net.js"></script>
 <script src="route.js"></script>
 <script src="install.js"></script>
 <script>
-  // The Supabase library is ~120 KB. Only fetch it when a phone is actually pointed at a
-  // project, so the relay path stays as light as it was.
+  // The Supabase library is ~120 KB and is only needed once a project is configured. Without
+  // one the app says so rather than loading it for nothing.
   (function () {
     try {
       var cfg = window.ConvoyNetConfig || {};
-      var kind = localStorage.getItem('convoy.net') || cfg.kind || 'mqtt';
-      if (kind !== 'supabase' || !cfg.supabaseUrl) return;
+      if (!cfg.supabaseUrl) return;
       document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/script>');
     } catch (e) { /* ignore */ }
   })();

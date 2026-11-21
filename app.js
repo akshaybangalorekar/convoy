@@ -18,17 +18,10 @@
 
   const CFG = {
     topic: 'sarvam-convoy/v1/convoy/bus',
-    // Public, no-signup MQTT brokers over WebSocket. Tried in order.
     // Ordered by how likely each is to be reachable outdoors: the first listens on 443,
     // the one port a mobile network always lets through, and the rest sit on
     // 8081/8084/8884, which carriers routinely block. That is why a laptop on Wi-Fi goes
     // live while a phone on mobile data never connects.
-    brokers: [
-      { name: 'Eclipse', url: 'wss://mqtt.eclipseprojects.io:443/mqtt' },
-      { name: 'EMQX', url: 'wss://broker.emqx.io:8084/mqtt' },
-      { name: 'HiveMQ', url: 'wss://broker.hivemq.com:8884/mqtt' },
-      { name: 'Mosquitto', url: 'wss://test.mosquitto.org:8081/' },
-    ],
     // The master pin is not written here as a number: what is compared is a hash of it,
     // so the digits do not appear in the source. This keeps honest people honest; it is
     // not security, since anyone reading this file can find a way round it in a minute.
@@ -107,6 +100,7 @@
     lastHeard: 0,         // when anything last arrived from anyone
     lastActive: 0,        // when you were last actually on the app
     allDone: false,       // everyone arrived, and we have said so
+    account: null,        // who is signed in on this phone
     searching: false,     // the destination field is being used as a search box
     liveAt: 0,            // when the connection last came up, for the green flash
     connWas: '',          // so a transition can be noticed
@@ -119,7 +113,6 @@
 
   let map = null;
   let client = null;
-  let brokerIdx = 0;
   let publishTimer = null;
   let renderTimer = null;
   let etaTimer = null;
@@ -1042,6 +1035,11 @@
     state.pending.delete(id);
     dbLetIn(id);
     publishLists();
+    /* Say it again a moment later. The newcomer announces itself the instant it hears the
+       first one, and if that announcement overtakes this phone's own list update it is
+       dropped as a stranger — which left them off the list until their next tick. Repeating
+       costs one small message and removes the race. */
+    setTimeout(() => { try { publishLists(); } catch (e) { /* ignore */ } }, 400);
     renderPeople();
   }
 
@@ -1275,64 +1273,6 @@
   /* ---------------------------------------------------------------- *
    * Transport
    * ---------------------------------------------------------------- */
-  /* A relay can fail for three very different reasons and they look identical from here:
-     the network blocks the port, the broker is down, or the app is at fault. This opens a
-     plain WebSocket to each relay and says which of those it is — the one question that
-     cannot be answered from inside a connection attempt. */
-  function probeRelay(url, ms) {
-    return new Promise((resolve) => {
-      let done = false;
-      let ws = null;
-      const finish = (result) => {
-        if (done) return;
-        done = true;
-        try { if (ws) ws.close(); } catch (e) { /* ignore */ }
-        resolve(result);
-      };
-      try {
-        ws = new WebSocket(url);
-      } catch (e) { resolve('blocked'); return; }
-      const timer = setTimeout(() => finish('no answer'), ms);
-      ws.onopen = () => { clearTimeout(timer); finish('reached'); };
-      ws.onerror = () => { clearTimeout(timer); finish('blocked'); };
-      ws.onclose = () => { clearTimeout(timer); finish('blocked'); };
-    });
-  }
-
-  async function showConnection() {
-    const card = $('connCard');
-    const list = $('connList');
-    if (!card || !list) return;
-    card.classList.remove('hidden');
-    list.innerHTML = CFG.brokers.map((b) =>
-      '<li><span class="rdot"></span>' + esc(b.name) + '<em>checking…</em></li>').join('');
-
-    const buildLine = $('connBuild');
-    if (buildLine) buildLine.textContent = 'Build ' + CFG.build + ' · ' + CFG.brokers.length + ' relays';
-
-    const errLine = $('connError');
-    if (errLine) {
-      errLine.textContent = state.lastError
-        ? 'Last from ' + (state.lastErrorRelay || 'a relay') + ': ' + state.lastError
-        : '';
-    }
-
-    const results = await Promise.all(CFG.brokers.map((b) => probeRelay(b.url, 6000)));
-    const rows = list.querySelectorAll('li');
-    results.forEach((r, i) => {
-      const li = rows[i];
-      if (!li) return;
-      li.className = r === 'reached' ? 'ok' : 'bad';
-      const em = li.querySelector('em');
-      if (em) em.textContent = r;
-    });
-
-    if (results.indexOf('reached') < 0) {
-    } else if (!client || !client.connected) {
-      connect();          // one of them answers, so try the real thing again
-    }
-  }
-
   function setConn(kind, text) {
     const el = $('connState');
     el.className = 'conn' + (kind === 'live' ? ' live'
@@ -1360,11 +1300,8 @@
     }
     const netBtn = $('btnNet');
     if (netBtn) {
-      const kind = netConfig().kind;
-      const ready = kind !== 'supabase' || (window.ConvoyNetConfig || {}).supabaseUrl;
-      netBtn.textContent = 'Transport: ' +
-        (kind === 'supabase' ? (ready ? 'Supabase' : 'Supabase (not set up)') : 'public relays') +
-        ' · tap to switch';
+      const who = (state.account && state.account.email) || 'not signed in';
+      netBtn.textContent = 'Signed in as ' + who + ' · tap to sign out';
     }
     const note = $('notifyNote');
     if (note) {
@@ -1441,45 +1378,16 @@
     } catch (e) { /* ignore */ }
   }
 
-  let flapping = 0;
   let connFailures = 0;
-  let toldAboutRelay = false;
-
-  /* A phone on mobile data very often cannot reach any of these relays: they listen on
-     ports 8081, 8084 and 8884, and carriers block everything but 80 and 443. Sitting on
-     "connecting" for ever tells nobody anything, so after a few failures the app says
-     what it thinks is happening. */
-  function noteRelayFailure() {
-    connFailures++;
-    if (connFailures < 3) return;
-    setConn('', 'no relay');
-    if (toldAboutRelay) return;
-    toldAboutRelay = true;
-  }
 
   const connLabel = (whileTrying) =>
-    (connFailures >= 3 ? 'no relay' : whileTrying);
+    (connFailures >= 3 ? 'not connecting' : whileTrying);
 
-  /* What the relay actually said. This was being thrown away: the error handler took no
-     argument, so a refused connection looked exactly like a blocked port and there was no
-     way to tell the two apart. MQTT 5 reason codes are spelled out where we get them. */
-  const MQTT_CODES = {
-    128: 'unspecified error', 129: 'malformed packet', 130: 'protocol error',
-    131: 'implementation specific error', 132: 'unsupported protocol version',
-    133: 'client id not valid', 134: 'bad user name or password', 135: 'not authorized',
-    136: 'server unavailable', 137: 'server busy', 138: 'banned',
-    140: 'bad authentication method', 144: 'topic filter invalid', 145: 'topic name invalid',
-    148: 'packet too large', 149: 'message rate too high', 150: 'quota exceeded',
-    151: 'administrative action', 153: 'payload format invalid',
-  };
-
-  function noteError(err, pkt) {
+  /* What actually went wrong, in words. There is no reason code to translate any more —
+     there is one service, and it says what it means. */
+  function noteError(err) {
     let text = '';
-    if (pkt && typeof pkt.reasonCode === 'number') {
-      text = 'reason ' + pkt.reasonCode +
-        (MQTT_CODES[pkt.reasonCode] ? ' (' + MQTT_CODES[pkt.reasonCode] + ')' : '');
-      if (pkt.reasonString) text += ' — ' + pkt.reasonString;
-    } else if (err) {
+    if (err) {
       const m = err.message || err.code || String(err);
       text = /timeout/i.test(m) ? 'timed out'
         : /unauthor|not authori|401|403/i.test(m) ? 'not authorized'
@@ -1489,7 +1397,97 @@
     }
     if (!text) return;
     state.lastError = String(text).slice(0, 120);
-    state.lastErrorRelay = state.relay || '';
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Who you are
+   * ---------------------------------------------------------------- */
+
+  /* Membership is a row keyed by the account, so there is nothing to be a member with until
+     there is an account. That is also the point: signing in on a new phone lands you back in
+     the same convoy, instead of arriving as a stranger with a new device id. */
+  let authSb = null;
+  function authClient() {
+    if (authSb) return authSb;
+    if (typeof supabase === 'undefined' || !supabase.createClient) return null;
+    const net = netConfig();
+    if (!net.url || !net.key) return null;
+    authSb = supabase.createClient(net.url, net.key, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+    return authSb;
+  }
+
+  function authNote(text) {
+    const el = $('authNote');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('hidden', !text);
+  }
+
+  function showSignIn() {
+    const card = $('authCard');
+    if (!card) return;
+    card.classList.remove('hidden');
+    const email = $('authEmail');
+    if (email && !email.value) setTimeout(() => { try { email.focus(); } catch (e) {} }, 80);
+  }
+
+  function hideSignIn() {
+    const card = $('authCard');
+    if (card) card.classList.add('hidden');
+    authNote('');
+  }
+
+  async function afterAuth(user) {
+    if (!user) return;
+    state.account = { id: user.id, email: user.email || '' };
+    /* The account is the identity now. The same person on a new phone is the same member,
+       which is the whole reason for a login. */
+    if (state.me) {
+      state.me.id = user.id;
+      try { localStorage.setItem('convoy.me', user.id); } catch (e) { /* ignore */ }
+    }
+    hideSignIn();
+    fillHelp();
+    if (client) { try { client.end(); } catch (e) { /* ignore */ } client = null; }
+    connect();
+  }
+
+  async function signIn() {
+    const sb = authClient();
+    if (!sb) { authNote('The project is not set up yet. Put its URL and key in config.js.'); return; }
+    const email = ($('authEmail').value || '').trim();
+    const pass = $('authPass').value || '';
+    if (!email || !pass) { authNote('Email and password, please.'); return; }
+    authNote('Signing in…');
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) { authNote(error.message); return; }
+    await afterAuth(data && data.user);
+  }
+
+  async function signUp() {
+    const sb = authClient();
+    if (!sb) { authNote('The project is not set up yet. Put its URL and key in config.js.'); return; }
+    const email = ($('authEmail').value || '').trim();
+    const pass = $('authPass').value || '';
+    if (!email || !pass) { authNote('Email and password, please.'); return; }
+    authNote('Creating the account…');
+    const { data, error } = await sb.auth.signUp({ email, password: pass });
+    if (error) { authNote(error.message); return; }
+    // If the project asks for email confirmation there is no session yet, and that is not
+    // a failure — it is a step.
+    if (data && data.session && data.user) { await afterAuth(data.user); return; }
+    authNote('Check your email to confirm the account, then sign in.');
+  }
+
+  async function signOut() {
+    const sb = authClient();
+    if (sb) { try { await sb.auth.signOut(); } catch (e) { /* ignore */ } }
+    state.account = null;
+    if (client) { try { client.end(); } catch (e) { /* ignore */ } client = null; }
+    setConn('down', 'signed out');
+    showSignIn();
   }
 
   /* ---------------------------------------------------------------- *
@@ -1651,64 +1649,33 @@
     }, { onConflict: 'id' }).then(() => {}, () => {});
   }
 
-  /* Which transport to use. Kept in storage rather than hard-coded, so the two can be
-     compared on a real trip without rebuilding anything. */
+  /* Where the project is. The anon key is public by design: row-level security in the
+     database is what actually protects the data. */
   function netConfig() {
     const c = window.ConvoyNetConfig || {};
-    let kind = c.kind === 'supabase' ? 'supabase' : 'mqtt';
-    try {
-      const saved = localStorage.getItem('convoy.net');
-      if (saved === 'supabase' || saved === 'mqtt') kind = saved;
-    } catch (e) { /* ignore */ }
-    return { kind, url: c.supabaseUrl || '', key: c.supabaseKey || '' };
-  }
-
-  function setNetKind(kind) {
-    try { localStorage.setItem('convoy.net', kind === 'supabase' ? 'supabase' : 'mqtt'); }
-    catch (e) { /* ignore */ }
-    if (client) { try { client.end(); } catch (e) { /* ignore */ } client = null; }
-    brokerIdx = 0;
-    connect();
-    fillHelp();
+    return { url: c.supabaseUrl || '', key: c.supabaseKey || '' };
   }
 
   function connect() {
     const net = netConfig();
-    const b = CFG.brokers[brokerIdx % CFG.brokers.length];
-    state.relay = net.kind === 'supabase' ? 'supabase' : b.name;
+    state.relay = 'supabase';
     setConn('waiting', connLabel('connecting'));
     let settled = false;
     let counted = false;
-    const fail = () => { if (counted) return; counted = true; noteRelayFailure(); };
+    const fail = () => { if (counted) return; counted = true; connFailures++; };
 
-    if (net.kind === 'supabase' && (!net.url || !net.key)) {
+    if (!net.url || !net.key) {
       fail();
       setConn('down', 'no project');
-      state.lastError = 'Supabase project not set up yet';
-      return;
-    }
-
-    // The library comes from a CDN. Without it every attempt throws before it reaches the
-    // network — which used to cycle through the relays for ever, looking exactly like a
-    // blocked network. Say so instead.
-    if (net.kind === 'mqtt' && (typeof mqtt === 'undefined' || !mqtt || !mqtt.connect)) {
-      fail();
-      setConn('down', 'no library');
+      state.lastError = 'The Supabase project is not set up yet';
       return;
     }
 
     let liveAt = 0;
     try {
       client = window.ConvoyNet.create({
-        kind: net.kind,
-        // A unique id per attempt. Two copies of the app on one phone share the same device
-        // id, and a broker kicks the older session when a second client arrives with the
-        // same one — which looks like a connection that keeps dropping.
-        url: b.url,
+        url: net.url,
         key: net.key,
-        clientId: state.me.id + '-' + rand(4),
-        // Mobile networks drop idle sockets long before MQTT's default minute is up.
-        keepalive: CFG.keepalive,
         askPrefix: askTopic(''),
         askFreshMs: CFG.askFreshMs,
 
@@ -1716,8 +1683,30 @@
           settled = true;
           liveAt = Date.now();
           connFailures = 0;
-          toldAboutRelay = false;
           setConn('live', 'live');
+          /* The account is the identity, on every boot and not only when somebody signs in
+             by hand. Without this a phone that came back already signed in carried its old
+             device id and looked like a different person. */
+          {
+            const who = client.session ? client.session() : null;
+            if (who && who.id) {
+              if (state.me && state.me.id !== who.id) {
+                /* Re-key rather than add: the device id this phone generated a moment ago
+                   must not survive as a second person on the roster. */
+                const was = state.me.id;
+                state.me.id = who.id;
+                try { forgetMember(was); } catch (e) { /* ignore */ }
+                try { rememberMember(who.id, state.me.name); } catch (e) { /* ignore */ }
+                try { localStorage.setItem('convoy.me', who.id); } catch (e) { /* ignore */ }
+              }
+              state.account = { id: who.id, email: who.email || '' };
+              // The identity changed under the list, so the list has to be redrawn: it was
+              // showing "waiting to be let in" for a phone that was already in.
+              fillHelp();
+              renderPeople();
+              renderControls();
+            }
+          }
           client.subscribe(state.topic);
           // Retained requests: each phone asks on its own topic, so the ask outlives the
           // phone that sent it. Without this a request sent while nobody with the pin was
@@ -1731,21 +1720,14 @@
         onMessage: (t, p) => onMessage(t, p),
         onError: (err) => { noteError(err); if (!settled) { fail(); retry(); } },
         onChange: (table, row) => onDbChange(table, row),
-        onDisconnect: (pkt) => noteError(null, pkt),
+        onNeedsAuth: () => { settled = true; setConn('down', 'signed out'); showSignIn(); },
         onClose: () => {
-          if (!state.lastError) noteError(new Error('socket closed'));
+          if (!state.lastError) noteError(new Error('connection closed'));
           setConn('down', 'offline');
           if (!settled) { fail(); retry(); return; }
-          // A connection that lasted a while ended normally; one that dies straight after
-          // connecting is a flap, and two of those in a row mean this relay is not the one.
-          if (Date.now() - liveAt >= CFG.stableMs) flapping = 0;
-          else flapping++;
-          if (flapping >= 2) {
-            flapping = 0;
-            brokerIdx++;
-            retry();
-            return;
-          }
+          // A link that lasted a while ended normally; one that dies straight after
+          // opening is retried faster, and the backoff below keeps it from hammering.
+          if (Date.now() - liveAt >= CFG.stableMs) connFailures = 0;
           scheduleReconnect();
         },
       });
@@ -1757,12 +1739,11 @@
     }
   }
 
-  /* Backing off matters on a phone: a blocked port refuses instantly, and a fixed one-second
-     retry hammers it for as long as the app is open — battery, and a connection state that
-     flips constantly, which is what flapping looks like from the outside. The delay doubles
-     up to a ceiling and is reset by any successful connect. */
+  /* Backing off matters on a phone: a dead network refuses instantly, and a fixed
+     one-second retry hammers it for as long as the app is open — battery, and a connection
+     state that flips constantly. The delay doubles up to a ceiling and is reset by any
+     successful connect. */
   function retry() {
-    brokerIdx++;
     setConn('waiting', connLabel('trying…'));
     if (reconnectTimer) clearTimeout(reconnectTimer);
     const wait = Math.min(CFG.retryMaxMs, CFG.retryMs * Math.pow(2, Math.min(4, connFailures)));
@@ -2298,22 +2279,6 @@
   // Watch for people slipping out of contact, and for them coming back. This is the
   // backstop for a force-kill: the app is gone, so nothing was sent, and all the group
   // can honestly say is that the messages stopped.
-  /* Waiting to be let in, connected, and nothing heard from anybody: most likely the group
-     is on a different relay. Walk the list rather than sit there — there are only a few. */
-  let lastHop = 0;
-  function huntForTheGroup() {
-    if (!state.me || state.allowed.has(state.me.id)) return;
-    if (!state.joinAsked) return;                 // not asking, so nothing to wait for
-    if (!client || !client.connected) return;
-    const quiet = Date.now() - (state.lastHeard || 0);
-    if (quiet < 8000 || Date.now() - lastHop < 8000) return;
-    lastHop = Date.now();
-    brokerIdx++;                                  // the next relay in the list
-    try { client.end(true); } catch (e) { /* ignore */ }
-    client = null;
-    connect();
-  }
-
   function sweepPresence() {
     let changed = false;
     state.peers.forEach((p) => {
@@ -2371,7 +2336,6 @@
         }
       });
       pruneRoster();
-      huntForTheGroup();
       sweepPresence();
       checkArrivals();
       renderPeople();
@@ -2704,6 +2668,7 @@
 
     // The gear: a version, and a field that does not say what it is for.
     $('btnSettings').addEventListener('click', () => {
+      disarmLeave();
       fillHelp();
       $('inPin').value = '';
       const note = $('pinNote');
@@ -2715,18 +2680,31 @@
       }
       $('settingsCard').classList.remove('hidden');
     });
-    $('btnNet').addEventListener('click', () => {
-      const next = netConfig().kind === 'supabase' ? 'mqtt' : 'supabase';
-      const cfg = window.ConvoyNetConfig || {};
-      if (next === 'supabase' && !cfg.supabaseUrl) {
-        // Nothing to switch to yet: say what is missing rather than dropping the connection.
-        const note = $('pinNote');
-        note.textContent = 'No Supabase project set. Put the URL and anon key in config.js.';
-        note.classList.remove('hidden');
+    /* Leaving, behind two taps. It was lost when the relay card was cut out of this block,
+       so it is written back here — a phone with no way to leave is a phone you cannot hand
+       to somebody. */
+    let leaveArmed = 0;
+    const disarmLeave = () => {
+      leaveArmed = 0;
+      const b = $('btnLeave');
+      if (b) { b.classList.remove('armed'); b.textContent = 'Leave the convoy'; }
+    };
+    $('btnLeave').addEventListener('click', () => {
+      if (!leaveArmed || Date.now() - leaveArmed > 4000) {
+        leaveArmed = Date.now();
+        $('btnLeave').classList.add('armed');
+        $('btnLeave').textContent = 'Tap again to leave';
         return;
       }
-      setNetKind(next);
+      disarmLeave();
+      $('settingsCard').classList.add('hidden');
+      leaveConvoy();
     });
+
+    $('btnNet').addEventListener('click', () => signOut());
+    $('btnSignIn').addEventListener('click', () => signIn());
+    $('btnSignUp').addEventListener('click', () => signUp());
+    $('authPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') signIn(); });
     $('btnSettingsClose').addEventListener('click',
       () => $('settingsCard').classList.add('hidden'));
     $('inPin').addEventListener('change', () => {
@@ -2757,8 +2735,8 @@
       }
       /* Taking the pin on a phone that did not have it means it was not listening for
          requests before now, so the ones already waiting have to be fetched again: on the
-         relays by re-subscribing, so the broker re-sends what it holds, and on Supabase by
-         re-reading the table, because those rows are only read when the channel opens. */
+         requests already waiting have to be fetched again, by re-reading the table — those
+         rows are only read when the channel opens. */
       if (client && client.connected) {
         if (typeof client.refreshAsks === 'function') client.refreshAsks();
         else {
@@ -2782,38 +2760,6 @@
       if (state.joinAsked) sendState();             // retained, and on the bus
       else { clearAsk(); send({ t: 'hello', ask: false }); }   // withdrawn, deliberately
       renderControls();
-    });
-    // Help holds the pin field, so it has to stay reachable while you are not in yet.
-    let connHold = null;
-    let leaveArmed = 0;
-    const disarmLeave = () => {
-      leaveArmed = 0;
-      const b = $('btnLeave');
-      if (b) { b.classList.remove('armed'); b.textContent = 'Leave the convoy'; }
-    };
-    const openHelp = () => {
-      disarmLeave();
-      fillHelp();
-      $('settingsCard').classList.remove('hidden');
-    };
-    $('btnLeave').addEventListener('click', () => {
-      if (!leaveArmed || Date.now() - leaveArmed > 4000) {
-        leaveArmed = Date.now();
-        $('btnLeave').classList.add('armed');
-        $('btnLeave').textContent = 'Tap again to leave';
-        return;
-      }
-      disarmLeave();
-      $('settingsCard').classList.add('hidden');
-      leaveConvoy();
-    });
-    $('connState').addEventListener('pointerdown', () => {
-      connHold = setTimeout(openHelp, 550);
-    });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => {
-      $('connState').addEventListener(ev, () => {
-        if (connHold) { clearTimeout(connHold); connHold = null; }
-      });
     });
     $('btnCentre').addEventListener('click', showEveryone);
     $('btnHeading').addEventListener('click', () => {
@@ -2855,9 +2801,8 @@
       }, { passive: true });
     });
     $('btnClearDest').addEventListener('click', clearDest);
-    $('connState').addEventListener('click', showConnection);
     checkForUpdate();
-    $('btnConnClose').addEventListener('click', () => $('connCard').classList.add('hidden'));
+
     /* Turn-by-turn lives in the app that does it well, and this is the one tap between
        them: the destination is already decided here, so hand it over with its coordinates
        instead of making anyone search for the same place twice. Opened in a new context so
@@ -2958,7 +2903,7 @@
    * Boot
    * ---------------------------------------------------------------- */
   function boot() {
-    if (typeof L === 'undefined' || typeof mqtt === 'undefined') {
+    if (typeof L === 'undefined') {
       document.body.innerHTML =
         '<p style="font:16px -apple-system,sans-serif;padding:24px">Could not load the map ' +
         'libraries. Check your connection and reload.</p>';
@@ -3009,10 +2954,11 @@
                   distToDest, focusPeer, behindAhead, lastSeenOf,
                   defaultName, deviceName, setName, pinHash, removePerson,
                   showEveryone, applyHeading, canRotate, applySun, sunElevation,
-                  huntForTheGroup, publishAsk, clearAsk, askTopic, loadJoinAsked,
+                  publishAsk, clearAsk, askTopic, loadJoinAsked,
                   bgAllowed, schedulePublish, stopPublishTimer, cadenceMs, everyoneArrived,
                   leaveConvoy, publishLists, takeSharedPlace, onDbChange, applyMembership,
-                  bootstrapFromDb, netConfig, setNetKind,
+                  bootstrapFromDb, netConfig, signIn, signUp, signOut, afterAuth,
+                  showSignIn, hideSignIn, authClient,
                   // "Reporting in the background", not "a timer exists": the timer always
                   // ticks, and the gate decides whether anything goes out.
                   bgRunning: () => !!publishTimer && !!state.away && bgAllowed(),
@@ -3021,8 +2967,8 @@
                   letIn, keepOut, askedToJoin, onAllowed,
                   renderControls, renderTop, renderPeople,
                   unlockAudio, ping, onMapLongPress, rowFor, publishNow, send,
-                  renderMarkers, labelledIds, nearestPeer, nearText, noteRelayFailure,
-                  probeRelay, showConnection, checkForUpdate,
+                  renderMarkers, labelledIds, nearestPeer, nearText,
+                  checkForUpdate,
                   startWatching, stopWatching, haveMyPosition, nudgeForLocation,
                   askWakeLock },
   };

@@ -57,8 +57,13 @@ function fakeSupabase() {
     deliver(topic, body) { if (handler) handler({ payload: { topic, body } }); },
     client: {
       auth: {
-        getSession: async () => ({ data: { session: null } }),
-        signInAnonymously: async () => ({ data: { user: { id: 'uid-anon-1' } }, error: null }),
+        getSession: async () => ({ data: { session: { user: { id: 'uid-1', email: 'a@b.test' } } } }),
+        signInWithPassword: async ({ email, password }) =>
+          (password === 'wrong'
+            ? { data: null, error: { message: 'Invalid login credentials' } }
+            : { data: { user: { id: 'uid-1', email } }, error: null }),
+        signUp: async ({ email }) => ({ data: { user: { id: 'uid-1', email }, session: null }, error: null }),
+        signOut: async () => ({ error: null }),
       },
       channel,
       from,
@@ -93,8 +98,7 @@ async function testTheDriverSignsInAndOpensOneChannel() {
   const { api, fake } = await onSupabase();
   const st = api.window.Convoy.state;
 
-  check('it signs in anonymously, so there is an identity to secure',
-        st.conn === 'live', String(st.conn));
+  check('signed in, it opens the channel', st.conn === 'live', String(st.conn));
   check('with one channel for everything', fake.log.channels === 1, String(fake.log.channels));
   check('and the app calls it live', st.relay === 'supabase', String(st.relay));
 
@@ -120,7 +124,7 @@ async function testTheDriverSignsInAndOpensOneChannel() {
 }
 
 async function testRetainedAsksBecomeRows() {
-  const { api, fake } = await onSupabase(null, { outside: true });
+  const { api, fake } = await onSupabase((w) => { w.__askTest = true; }, { outside: true });
   const st = api.window.Convoy.state;
 
   // Asking: a row, not a retained message.
@@ -151,6 +155,66 @@ async function testAFreshAskIsHandedOverOnConnect() {
         fake.log.selects.some((s) => s.table === 'asks'), JSON.stringify(fake.log.selects));
   check('and it is offered to the admin',
         st.master === true || st.pending.size >= 0, String(st.pending.size));
+}
+
+/* ---------- signing in ---------- */
+async function testSigningIn() {
+  const { api } = await onSupabase();
+  const d = api.document;
+  const st = api.window.Convoy.state;
+
+  check('the account is the identity, so a reinstall is the same person',
+        st.me && st.me.id === 'uid-1', st.me && st.me.id);
+  check('and it is remembered for next time',
+        api.window.localStorage.getItem('convoy.me') === 'uid-1',
+        api.window.localStorage.getItem('convoy.me'));
+  check('Help says who is signed in',
+        /a@b\.test/.test(d.getElementById('btnNet').textContent),
+        d.getElementById('btnNet').textContent);
+
+  await api.window.Convoy._internals.signOut();
+  await sleep(60);
+  check('signing out says so on the connection', st.conn === 'down', String(st.conn));
+  check('and puts the sign-in card up',
+        !d.getElementById('authCard').classList.contains('hidden'));
+  check('and forgets the account', st.account === null);
+
+  // A wrong password is refused, in the words the service used.
+  d.getElementById('authEmail').value = 'a@b.test';
+  d.getElementById('authPass').value = 'wrong';
+  await api.window.Convoy._internals.signIn();
+  await sleep(60);
+  check('a wrong password is refused and said out loud',
+        /Invalid login/.test(d.getElementById('authNote').textContent),
+        d.getElementById('authNote').textContent);
+  check('and it does not sign you in', st.account === null);
+
+  d.getElementById('authPass').value = 'secret';
+  await api.window.Convoy._internals.signIn();
+  await sleep(120);
+  check('the right one signs in', !!st.account && st.account.email === 'a@b.test',
+        JSON.stringify(st.account));
+  check('and the card goes away', d.getElementById('authCard').classList.contains('hidden'));
+  check('and the channel is open again', st.conn === 'live', String(st.conn));
+}
+
+async function testSignedOutMeansNoChannel() {
+  const fake = fakeSupabase();
+  fake.client.auth.getSession = async () => ({ data: { session: null } });
+  const api = boot({
+    setup: (w) => {
+      w.ConvoyNetConfig = { supabaseUrl: 'https://example.supabase.co', supabaseKey: 'anon-key' };
+      w.supabase = { createClient: () => fake.client };
+      w.localStorage.setItem('convoy.net', 'supabase');
+    },
+  });
+  await sleep(150);
+  const st = api.window.Convoy.state;
+  check('with no account there is no channel at all', fake.log.channels === 0,
+        String(fake.log.channels));
+  check('and the app asks you to sign in',
+        !api.document.getElementById('authCard').classList.contains('hidden'));
+  check('and does not pretend to be connected', st.conn !== 'live', String(st.conn));
 }
 
 /* ---------- the durable half ---------- */
@@ -223,26 +287,6 @@ async function testAdminActionsAreWrittenThrough() {
         !!row && row.row.dest_label === 'Bondi', JSON.stringify(row && row.row));
 }
 
-/* ---------- the switch ---------- */
-async function testTheTransportCanBeSwitched() {
-  const { api } = await onSupabase();
-  const st = api.window.Convoy.state;
-  check('it starts on Supabase', st.relay === 'supabase', String(st.relay));
-
-  api.document.getElementById('btnSettings').click();
-  await sleep(40);
-  const label = api.document.getElementById('btnNet').textContent;
-  check('Help says which transport is in use', /Supabase/.test(label), label);
-  check('and offers to switch', /tap to switch/.test(label), label);
-
-  api.document.getElementById('btnNet').click();
-  await sleep(120);
-  check('switching moves it to the public relays', st.relay !== 'supabase', String(st.relay));
-  check('and that is remembered for next time',
-        api.window.localStorage.getItem('convoy.net') === 'mqtt',
-        api.window.localStorage.getItem('convoy.net'));
-}
-
 async function testNoProjectIsSaidPlainly() {
   const api = boot({
     setup: (w) => {
@@ -261,12 +305,13 @@ async function testNoProjectIsSaidPlainly() {
 (async () => {
   try {
     await testTheDriverSignsInAndOpensOneChannel();
+    await testSigningIn();
+    await testSignedOutMeansNoChannel();
     await testRetainedAsksBecomeRows();
     await testAFreshAskIsHandedOverOnConnect();
     await testMembershipAndDestinationComeFromRows();
     await testChangesUnderneathAreApplied();
     await testAdminActionsAreWrittenThrough();
-    await testTheTransportCanBeSwitched();
     await testNoProjectIsSaidPlainly();
   } catch (e) { crash(e); }
   finish('supabase');

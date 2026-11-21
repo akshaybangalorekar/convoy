@@ -4,7 +4,8 @@
 
 const { boot, check, sleep, pos, finish, crash, makeBroker } = require('./harness');
 
-const CUR_NET = () => (process.env.CONVOY_NET === 'supabase' ? 'supabase' : 'mqtt');
+// There is one transport now, so the relay-machinery tests below always skip.
+const CUR_NET = () => 'supabase';
 
 const DEST = { lat: -37.90, lng: 145.05 };
 const I = (api) => api.window.Convoy._internals;
@@ -714,9 +715,12 @@ async function testHelpStaysReachableWhileOutside() {
   check('Help is in the row even when you are outside', !d.getElementById('btnSettings')
     .classList.contains('hidden'));
 
-  d.getElementById('connState').dispatchEvent(new api.window.Event('pointerdown'));
-  await sleep(650);
-  check('but holding the connection word opens it',
+  /* Help opens from the Help button, which is now always in the row. Holding the
+     connection word used to open it as a side door, back when Help was hidden outside the
+     convoy — that is gone, and the button is the way in. */
+  d.getElementById('btnSettings').click();
+  await sleep(60);
+  check('and the Help button opens it, in or out',
         !d.getElementById('settingsCard').classList.contains('hidden'));
   check('with the pin field in it', !!d.getElementById('inPin'));
 }

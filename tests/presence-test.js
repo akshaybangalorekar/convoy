@@ -4,7 +4,8 @@
 
 const { boot, check, skip, sleep, pos, finish, crash } = require('./harness');
 
-const CUR_NET = () => (process.env.CONVOY_NET === 'supabase' ? 'supabase' : 'mqtt');
+// There is one transport now, so the relay-machinery tests below always skip.
+const CUR_NET = () => 'supabase';
 
 const routeFetch = (url) => {
   if (url.indexOf('routing.openstreetmap.de') >= 0) {
@@ -199,6 +200,7 @@ async function testAMissingLibraryIsNotABlockedNetwork() {
 }
 
 async function testTheRelayListIncludesPort443() {
+  if (CUR_NET() === 'supabase') { skip('testTheRelayListIncludesPort443', 'there is no relay list any more'); return; }
   const api = boot();
   const urls = api.window.Convoy.CFG.brokers.map((b) => b.url);
   check('one relay is on 443, the port mobile networks always allow',
