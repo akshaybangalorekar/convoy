@@ -131,6 +131,14 @@ function makeBroker() {
   };
 }
 
+/* Which transport the suites run on. `CONVOY_NET=supabase node tests/…` runs the whole
+   scenario set against the Supabase driver instead of the public relays, which is the only
+   way to know the migration actually works rather than merely compiling. */
+const NET = (optsNet) => {
+  const want = optsNet || process.env.CONVOY_NET || 'mqtt';
+  return want === 'supabase' ? 'supabase' : 'mqtt';
+};
+
 function boot(opts = {}) {
   const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
   const dom = new JSDOM(html, {
@@ -163,6 +171,23 @@ function boot(opts = {}) {
 
   const clients = [];
   const broker = opts.broker || null;
+  const netKind = NET(opts.net);
+  // A Supabase boot shares the backend it was handed, the same way two MQTT boots share a
+  // broker. Without one it gets its own, which is fine for a single-phone test.
+  let supa = null;
+  if (netKind === 'supabase') {
+    /* One broker object means one world, whichever transport is running. A suite that
+       already passes makeBroker() to two boots keeps working unchanged: the MQTT broker is
+       still there, and it now also carries a Supabase backend that both boots share. */
+    if (broker && broker.kind === 'supabase') {
+      supa = broker;
+    } else if (broker) {
+      if (!broker.__supa) broker.__supa = require('./fakesupabase').makeSupabase();
+      supa = broker.__supa;
+    } else {
+      supa = require('./fakesupabase').makeSupabase();
+    }
+  }
   window.mqtt = {
     connect(url, opts) {
       const h = {};
@@ -301,6 +326,28 @@ function boot(opts = {}) {
   window.eval(fs.readFileSync(path.join(DIR, 'net.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(DIR, 'route.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(DIR, 'install.js'), 'utf8'));
+  if (supa) {
+    /* Every connect() builds a new client, exactly as the MQTT path builds a new mqtt
+       client. Register each one, so `sent()` and `recv()` always look at the live one
+       rather than the first. */
+    const make = supa.createClient.bind(supa);
+    supa.createClient = () => {
+      const c = make();
+      clients.push(c);
+      window.__supaClient = c;
+      return c;
+    };
+    const client = supa.createClient();
+    window.supabase = { createClient: supa.createClient };
+    window.ConvoyNetConfig = {
+      kind: 'supabase',
+      supabaseUrl: 'https://harness.supabase.co',
+      supabaseKey: 'anon-key',
+      vapidPublicKey: '',
+    };
+    try { window.localStorage.setItem('convoy.net', 'supabase'); } catch (e) { /* ignore */ }
+    window.__supaClient = client;
+  }
   if (opts.setup) opts.setup(window);
   window.eval(fs.readFileSync(path.join(DIR, 'app.js'), 'utf8'));
 
@@ -311,7 +358,29 @@ function boot(opts = {}) {
     booted.allowed.add(booted.me.id);
     window.Convoy._internals.renderPeople();
   }
-  if (clients.length === 1) clients[0].connect_();
+  /* On Supabase, membership is a row, and a phone cannot grant it to itself. A test that
+     boots a phone as already in is really saying "an admin has let this one in", so the row
+     is written that way — otherwise the app's own bootstrap would correctly take it back out
+     again. */
+  if (supa && booted && booted.me) {
+    const mine = !!(opts.outside === false || opts.outside === undefined);
+    supa.db.members.set(booted.me.id, {
+      id: booted.me.id,
+      user_id: window.__supaClient.uid,
+      name: booted.me.name,
+      allowed: mine,
+      removed: false,
+      admin: false,
+      lat: null, lng: null,
+      seen_at: new Date().toISOString(),
+    });
+  }
+  /* An MQTT boot is waiting to be told the socket opened. A Supabase boot is already live
+     — the driver subscribes as it starts — so there is nothing to tell it. */
+  if (clients.length === 1) {
+    if (typeof clients[0].connect_ === 'function') clients[0].connect_();
+    else clients[0].connected = true;
+  }
 
   const api = {
     window,
@@ -320,6 +389,8 @@ function boot(opts = {}) {
     container,
     mapHandlers,
     clients,
+    netKind,
+    supa,
     netCalls,
     notes,
     geo,
@@ -363,7 +434,10 @@ function boot(opts = {}) {
         window.Convoy._internals.renderPeople();
       }
       const c = clients[clients.length - 1];
-      if (c) c.connect_();
+      if (c) {
+        if (typeof c.connect_ === 'function') (typeof c.connect_ === 'function' ? c.connect_() : (c.connected = true));
+        else c.connected = true;
+      }
       return c;
     },
 
@@ -399,7 +473,20 @@ function boot(opts = {}) {
         window.Convoy.state.allowed.add(String(msg.id));
       }
       const c = clients[clients.length - 1];
-      if (c) c._emit('message', 'x', Buffer.from(JSON.stringify(msg)));
+      if (!c) return;
+      const deliver = () => c._emit('message', 'x', Buffer.from(JSON.stringify(msg)));
+      /* An MQTT boot is listening the moment it returns; a Supabase boot has to sign in
+         anonymously first. A message sent into the gap would simply vanish, which is a
+         property of the test's timing rather than of the app — so hold it until the app
+         says it is live, the way a bus that is holding a connection would. */
+      const live = () => window.Convoy && window.Convoy.state.conn === 'live';
+      if (live()) { deliver(); return; }
+      const wait = (n) => {
+        if (live()) { deliver(); return; }
+        if (n <= 0) return;
+        setTimeout(() => wait(n - 1), 5);
+      };
+      wait(60);
     },
 
     /** The last message of a given type this phone published. */
@@ -423,7 +510,14 @@ const pos = (id, name, lat, lng) => ({
   t: 'pos', id, name, lat, lng, spd: 10, hdg: 90, acc: 6, ts: Date.now(),
 });
 
+/* A check that does not apply to this transport. Recorded as skipped rather than passed, so
+   the count never claims coverage it does not have. */
+function skip(name, why) {
+  checks.push({ ok: true, skipped: true, name, detail: why || '' });
+}
+
 function finish(label) {
+  const skipped = checks.filter((c) => c.skipped);
   const failed = checks.filter((c) => !c.ok);
   checks.forEach((c) => console.log(
     `${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.ok ? '' : '  <-- ' + c.extra}`));
@@ -437,4 +531,4 @@ function crash(e) {
 }
 
 module.exports = {
-  makeBroker, boot, check, sleep, pos, finish, crash, DIR, layer, makeStream };
+  makeBroker, boot, check, skip, sleep, pos, finish, crash, DIR, layer, makeStream };

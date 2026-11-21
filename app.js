@@ -42,7 +42,7 @@
     // dots. Thirty seconds is still well inside staleMs, so sharing less often can never
     // make anyone look out of contact.
     publishMs: 30000,         // broadcast our position at least this often
-    build: 'v81',             // must match VERSION in sw.js; a test holds them together
+    build: 'v82',             // must match VERSION in sw.js; a test holds them together
     renderMs: 3000,           // sweep the list and the view
     etaMs: 300000,            // recompute our arrival time this often
     staleMs: 90000,           // silence this long and a person counts as out of contact
@@ -2736,19 +2736,37 @@
       if (pinHash(pin) !== CFG.masterHash) return;   // nothing to see; the field clears
       state.master = true;
       try { localStorage.setItem('convoy.master', '1'); } catch (e) { /* ignore */ }
+      /* On Supabase the pin is checked by the database, not by this phone: the plaintext
+         goes to claim_admin() once and the answer is what makes the RPCs work. Without
+         this the phone would think it is an admin while the database refused every
+         action it tried. */
+      {
+        const sb = db();
+        if (sb) {
+          sb.rpc('claim_admin', { pin }).then((r) => {
+            if (r && r.data !== true) state.master = false;
+            fillHelp();
+            renderControls();
+          }, () => {});
+        }
+      }
       if (state.me) {
         state.allowed.add(state.me.id);
         saveRecord({ allowed: Array.from(state.allowed) });
         send({ t: 'allowed', ids: Array.from(state.allowed) });
       }
       /* Taking the pin on a phone that did not have it means it was not listening for
-         requests before now: the retained ones were handed over and dropped. Subscribe
-         again so the broker sends what it is still holding. */
+         requests before now, so the ones already waiting have to be fetched again: on the
+         relays by re-subscribing, so the broker re-sends what it holds, and on Supabase by
+         re-reading the table, because those rows are only read when the channel opens. */
       if (client && client.connected) {
-        try {
-          if (typeof client.unsubscribe === 'function') client.unsubscribe(askTopic('+'), () => {});
-          client.subscribe(askTopic('+'), { qos: 0 }, () => {});
-        } catch (e) { /* ignore */ }
+        if (typeof client.refreshAsks === 'function') client.refreshAsks();
+        else {
+          try {
+            if (typeof client.unsubscribe === 'function') client.unsubscribe(askTopic('+'), () => {});
+            client.subscribe(askTopic('+'), { qos: 0 }, () => {});
+          } catch (e) { /* ignore */ }
+        }
       }
       const note = $('pinNote');
       note.textContent = 'This phone can add and remove people.';

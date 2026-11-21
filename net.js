@@ -49,6 +49,8 @@
       unsubscribe(topic) {
         if (client) { try { client.unsubscribe(topic, () => {}); } catch (e) {} }
       },
+      // Nothing to reload: re-subscribing makes the broker re-send what it holds.
+      refreshAsks() {},
       end() {
         live = false;
         if (client) { try { client.end(true); } catch (e) { /* ignore */ } client = null; }
@@ -143,6 +145,11 @@
       publish(topic, body, opts) {
         if (!sb) return;
         const text = bodyOf(body);
+        /* Keep a record of what was sent, the way the MQTT client does: "what has this app
+           asked for" is worth being able to answer, and the ask topics are rows here rather
+           than messages, so they would otherwise leave no trace at all. */
+        sb.publishes = sb.publishes || [];
+        sb.publishes.push({ topic, msg: text, opts: opts || {} });
         const ask = ASK.exec(topic);
         if (ask) {
           // Retained: an empty body is a withdrawal, exactly as on MQTT.
@@ -160,12 +167,21 @@
       },
 
       subscribe(topic) {
-        // Broadcast arrives for everything on the channel; the only subscription that needs
-        // doing is the retained one, and that is loaded on connect.
-        if (/\/ask\/\+$/.test(topic)) return;
+        /* Broadcast arrives for everything on the channel, so there is nothing to send the
+           server. The topics are still recorded, because "what is this app listening to" is
+           worth being able to answer — in Help, and in the tests. */
+        if (topic && sb && Array.isArray(sb.subscriptions) && sb.subscriptions.indexOf(topic) < 0) {
+          sb.subscriptions.push(topic);
+        }
       },
 
       unsubscribe() { /* nothing to do: one channel carries everything */ },
+
+      /* A phone that takes the pin on while it is already connected has never been shown
+         the requests sitting in the table, because they are read when the channel opens.
+         Without this it becomes an admin with nobody to admit — the same bug the relay path
+         had, in a different place. */
+      refreshAsks() { loadAsks(); },
 
       end() {
         stopped = true;

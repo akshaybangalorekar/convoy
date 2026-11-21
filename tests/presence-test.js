@@ -2,7 +2,9 @@
  * each phone's own state back onto the air so nothing has to be stored centrally. */
 'use strict';
 
-const { boot, check, sleep, pos, finish, crash } = require('./harness');
+const { boot, check, skip, sleep, pos, finish, crash } = require('./harness');
+
+const CUR_NET = () => (process.env.CONVOY_NET === 'supabase' ? 'supabase' : 'mqtt');
 
 const routeFetch = (url) => {
   if (url.indexOf('routing.openstreetmap.de') >= 0) {
@@ -98,6 +100,7 @@ async function testATouchRetriesWhenWeHaveNoPosition() {
 
 /* ---------- When the relay cannot be reached at all ---------- */
 async function testABlockedRelaySaysSo() {
+  if (CUR_NET() === 'supabase') { skip('testABlockedRelaySaysSo', 'relays are an MQTT idea; Supabase has one project'); return; }
   // A phone on mobile data often cannot reach these relays at all, because they listen on
   // ports 8081/8084/8884 and carriers block everything but 80 and 443.
   const api = boot();
@@ -131,6 +134,7 @@ async function testABlockedRelaySaysSo() {
 }
 
 async function testTheRelayCheckSaysWhichRelayAnswers() {
+  if (CUR_NET() === 'supabase') { skip('testTheRelayCheckSaysWhichRelayAnswers', 'relays are an MQTT idea'); return; }
   const api = boot();
   api.ws.mode('open');
   api.window.Convoy.join('Akshay', 'goa-trip');
@@ -153,6 +157,7 @@ async function testTheRelayCheckSaysWhichRelayAnswers() {
 }
 
 async function testTheRelayCheckNamesABlockedNetwork() {
+  if (CUR_NET() === 'supabase') { skip('testTheRelayCheckNamesABlockedNetwork', 'relays are an MQTT idea'); return; }
   const api = boot();
   api.ws.mode('error');
   api.window.Convoy.join('Akshay', 'goa-trip');
@@ -171,6 +176,7 @@ async function testTheRelayCheckNamesABlockedNetwork() {
 }
 
 async function testAMissingLibraryIsNotABlockedNetwork() {
+  if (CUR_NET() === 'supabase') { skip('testAMissingLibraryIsNotABlockedNetwork', 'there is no relay library to be missing'); return; }
   // The relay library comes from a CDN. Without it every attempt throws before it reaches
   // the network, and the app used to cycle the relays for ever — indistinguishable from a
   // carrier blocking the ports.
@@ -254,6 +260,7 @@ async function testAPhoneWithNoLocationStillSaysHello() {
 
 /* ---------- A connection that keeps dropping ---------- */
 async function testRetriesBackOffInsteadOfHammering() {
+  if (CUR_NET() === 'supabase') { skip('testRetriesBackOffInsteadOfHammering', 'relay retry pacing is an MQTT idea'); return; }
   const api = boot();
   await sleep(20);
   const CFG = api.window.Convoy.CFG;
@@ -440,6 +447,7 @@ async function testTheDestinationDotWearsTheSettersColour() {
 }
 
 async function testTheRelayIsAskedWhatWentWrong() {
+  if (CUR_NET() === 'supabase') { skip('testTheRelayIsAskedWhatWentWrong', 'MQTT reason codes do not exist on Supabase'); return; }
   // The error used to be thrown away: a refused connection looked exactly like a blocked
   // port, and there was no way to tell them apart.
   const api = boot();
@@ -475,6 +483,7 @@ async function testTheRelayIsAskedWhatWentWrong() {
 }
 
 async function testAWaitingPhoneLooksForTheGroupOnOtherRelays() {
+  if (CUR_NET() === 'supabase') { skip('testAWaitingPhoneLooksForTheGroupOnOtherRelays', 'there is only one project to find'); return; }
   // Waiting to be let in and hearing nothing usually means the group is on another relay,
   // and there is no way to tell from the app. Walk the list rather than sit there.
   const api = boot({ outside: true });
@@ -594,6 +603,7 @@ async function testAComingBackPhoneIsAnsweredAtOnce() {
 }
 
 async function testTheClientIdIsUniquePerAttempt() {
+  if (CUR_NET() === 'supabase') { skip('testTheClientIdIsUniquePerAttempt', 'MQTT client ids; Supabase signs in anonymously instead'); return; }
   const api = boot();
   api.window.Convoy.CFG.retryMs = 10;
   api.window.Convoy.join('Akshay', 'goa-trip');
@@ -614,6 +624,7 @@ async function testTheClientIdIsUniquePerAttempt() {
 }
 
 async function testAFlappingRelayIsAbandoned() {
+  if (CUR_NET() === 'supabase') { skip('testAFlappingRelayIsAbandoned', 'relay rotation is an MQTT idea'); return; }
   const api = boot();
   const C = api.window.Convoy;
   C.CFG.retryMs = 10;
@@ -625,7 +636,7 @@ async function testAFlappingRelayIsAbandoned() {
   // Connect, then drop straight away — twice.
   for (let i = 0; i < 2; i++) {
     const c = api.clients[api.clients.length - 1];
-    c.connect_();
+    (typeof c.connect_ === 'function' ? c.connect_() : (c.connected = true));
     await sleep(5);
     c._emit('close');
     await sleep(40);
@@ -636,6 +647,7 @@ async function testAFlappingRelayIsAbandoned() {
 }
 
 async function testARelayThatHeldIsKept() {
+  if (CUR_NET() === 'supabase') { skip('testARelayThatHeldIsKept', 'relay rotation is an MQTT idea'); return; }
   const api = boot();
   const C = api.window.Convoy;
   C.CFG.retryMs = 10;
@@ -647,7 +659,7 @@ async function testARelayThatHeldIsKept() {
 
   for (let i = 0; i < 3; i++) {
     const c = api.clients[api.clients.length - 1];
-    c.connect_();
+    (typeof c.connect_ === 'function' ? c.connect_() : (c.connected = true));
     await sleep(15);              // longer than stableMs
     c._emit('close');
     await sleep(40);
@@ -756,7 +768,10 @@ async function testBackgroundedTooLongCountsAsLost() {
 /* ---------- Each phone pushes its own state ---------- */
 async function testStatePush() {
   const api = boot({ fetch: routeFetch });
-  const c = api.join('Akshay', 'goa-trip');
+  api.join('Akshay', 'goa-trip');
+  /* A rejoin builds a new client on both transports, so always ask for the live one rather
+     than holding the handle from before. */
+  const live = () => api.clients[api.clients.length - 1];
   api.fix(-33.86, 151.20);
   await sleep(20);
   api.window.Convoy.setDest(-33.90, 151.30, 'Bondi');
@@ -765,11 +780,14 @@ async function testStatePush() {
   check('we have a destination and an arrival time',
         !!api.window.Convoy.state.dest && !!api.window.Convoy.state.myEta);
 
-  c.published.length = 0;
-  c.connect_();                     // as if the relay dropped and came back
-  await sleep(30);
+  live().published.length = 0;
+  // "The relay dropped and came back": the socket opening on MQTT, the channel
+  // re-subscribing on Supabase.
+  if (CUR_NET() === 'supabase') live()._emit('connect');
+  else live().connect_();
+  await sleep(60);
 
-  const types = c.published.map((x) => JSON.parse(x).t);
+  const types = live().published.map((x) => JSON.parse(x).t);
   check('a reconnect announces us', types.indexOf('hello') >= 0, types.join(','));
   check('and our position', types.indexOf('pos') >= 0, types.join(','));
   check('and the destination', types.indexOf('dest') >= 0, types.join(','));

@@ -90,15 +90,54 @@ stranger arriving.
 
 ---
 
-## What is tested, and what is not
+## The whole scenario set, run on Supabase
 
-`tests/supabase-test.js` — 29 checks against a stubbed Supabase client: anonymous sign-in,
-one channel, positions as broadcasts, asks as rows, a fresh ask handed over on connect,
-membership and destination read from tables, row changes applied, admin actions calling the
-database functions, the transport switch, and the "no project configured" path.
+`CONVOY_NET=supabase` makes the harness boot every phone onto the Supabase driver instead of
+the relays — a shared in-memory stand-in with real tables, broadcasts between apps, and the
+admin guard enforced the way the database trigger enforces it. `npm run test:supabase` runs
+the lot.
 
-All thirteen existing suites still pass unchanged on the relay path, which is the proof the
-transport seam is clean.
+Thirteen suites, **1122 checks**, all passing on Supabase:
+
+| Suite | On Supabase |
+|---|---|
+| app / roster / install | 74 / 34 / 47 |
+| presence | 101 (11 relay-specific checks skipped) |
+| route / map | 155 / 77 |
+| features / pwa | 205 / 162 |
+| scenario / sim / rejoin | 83 / 44 / 46 |
+| heartbeat / supabase | 65 / 29 |
+
+**fleet-test does not finish** on Supabase inside the sandbox's 300-second limit: ten phones
+means ten anonymous sign-ins, and every membership write notifies every phone, so the suite
+that boots ten apps repeatedly is simply too slow under the stand-in. Its coverage — a
+ten-phone convoy through a whole journey — is what `sim-test` does, and that passes 44/44.
+Treat fleet as unverified on Supabase until it can be given more time.
+
+Eleven checks are **skipped, not passed**, on Supabase because they test the relay machinery
+itself: MQTT reason codes, moving between relays, a flapping relay, a missing relay library,
+client ids, retry pacing. None of that exists with one project, and pretending otherwise
+would inflate the count.
+
+## Two real bugs this found
+
+- **A phone that took the pin on while connected was never shown the requests already
+  waiting.** On the relays, re-subscribing makes the broker re-send what it holds; on
+  Supabase the asks are rows read only when the channel opens, so nothing refreshed them.
+  Found by `fleet-test` on Supabase, fixed with a `refreshAsks()` on the driver.
+- **Closing the search within 60 ms of opening it re-opened it**, because the delayed focus
+  re-triggered the field's own focus handler. A pre-existing flake, caught while re-running
+  `route-test` on the new transport.
+
+## What is still not tested
+
+- The SQL itself has never been run against a real Postgres. Read it before you run it.
+- The Edge Function has never been deployed or invoked.
+- Web Push has never delivered a real notification.
+- The real Realtime payload shape, and real RLS enforcement.
+
+Treat those as unverified until your first real trip. If something fails, the transport
+switch in Help puts every phone back on the relays in two taps.
 
 **Not tested, because this sandbox cannot reach supabase.co and has no project:**
 - The SQL itself has never been run against a real Postgres. Read it before you run it.

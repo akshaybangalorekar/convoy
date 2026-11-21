@@ -4,6 +4,8 @@
 
 const { boot, check, sleep, pos, finish, crash, makeBroker } = require('./harness');
 
+const CUR_NET = () => (process.env.CONVOY_NET === 'supabase' ? 'supabase' : 'mqtt');
+
 const DEST = { lat: -37.90, lng: 145.05 };
 const I = (api) => api.window.Convoy._internals;
 const text = (api, id) => api.document.getElementById(id).textContent;
@@ -842,7 +844,10 @@ async function testAnAskMadeWhileTheLinkIsDownIsNotLost() {
   const I = api.window.Convoy._internals;
   const client = () => api.clients[api.clients.length - 1];
 
-  client().connected = false;                     // the link is not up yet
+  /* Take the link down the way this transport actually loses it: the socket closing on
+     MQTT, the channel erroring on Supabase. Setting a flag would only fool the fake. */
+  if (CUR_NET() === 'supabase') client()._emit('close');
+  else client().connected = false;                // the link is not up yet
   d.getElementById('btnJoin').click();
   await sleep(20);
   check('the phone remembers that it asked', api.window.Convoy.state.joinAsked === true);
@@ -852,7 +857,8 @@ async function testAnAskMadeWhileTheLinkIsDownIsNotLost() {
         client().publishes.filter((p) => /\/ask\//.test(p.topic)).length === 0);
 
   const before = client().publishes.filter((p) => /\/ask\//.test(p.topic)).length;
-  client().connected = true;
+  if (CUR_NET() === 'supabase') client()._emit('connect');
+  else client().connected = true;
   I.publishNow();                                 // what the next tick does
   await sleep(20);
   const after = client().publishes.filter((p) => /\/ask\//.test(p.topic));

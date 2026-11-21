@@ -31,6 +31,9 @@ async function testStartAGroup() {
         typeof api.window.Convoy.state.room === 'undefined' &&
         api.window.Convoy.state.topic === api.window.Convoy.CFG.topic,
         api.window.Convoy.state.topic);
+  /* MQTT connects synchronously and has already subscribed by now; Supabase signs in
+     anonymously first, so give it a moment before asking what it is listening to. */
+  await sleep(60);
   check('a connection was opened', api.clients.length > 0, String(api.clients.length));
   check('and it subscribes to the one topic',
         (api.clients[api.clients.length - 1].subscriptions || [])

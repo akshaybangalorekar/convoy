@@ -448,6 +448,8 @@ and the half-hour freshness rule never ran. It is published as `t: 'ask'` now.
 
 The app still works with no server at all — but it can now run on Supabase, and **the
 transport is switchable per phone** from Help, so the two can be compared on a real trip.
+The whole scenario set runs on either: `npm test` on the relays, `npm run test:supabase`
+on Supabase — thirteen suites, 1122 checks, all passing there.
 `docs/supabase.md` has the setup steps, the free-tier numbers, and an honest list of what is
 and is not tested.
 

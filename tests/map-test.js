@@ -22,9 +22,12 @@ async function testRejoinOnLaunch() {
   check('you land on the map', !d.getElementById('sheet').classList.contains('hidden'));
   check('and the name it kept is used', api.window.Convoy.state.me.name === 'Akshay',
         api.window.Convoy.state.me.name);
-  check('a connection is opened', api.clients.length === 1, String(api.clients.length));
-  const c = api.clients[0];
-  if (c) c.connect_();
+  /* One connection, whichever transport: MQTT reuses its client across a rejoin, Supabase
+     builds a fresh one per connect, so ask that there is a live connection rather than
+     counting objects. */
+  check('a connection is opened', api.clients.length >= 1, String(api.clients.length));
+  const c = api.clients[api.clients.length - 1];
+  if (c) { if (typeof c.connect_ === 'function') (typeof c.connect_ === 'function' ? c.connect_() : (c.connected = true)); else c.connected = true; }
   await sleep(20);
   check('and it subscribes to the one topic',
         (api.clients[api.clients.length - 1].subscriptions || [])
@@ -42,7 +45,9 @@ async function testFirstRunAsks() {
   check('already in the one room', api.window.Convoy.state.joined === true);
   check('with a name it did not have to type',
         !!api.window.Convoy.state.me.name, api.window.Convoy.state.me.name);
-  check('and a connection already open', api.clients.length === 1, String(api.clients.length));
+  check('and a connection already open', api.clients.length >= 1 &&
+        api.window.Convoy.state.conn === 'live', String(api.clients.length) + ' ' +
+        api.window.Convoy.state.conn);
 }
 
 /* ---------- Colours ---------- */

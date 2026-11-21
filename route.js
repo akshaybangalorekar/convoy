@@ -427,6 +427,10 @@
       try { history.pushState({ convoySheet: 'search' }, ''); pushed = true; } catch (e) {}
     }
     setTimeout(() => {
+      // Closed again before this fired — which happens when a test, or a quick finger,
+      // shuts the list within a moment of opening it. Focusing then would re-open it,
+      // because the field's own focus handler opens the list.
+      if ($('search').classList.contains('hidden')) return;
       try {
         $('inSearch').focus();
         $('inSearch').select();
