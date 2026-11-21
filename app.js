@@ -1502,6 +1502,7 @@
     ? client.client() : null;
 
   function applyMembership(rows) {
+    const wasInConvoy = inConvoy();
     let changed = false;
     (rows || []).forEach((r) => {
       if (!r || !r.id) return;
@@ -1516,6 +1517,16 @@
       saveRecord({ allowed: Array.from(state.allowed), removed: Array.from(state.removed) });
       renderPeople();
       renderControls();
+    }
+    /* Being let in arrives here as a row change, and used to arrive as a broadcast. Both
+       have to do the same thing, or the phone that has just been admitted stays silent until
+       its next tick and never appears on the list of whoever admitted it. */
+    if (inConvoy()) { try { localStorage.setItem('convoy.everIn', '1'); } catch (e) {} }
+    if (inConvoy() && !wasInConvoy) {
+      if (state.joinAsked) clearAsk();
+      state.joinAsked = false;
+      saveJoinAsked(false);
+      sendState();
     }
   }
 
@@ -1635,6 +1646,20 @@
   function dbKeepOut(id) {
     const sb = db();
     if (sb) sb.rpc('keep_out', { who: id }).then(() => {}, () => {});
+  }
+  /* Leaving is a thing you do to yourself, so it cannot go through the admin function. The
+     row has to say you are out, or the next membership change anywhere puts you back in. */
+  function dbLeaveSelf() {
+    const sb = db();
+    if (!sb || !state.me) return;
+    try {
+      sb.from('members')
+        /* Out, not banned: `removed` stays false so this phone can let itself back in
+           without asking, which is what "leaving is not a ban" means. */
+        .update({ allowed: false, removed: false })
+        .eq('id', state.me.id)
+        .then(() => {}, () => {});
+    } catch (e) { /* leaving must work even if the write does not */ }
   }
   function dbSaveDest() {
     const sb = db();
@@ -2620,6 +2645,7 @@
   function leaveConvoy() {
     if (!state.me || !inConvoy()) return;
     send({ t: 'bye' });
+    dbLeaveSelf();
     const mine = state.me.id;
     state.allowed.delete(mine);
     state.removed.delete(mine);

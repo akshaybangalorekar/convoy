@@ -49,9 +49,13 @@ function makeSupabase() {
       ('removed' in patch && patch.removed !== row.removed) ||
       ('admin' in patch && patch.admin !== row.admin);
     if (touchesMembership && !isAdmin(uid)) {
-      return { error: { message: 'only an admin can change who is in' } };
+      /* Anyone who has been in before may take themselves out and put themselves back in.
+         A phone that has never been in needs the pin. */
+      const selfServe = row.user_id === uid && patch.admin === undefined && row.was_in;
+      if (!selfServe) return { error: { message: 'only an admin can change who is in' } };
     }
     const next = Object.assign({}, row, patch);
+    if (next.allowed) next.was_in = true;   // once in, always was in
     db.members.set(id, next);
     notify('members', next, row);
     return { data: next, error: null };
@@ -146,6 +150,18 @@ function makeSupabase() {
             return Promise.resolve({ data: row, error: null });
           }
           return Promise.resolve({ data: null, error: null });
+        },
+        update(patch) {
+          const upd = {
+            eq(col, val) {
+              if (table === 'members') return Promise.resolve(guardedUpdate(val, patch, uid));
+              return Promise.resolve({ data: null, error: null });
+            },
+            then(resolve, reject) {
+              return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+            },
+          };
+          return upd;
         },
         insert(row) {
           if (table === 'events') {

@@ -32,6 +32,10 @@ create table if not exists public.members (
   name        text not null default '',
   allowed     boolean not null default false,
   removed     boolean not null default false,
+  /* Has this account ever been in the convoy? A phone that has been in before can come back
+     without asking — leaving and being removed are both reversible, and that is the rule the
+     app has always had. A phone that has never been in still needs the pin. */
+  was_in      boolean not null default false,
   admin       boolean not null default false,
   lat         double precision,
   lng         double precision,
@@ -224,9 +228,21 @@ begin
   if (new.allowed is distinct from old.allowed)
      or (new.removed is distinct from old.removed)
      or (new.admin is distinct from old.admin) then
+    /* Anyone who has been in before may take themselves out and put themselves back in
+       whenever they like — leaving is not a ban, and neither is being removed. A phone that
+       has never been in has `was_in = false` and this door is shut: it needs the pin. */
+    if new.user_id = auth.uid()
+       and new.admin = old.admin
+       and old.was_in then
+      return new;
+    end if;
     if not public.is_admin() then
       raise exception 'only an admin can change who is in';
     end if;
+  end if;
+  -- Once you have been in, you have been in: that is what reopens the door later.
+  if new.allowed then
+    new.was_in := true;
   end if;
   return new;
 end;

@@ -380,6 +380,7 @@ function boot(opts = {}) {
       name: booted.me.name,
       allowed: mine,
       removed: false,
+      was_in: mine,
       admin: false,
       lat: null, lng: null,
       seen_at: new Date().toISOString(),
